@@ -1,0 +1,171 @@
+/* Node test-suite for the cube model and the beginner solver.  Run: node tests/run-tests.js */
+const assert = require('assert');
+const Cube = require('../js/cube.js');
+const Solver = require('../js/solver.js');
+
+let passed = 0;
+function test(name, fn) {
+  try { fn(); passed++; console.log('ok   ' + name); }
+  catch (e) { console.log('FAIL ' + name + '\n     ' + (e && e.message)); process.exitCode = 1; }
+}
+const eq = (a, b) => Cube.toString(a) === Cube.toString(b);
+const S = Cube.solved();
+
+// deterministic RNG so failures are reproducible
+function rng(seed) { let x = seed >>> 0 || 1; return () => { x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; }; }
+
+test('every move has order 4 and a working inverse', () => {
+  for (const m of ['U', 'D', 'L', 'R', 'F', 'B', 'x', 'y', 'z', 'M', 'E', 'S', 'r', 'u', 'f']) {
+    let t = S; for (let i = 0; i < 4; i++) t = Cube.applyMove(t, m);
+    assert(eq(t, S), m + ' x4');
+    assert(eq(Cube.applyAlg(Cube.applyMove(S, m), m + "'"), S), m + ' inverse');
+    assert(eq(Cube.applyAlg(S, [m, m]), Cube.applyMove(S, m + '2')), m + ' double');
+  }
+});
+test('R U R\' U\' has order 6', () => {
+  let t = S; for (let i = 0; i < 6; i++) t = Cube.applyAlg(t, "R U R' U'");
+  assert(eq(t, S));
+  t = S; for (let i = 0; i < 3; i++) t = Cube.applyAlg(t, "R U R' U'");
+  assert(!eq(t, S));
+});
+test('rotations equal their slice/face equivalents', () => {
+  assert(eq(Cube.applyMove(S, 'x'), Cube.applyAlg(S, "R M' L'")));
+  assert(eq(Cube.applyMove(S, 'y'), Cube.applyAlg(S, "U E' D'")));
+  assert(eq(Cube.applyMove(S, 'z'), Cube.applyAlg(S, "F S B'")));
+});
+test('U sends the UF edge to UL; y brings the right face to the front', () => {
+  assert.strictEqual(Cube.pieceColors(Cube.applyMove(S, 'U'), Cube.pieceAt('UL')).join(''), Cube.pieceColors(S, Cube.pieceAt('UF')).join(''));
+  assert.strictEqual(Cube.center(Cube.applyMove(S, 'y'), 'F'), Cube.SOLVED_FACE_COLORS.R);
+});
+test('invertAlg undoes an algorithm', () => {
+  const alg = "R U2 F' L D B2 x y' M";
+  assert(eq(Cube.applyAlg(Cube.applyAlg(S, alg), Cube.invertAlg(alg)), S));
+});
+test('validate accepts scrambled and rotated cubes', () => {
+  const r = rng(7);
+  for (let i = 0; i < 50; i++) {
+    const s = Cube.applyAlg(S, Cube.scramble(30, r));
+    assert(Cube.validate(s).ok);
+    assert(Cube.validate(Cube.applyAlg(s, ['x', "y'", 'z2'][i % 3])).ok);
+  }
+});
+test('validate rejects a twisted corner, a flipped edge and a swapped pair', () => {
+  const s = Cube.applyAlg(S, Cube.scramble(20, rng(3)));
+  const tw = s.slice(); const c = Cube.pieceAt('UFR');
+  const v = c.idx.map((i) => tw[i]); tw[c.idx[0]] = v[1]; tw[c.idx[1]] = v[2]; tw[c.idx[2]] = v[0];
+  assert(!Cube.validate(tw).ok && /twisted/.test(Cube.validate(tw).reason));
+  const fl = s.slice(); const e = Cube.pieceAt('UF'); [fl[e.idx[0]], fl[e.idx[1]]] = [fl[e.idx[1]], fl[e.idx[0]]];
+  assert(!Cube.validate(fl).ok && /flipped/.test(Cube.validate(fl).reason));
+  const sw = s.slice(); const e1 = Cube.pieceAt('UF'), e2 = Cube.pieceAt('UB');
+  for (let i = 0; i < 2; i++) { const t = sw[e1.idx[i]]; sw[e1.idx[i]] = sw[e2.idx[i]]; sw[e2.idx[i]] = t; }
+  assert(!Cube.validate(sw).ok && /swapped/.test(Cube.validate(sw).reason));
+  const bad = s.slice(); bad[0] = bad[0] === 'W' ? 'Y' : 'W';
+  assert(!Cube.validate(bad).ok);
+});
+test('lesson algorithms keep the first two layers intact', () => {
+  for (const key of ['yellowCross', 'yellowEdges', 'yellowCorners']) {
+    const s = Cube.applyAlg(S, Solver.ALGS[key]);
+    assert(Solver.goals.middle(s), key + ' disturbs F2L');
+  }
+});
+test('solver handles the solved cube and each single face turn', () => {
+  assert.strictEqual(Solver.solve(S).steps.length, 0);
+  for (const m of ['U', "U'", 'D', 'R2', 'F', 'B', 'L']) {
+    const r = Solver.solve(Cube.applyMove(S, m));
+    assert(Cube.isSolved(r.state), m);
+  }
+});
+test('solver solves 400 random scrambles with stages in order', () => {
+  const r = rng(12345);
+  let totalMoves = 0, maxMoves = 0;
+  for (let i = 0; i < 400; i++) {
+    const scr = Cube.scramble(25, r);
+    let s = Cube.applyAlg(S, scr);
+    if (i % 4 === 0) s = Cube.applyAlg(s, ['x', 'y', "z'", 'x2'][(i / 4) % 4 | 0]);
+    let res;
+    try { res = Solver.solve(s); } catch (e) { throw new Error('scramble ' + scr.join(' ') + ': ' + e.message); }
+    assert(Cube.isSolved(res.state), 'not solved: ' + scr.join(' '));
+    // replaying the steps must reproduce the final state, and stages must be monotonic
+    let replay = s, lastStage = -1;
+    for (const st of res.steps) {
+      const idx = Solver.STAGES.indexOf(st.stage);
+      assert(idx >= lastStage, 'stage order broken');
+      lastStage = idx;
+      assert(st.text && st.text.length > 10, 'step without text');
+      replay = Cube.applyAlg(replay, st.moves);
+    }
+    assert(eq(replay, res.state));
+    // after the last step of each stage the stage goal holds
+    let cur = s;
+    for (let k = 0; k < res.steps.length; k++) {
+      cur = Cube.applyAlg(cur, res.steps[k].moves);
+      const st = res.steps[k].stage;
+      if (k === res.steps.length - 1 || res.steps[k + 1].stage !== st) {
+        assert(Solver.goals[st](cur), 'goal ' + st + ' not met after its steps for ' + scr.join(' '));
+      }
+    }
+    const n = res.steps.reduce((a, b) => a + b.moves.length, 0);
+    totalMoves += n; maxMoves = Math.max(maxMoves, n);
+  }
+  console.log('     average moves ' + (totalMoves / 400).toFixed(1) + ', max ' + maxMoves);
+});
+test('stateForStage returns a state where earlier goals hold and this one does not (usually)', () => {
+  const r = rng(99);
+  for (const stage of ['daisy', 'cross', 'corners', 'middle', 'ycross', 'yedges', 'ycorners', 'ytwist']) {
+    const s = Solver.stateForStage(stage, Cube.scramble(25, r));
+    const idx = Solver.STAGES.indexOf(stage);
+    // the daisy is undone by the cross stage, so it only counts right before the cross
+    for (let i = 1; i < idx; i++) {
+      if (Solver.STAGES[i] === 'daisy' && idx > 2) continue;
+      assert(Solver.goals[Solver.STAGES[i]](s), stage + ': earlier goal ' + Solver.STAGES[i] + ' not met');
+    }
+  }
+});
+test('yellow-cross positioning matches the lesson text (L at back-left, line horizontal)', () => {
+  // build an L-shape and a line by inverting the alg on a solved cube
+  const yellow = Cube.SOLVED_FACE_COLORS.U;
+  const up = (s) => ['UF', 'UL', 'UB', 'UR'].filter((e) => s[Cube.sticker(e, 'U')] === yellow);
+  const line = Cube.applyAlg(S, Cube.invertAlg(Solver.ALGS.yellowCross));
+  const lineUp = up(line);
+  assert.strictEqual(lineUp.length, 2);
+  assert(lineUp.includes('UL') && lineUp.includes('UR'), 'line case is horizontal: ' + lineUp);
+  const L = Cube.applyAlg(line, Cube.invertAlg(Solver.ALGS.yellowCross));
+  const LUp = up(L);
+  assert.strictEqual(LUp.length, 2);
+  assert(LUp.includes('UB') && LUp.includes('UL'), 'L case sits at back-left: ' + LUp);
+});
+
+test('solver resumes the twist stage from a mid-twist state instead of restarting', () => {
+  const r = rng(2024);
+  let checked = 0;
+  for (let i = 0; i < 40 && checked < 15; i++) {
+    const s = Solver.stateForStage('ytwist', Cube.scramble(25, r));
+    const res = Solver.solve(s);
+    const twistSteps = res.steps.filter((st) => st.stage === 'ytwist');
+    if (twistSteps.length < 3) continue;   // need at least two corners to twist
+    // stop after the first corner is twisted: bottom layers are scrambled now
+    let cur = s;
+    for (const st of res.steps) { cur = Cube.applyAlg(cur, st.moves); if (st.stage === 'ytwist' && st.moves.length > 2) break; }
+    assert(!Solver.goals.middle(cur), 'expected broken F2L mid-twist');
+    assert(Solver.midTwistPhase(cur) > 0, 'mid-twist not detected');
+    const res2 = Solver.solve(cur);
+    assert(res2.steps.every((st) => st.stage === 'ytwist' || st.stage === 'finish'), 'solver restarted from ' + res2.steps[0].stage);
+    assert(Cube.isSolved(res2.state));
+    // a learner who also turned the top layer by hand is still mid-twist
+    const res3 = Solver.solve(Cube.applyMove(cur, 'U'));
+    assert(res3.steps.every((st) => st.stage === 'ytwist' || st.stage === 'finish'));
+    assert(Cube.isSolved(res3.state));
+    checked++;
+  }
+  assert(checked >= 10, 'too few mid-twist cases checked: ' + checked);
+});
+test('a single R\' D\' R D on a ready cube is handled (learner twisted by hand)', () => {
+  const r = rng(77);
+  for (let i = 0; i < 10; i++) {
+    const s = Cube.applyAlg(Solver.stateForStage('ytwist', Cube.scramble(25, r)), Solver.ALGS.twist);
+    const res = Solver.solve(s);
+    assert(Cube.isSolved(res.state));
+  }
+});
+
+console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));

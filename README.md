@@ -23,6 +23,10 @@ Participants will learn how to:
 - Working with Image generation
 - Multi-Agent workflows
 
+## Bonus project: Cube Buddy
+
+[`RubiksCubeTutor/`](./RubiksCubeTutor/README.md) is a standalone, dependency-free web app that teaches kids to solve a Rubik's Cube with interactive 3D lessons, practice puzzles and a guided solver. Open `RubiksCubeTutor/index.html` in a browser to try it.
+
 ## Challenges
 
 - Challenge 00: Prerequisites - Prepare your workstation to work with Azure.
