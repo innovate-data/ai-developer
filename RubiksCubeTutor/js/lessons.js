@@ -1,5 +1,5 @@
 /*
- * lessons.js - the course content for Cube Buddy.
+ * lessons.js - the course content for Cube Clubhouse.
  *
  * Every lesson is plain data so it is easy to translate or tweak. Lessons with
  * a `stage` map to a solver stage: the practice mode sets up a cube that needs
@@ -92,7 +92,7 @@
         'Careful! Once a petal is in place, try not to knock it back out when you bring the next one up. If a side turn would ruin a petal, first turn the top layer to move that petal out of the way.',
         'This step has no trick to memorise. It is a puzzle you can figure out by looking, and it is great practice for seeing how the pieces move.',
       ],
-      tips: ['If a white edge is in the bottom layer with white facing down, turn its side twice (like F2) and it pops straight up.', 'If a white edge is in the middle layer, one turn of a side brings it to the top.', 'Stuck? Press Hint. Cube Buddy will show you one petal at a time.'],
+      tips: ['If a white edge is in the bottom layer with white facing down, turn its side twice (like F2) and it pops straight up.', 'If a white edge is in the middle layer, one turn of a side brings it to the top.', 'Stuck? Press Hint. Cube Clubhouse will show you one petal at a time.'],
       algs: [],
     },
     {

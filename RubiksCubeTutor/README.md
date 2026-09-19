@@ -1,6 +1,6 @@
-# Cube Buddy – a Rubik's Cube tutor for kids
+# Cube Clubhouse – a Rubik's Cube tutor for kids
 
-Cube Buddy teaches children (roughly ages 7–12) to solve a 3×3 Rubik's Cube using the
+Cube Clubhouse teaches children (roughly ages 7–12) to solve a 3×3 Rubik's Cube using the
 classic beginner "layer by layer" method. It is a single-page web app with **no build
 step and no dependencies**: open `index.html` in any modern browser and it works,
 including on a phone or tablet.
@@ -15,15 +15,22 @@ RubiksCubeTutor/
 ├── js/lessons.js         the course content (plain data, easy to edit or translate)
 ├── js/app.js             screens, move pad, guided walkthrough, practice, quiz
 ├── build-artifact.js     bundles index.html + css into a single publishable page
+├── ios/                  Xcode project: the same web app as a native iPhone/iPad app
 ├── tests/run-tests.js    model and solver tests (Node only, no packages)
-└── tests/browser-tests.js end-to-end regression tests (needs Chromium)
+├── tests/browser-tests.js end-to-end regression tests (needs Chromium)
+└── tests/ios-bundle-tests.js  checks what the Xcode build phase would ship
 ```
+
+It also ships as a native iOS app for iPhone and iPad: open
+[`ios/CubeClubhouse.xcodeproj`](./ios/README.md) in Xcode and press Run.
 
 ```sh
 npm test           # model and solver tests, Node 18+, no packages needed
 npm run lint       # eslint, fetched on demand by npx
 npm run build      # dist/artifact.html, a single-page build
 npm run test:browser   # end-to-end tests; needs: npm i --no-save playwright-core
+npm run test:ios       # the iOS bundle the Xcode build phase produces
+npm run test:all       # all three
 ```
 
 ---

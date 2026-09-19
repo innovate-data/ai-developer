@@ -30,7 +30,7 @@ for (const f of SCRIPTS) {
 
 const body = bodyMatch[1].replace(/\s*<script src="[^"]+"><\/script>/g, '').trim();
 const out = [
-  '<title>Cube Buddy</title>',
+  '<title>Cube Clubhouse</title>',
   '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
   '<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">',
   '<style>',

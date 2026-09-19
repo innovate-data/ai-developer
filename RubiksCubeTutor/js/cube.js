@@ -1,5 +1,5 @@
 /*
- * cube.js - Rubik's cube model used by Cube Buddy.
+ * cube.js - Rubik's cube model used by Cube Clubhouse.
  *
  * The cube is stored as 54 "facelets" (stickers). Face order is U R F D L B,
  * nine stickers per face, row-major as seen from outside the cube:

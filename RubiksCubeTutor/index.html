@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cube Buddy</title>
-  <meta name="description" content="Cube Buddy teaches kids to solve the Rubik's Cube step by step with an interactive 3D cube, practice puzzles and a guided solver.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f6ff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14172b" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Cube Clubhouse">
+  <title>Cube Clubhouse</title>
+  <meta name="description" content="Cube Clubhouse teaches kids to solve the Rubik's Cube step by step with an interactive 3D cube, practice puzzles and a guided solver.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23222'/%3E%3Crect x='3' y='3' width='8' height='8' rx='1.5' fill='%23ffd500'/%3E%3Crect x='12' y='3' width='8' height='8' rx='1.5' fill='%23009b48'/%3E%3Crect x='21' y='3' width='8' height='8' rx='1.5' fill='%23b71234'/%3E%3Crect x='3' y='12' width='8' height='8' rx='1.5' fill='%230046ad'/%3E%3Crect x='12' y='12' width='8' height='8' rx='1.5' fill='%23fff'/%3E%3Crect x='21' y='12' width='8' height='8' rx='1.5' fill='%23ff5800'/%3E%3Crect x='3' y='21' width='8' height='8' rx='1.5' fill='%23ff5800'/%3E%3Crect x='12' y='21' width='8' height='8' rx='1.5' fill='%23b71234'/%3E%3Crect x='21' y='21' width='8' height='8' rx='1.5' fill='%23ffd500'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,7 +17,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-cube" aria-hidden="true"></span> Cube Buddy</div>
+    <div class="brand"><span class="brand-cube" aria-hidden="true"></span> Cube Clubhouse</div>
     <nav aria-label="Main">
       <button type="button" data-screen="learn">📚 Learn</button>
       <button type="button" data-screen="play">🎮 Play</button>
@@ -64,7 +69,7 @@
         </div>
         <div class="col-text">
           <h2>🎮 Play</h2>
-          <p class="subtitle">Scramble the cube, then solve it as fast as you can. Stuck? Cube Buddy will help.</p>
+          <p class="subtitle">Scramble the cube, then solve it as fast as you can. Stuck? Cube Clubhouse will help.</p>
           <div class="timer" id="play-timer" aria-live="polite">00:00</div>
           <div class="btn-row">
             <button type="button" id="play-scramble" class="btn primary">🎲 Scramble</button>
@@ -108,7 +113,7 @@
     </section>
   </main>
 
-  <footer class="foot">Cube Buddy · a kid-friendly Rubik's Cube tutor · everything runs in your browser, and nothing is sent anywhere.</footer>
+  <footer class="foot">Cube Clubhouse · a kid-friendly Rubik's Cube tutor · everything runs in your browser, and nothing is sent anywhere.</footer>
 
   <script src="js/cube.js"></script>
   <script src="js/solver.js"></script>

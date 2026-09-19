@@ -1,5 +1,5 @@
 {
-  "name": "cube-buddy",
+  "name": "cube-clubhouse",
   "version": "1.0.0",
   "private": true,
   "description": "A Rubik's Cube tutor for kids: interactive 3D lessons, practice puzzles and a guided solver.",
@@ -9,6 +9,7 @@
     "lint": "npx --yes eslint@9 --no-config-lookup -c eslint.config.mjs js tests build-artifact.js",
     "build": "node build-artifact.js",
     "test:browser": "node tests/browser-tests.js",
-    "test:all": "npm test && npm run test:browser"
+    "test:all": "npm test && npm run test:browser && npm run test:ios",
+    "test:ios": "node tests/ios-bundle-tests.js"
   }
 }

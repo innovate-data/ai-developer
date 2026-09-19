@@ -198,15 +198,14 @@
     }
 
     build() {
-      const layout = { U: [1, 0], L: [0, 1], F: [1, 1], R: [2, 1], B: [3, 1], D: [1, 2] };
+      // Face placement lives in CSS (class nf-U, nf-L, ...) so the net can fold into a
+      // narrower cross on a phone, where a four-wide net makes the stickers too small.
       this.container.classList.add('net');
       this.container.innerHTML = '';
       this.cells = [];
       for (const face of Cube.FACES) {
         const fEl = document.createElement('div');
-        fEl.className = 'net-face';
-        fEl.style.gridColumn = layout[face][0] + 1;
-        fEl.style.gridRow = layout[face][1] + 1;
+        fEl.className = 'net-face nf-' + face;
         for (let i = 0; i < 9; i++) {
           const idx = Cube.FACE_INDEX[face] * 9 + i;
           const cell = document.createElement('button');

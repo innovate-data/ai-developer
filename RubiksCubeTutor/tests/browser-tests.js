@@ -1,5 +1,5 @@
 /*
- * browser-tests.js - end-to-end regression tests for Cube Buddy.
+ * browser-tests.js - end-to-end regression tests for Cube Clubhouse.
  *
  * Each case is a bug that was found in the real app and fixed; they exist to stop it
  * coming back. Unlike tests/run-tests.js (pure model and solver logic, no browser),
@@ -131,7 +131,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('.lesson-card').nth(4).click(); await p.waitForTimeout(250);
     await p.locator('#lesson-back').click();
     await p.locator('.lesson-card').nth(0).click(); await p.waitForTimeout(400);
-    const prog = await p.evaluate(() => localStorage.getItem('cubebuddy.progress'));
+    const prog = await p.evaluate(() => localStorage.getItem('cubeclubhouse.progress'));
     ck('progress untouched', prog === null || prog === '{}', 'progress=' + prog);
     await p.close(); }
 

@@ -1,4 +1,4 @@
-/* Cube Buddy styles: big, bright, rounded and readable for young learners. */
+/* Cube Clubhouse styles: big, bright, rounded and readable for young learners. */
 :root {
   /* light palette - every colour is defined here first, then overridden per theme */
   --bg: #f3f6ff;
@@ -83,13 +83,17 @@
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --glow: rgba(143, 143, 255, 0.3);
 }
-}
 * { box-sizing: border-box; }
+/* Touch handling for iPhone and iPad: no tap flash, no double-tap zoom delay on
+   controls, no rubber-band overscroll, and no automatic text inflation in landscape. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overscroll-behavior-y: none; }
+button, .net-cell, .swatch, nav button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+body { -webkit-touch-callout: none; }
 /* a class-level display rule outranks the UA [hidden] rule, so state it explicitly */
 [hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
-  font-family: 'Fredoka', 'Nunito', 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', 'Segoe UI', system-ui, sans-serif;
   background-color: var(--bg);
   background-image: radial-gradient(1200px 600px at 10% -10%, var(--bg-glow) 0%, transparent 55%);
   color: var(--ink);
@@ -106,7 +110,10 @@ button { font: inherit; cursor: pointer; }
 /* ---- top bar */
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  padding: 12px 20px; background: var(--card); box-shadow: var(--shadow); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  padding-block: 12px; background: var(--card); box-shadow: var(--shadow);
+  padding-inline: calc(20px + env(safe-area-inset-left, 0px)) calc(20px + env(safe-area-inset-right, 0px));
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  position: sticky; top: 0; z-index: 20;
 }
 .brand { font-weight: 700; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
 .brand-cube {
@@ -120,8 +127,12 @@ nav button {
 }
 nav button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
-main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
-.foot { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 20px; }
+main {
+  max-width: 1180px; margin: 0 auto;
+  padding-block: 20px calc(40px + env(safe-area-inset-bottom, 0px));
+  padding-inline: calc(16px + env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-right, 0px));
+}
+.foot { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 
 /* ---- layout */
 .two-col { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 24px; align-items: start; }
@@ -153,9 +164,10 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 
 /* ---- 3D cube */
-.cube-box { height: 340px; }
-.cube-box.tall { height: 380px; }
-.cube-box.short { height: 260px; }
+/* Short screens (iPhone SE, any phone in landscape) must still show the whole cube. */
+.cube-box { height: clamp(210px, 46vh, 340px); }
+.cube-box.tall { height: clamp(220px, 50vh, 380px); }
+.cube-box.short { height: clamp(190px, 34vh, 260px); }
 .cube-scene {
   perspective: 900px; display: flex; align-items: center; justify-content: center; touch-action: none; cursor: grab; user-select: none;
   border-radius: 14px; background: radial-gradient(circle at 50% 40%, var(--scene-1) 0%, var(--scene-2) 100%);
@@ -246,6 +258,18 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
 /* The net is fluid: four equal face columns that shrink with the container, so it
    fits its column on a desktop and the screen on a phone without a fixed pixel size. */
 .net { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; max-width: 474px; margin: 8px 0; }
+.nf-U { grid-column: 2; grid-row: 1; }
+.nf-L { grid-column: 1; grid-row: 2; }
+.nf-F { grid-column: 2; grid-row: 2; }
+.nf-R { grid-column: 3; grid-row: 2; }
+.nf-B { grid-column: 4; grid-row: 2; }
+.nf-D { grid-column: 2; grid-row: 3; }
+/* On a phone, four faces across leaves ~24px stickers, too small for a child's finger.
+   Fold the back face underneath instead: three across gives roughly 40% bigger targets. */
+@media (max-width: 620px) {
+  .net { grid-template-columns: repeat(3, 1fr); max-width: 356px; }
+  .nf-B { grid-column: 2; grid-row: 4; }
+}
 .net-face { display: grid; grid-template-columns: repeat(3, 1fr); aspect-ratio: 1; gap: 3px; background: var(--plastic); padding: 3px; border-radius: 8px; }
 .net-cell { border: 0; border-radius: 5px; padding: 0; min-width: 0; aspect-ratio: 1; }
 .net-cell.centre { box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.35); cursor: default; }

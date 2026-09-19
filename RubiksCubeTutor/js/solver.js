@@ -1,5 +1,5 @@
 /*
- * solver.js - Beginner "layer by layer" solver for Cube Buddy.
+ * solver.js - Beginner "layer by layer" solver for Cube Clubhouse.
  *
  * It solves the cube exactly the way the lessons teach it, so every step it
  * produces can be shown to a child with a short explanation:

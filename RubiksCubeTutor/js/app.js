@@ -1,5 +1,5 @@
 /*
- * app.js - Cube Buddy user interface.
+ * app.js - Cube Clubhouse user interface.
  *
  * Screens:  Learn (lessons + practice)   Play (free play, timer, help)   Solve (paint your cube, guided solve)
  * Shared:   MovePad (buttons for moves)  Guide (step-by-step walkthrough from the solver)
@@ -26,10 +26,12 @@
   const moveChips = (moves) => Cube.parseAlg(moves).map((m) => '<span class="chip' + (Cube.parseMove(m).isRotation ? ' rot' : '') + '" title="' + (MOVE_WORDS[m] || m) + '">' + m + '</span>').join('');
 
   // ------------------------------------------------------------ progress
-  const PROGRESS_KEY = 'cubebuddy.progress';
+  const PROGRESS_KEY = 'cubeclubhouse.progress';
+  const LEGACY_PROGRESS_KEY = 'cubebuddy.progress';   // the app's earlier name
   function loadProgress() {
     try {
-      const p = JSON.parse(localStorage.getItem(PROGRESS_KEY));
+      const raw = localStorage.getItem(PROGRESS_KEY) || localStorage.getItem(LEGACY_PROGRESS_KEY);
+      const p = JSON.parse(raw);
       return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
     } catch { return {}; }   // private mode, blocked site data, or junk
   }
