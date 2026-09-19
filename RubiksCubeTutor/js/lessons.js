@@ -9,23 +9,23 @@
   'use strict';
 
   const MOVE_WORDS = {
-    U: 'Turn the TOP layer to the left',
-    "U'": 'Turn the TOP layer to the right',
+    U: 'Turn the TOP layer to the left, looking down at it',
+    "U'": 'Turn the TOP layer to the right, looking down at it',
     U2: 'Turn the TOP layer twice',
-    D: 'Turn the BOTTOM layer to the right',
-    "D'": 'Turn the BOTTOM layer to the left',
+    D: 'Turn the BOTTOM layer to the right, looking down at it',
+    "D'": 'Turn the BOTTOM layer to the left, looking down at it',
     D2: 'Turn the BOTTOM layer twice',
     R: 'Turn the RIGHT side up, away from you',
-    "R'": 'Turn the RIGHT side down, toward you',
+    "R'": 'Turn the RIGHT side down, towards you',
     R2: 'Turn the RIGHT side twice',
-    L: 'Turn the LEFT side down, toward you',
+    L: 'Turn the LEFT side down, towards you',
     "L'": 'Turn the LEFT side up, away from you',
     L2: 'Turn the LEFT side twice',
     F: 'Turn the FRONT like a clock (clockwise)',
-    "F'": 'Turn the FRONT backwards (counter-clockwise)',
+    "F'": 'Turn the FRONT backwards (anticlockwise)',
     F2: 'Turn the FRONT twice',
     B: 'Turn the BACK clockwise, as if you were looking at the back',
-    "B'": 'Turn the BACK counter-clockwise, as if you were looking at the back',
+    "B'": 'Turn the BACK anticlockwise, as if you were looking at the back',
     B2: 'Turn the BACK twice',
     y: 'Turn the WHOLE cube to the left, so the right side faces you',
     "y'": 'Turn the WHOLE cube to the right, so the left side faces you',
@@ -34,8 +34,8 @@
     "x'": 'Roll the WHOLE cube down: the top becomes the front',
     x2: 'Flip the WHOLE cube upside down',
     z: 'Tilt the WHOLE cube clockwise, like a steering wheel',
-    "z'": 'Tilt the WHOLE cube counter-clockwise',
-    z2: 'Tilt the WHOLE cube upside down, like a steering wheel',
+    "z'": 'Tilt the WHOLE cube anticlockwise, like a steering wheel',
+    z2: 'Tilt the WHOLE cube halfway round, like turning a steering wheel upside down',
   };
 
   const LESSONS = [
@@ -47,11 +47,11 @@
       stage: null,
       interactive: 'parts',
       story: [
-        'A Rubik\'s Cube looks like it has 54 stickers, but it is really made of 26 little blocks. Learn the three kinds and you are already halfway to solving it!',
-        '<b>Centres</b> are the middle square of each side. They have ONE colour and they <b>never move</b>. The white centre is always opposite the yellow one, green is opposite blue, and red is opposite orange.',
+        'A Rubik\'s Cube has 54 stickers, but it is really made of just 26 little blocks. Learn the three kinds and you are already halfway to solving it!',
+        '<b>Centres</b> are the middle square of each side. They have ONE colour and they <b>never move</b>. The white centre is always opposite the yellow one, green is opposite blue and red is opposite orange.',
         '<b>Edges</b> have TWO colours. There are 12 of them. An edge lives between two centres that match its colours.',
         '<b>Corners</b> have THREE colours. There are 8 of them. A corner lives where its three colours meet.',
-        'When we "solve" the cube, we are not moving stickers around. We are moving whole blocks to the home spot where their colours match the centres.',
+        'When we "solve" the cube, we are not moving stickers around. We are moving whole blocks to the home spots where their colours match the centres.',
       ],
       tips: ['Drag the cube with your finger or mouse to spin it around and look at every side.', 'Tap the buttons to light up each kind of block.'],
       algs: [],
@@ -66,11 +66,11 @@
       story: [
         'Cubers write moves with letters so they can share tricks. Each side has a letter: <b>R</b>ight, <b>L</b>eft, <b>U</b>p (the top), <b>D</b>own (the bottom), <b>F</b>ront and <b>B</b>ack.',
         'A letter by itself means: turn that side <b>clockwise</b>, as if you were looking straight at that side. Think of turning a doorknob.',
-        'A letter with a little tick, like <b>R\'</b> (say "R prime"), means turn it the other way: counter-clockwise.',
-        'A letter with a 2, like <b>U2</b>, means turn it twice. Two turns is a half turn, so the direction does not matter.',
+        'A letter with a little tick, like <b>R\'</b> (say "R prime"), means turn it the other way: anticlockwise.',
+        'A letter with a 2, like <b>U2</b>, means turn it twice. Two turns make a half turn, so the direction does not matter.',
         'Hold the cube still while you do the moves. Only one side turns at a time. Try every button below and watch what happens!',
       ],
-      tips: ['R goes UP and away from you, L goes DOWN toward you. They look like mirror images.', 'Play the quiz until you can name any move in a blink.'],
+      tips: ['R goes UP and away from you; L goes DOWN towards you. They look like mirror images.', 'Play the quiz until you can name any move in a blink.'],
       algs: [],
     },
     {
@@ -83,9 +83,9 @@
         'Hold the cube with the <b>yellow centre on top</b>. We are going to make a daisy: the yellow centre is the middle of the flower and four <b>white edges</b> are the petals around it.',
         'Find an edge with a white sticker. Turn sides to bring it up to the top so the white faces up. It does not matter which petal goes where yet.',
         'Careful! Once a petal is in place, try not to knock it back out when you bring the next one up. If a side turn would ruin a petal, first turn the top layer to move that petal out of the way.',
-        'This step has no algorithm to memorise. It is a puzzle you can figure out by looking, and it is great practice for seeing how the pieces move.',
+        'This step has no trick to memorise. It is a puzzle you can figure out by looking, and it is great practice for seeing how the pieces move.',
       ],
-      tips: ['If a white edge is in the bottom layer with white facing down, turn its side twice (like F2) and it pops straight up.', 'If a white edge is in the middle layer, one turn of a side brings it to the top.', 'Stuck? Press Hint. The Buddy will show you one petal at a time.'],
+      tips: ['If a white edge is in the bottom layer with white facing down, turn its side twice (like F2) and it pops straight up.', 'If a white edge is in the middle layer, one turn of a side brings it to the top.', 'Stuck? Press Hint. Cube Buddy will show you one petal at a time.'],
       algs: [],
     },
     {
@@ -107,16 +107,16 @@
       id: 'corners',
       title: 'White Corners',
       emoji: '🔲',
-      subtitle: 'Finish the first layer with "Righty"',
+      subtitle: 'Finish the bottom layer with Righty',
       stage: 'corners',
       story: [
         'Keep white on the bottom. Now we fill in the four white corners so the whole bottom layer is finished.',
         'Find a corner with a white sticker in the <b>top layer</b>. Look at its other two colours. Its home is the bottom corner between those two centres.',
         'Turn the whole cube so that home spot is at the <b>front-right</b>. Then turn the top layer so the corner sits right above its home.',
-        'Now do <b>Righty</b>: R U R\' U\'. Check the corner. Is it home with white on the bottom? If not, do Righty again. It never takes more than five Rightys.',
+        'Now do <b>Righty</b>: R U R\' U\'. Check the corner. Is it home with white on the bottom? If not, do Righty again. It never takes more than five Righties.',
         'If a white corner is stuck in the bottom layer in the wrong spot, put it at the front-right and do Righty once. It pops up to the top, and now you can bring it home properly.',
       ],
-      tips: ['Righty is the most useful trick in the whole cube. Say it out loud: "Right up, Top left, Right down, Top right."', 'Your right hand does the R moves and your left hand does the U moves. Fast cubers do this without looking!'],
+      tips: ['Grown-up cubers call these tricks <b>algorithms</b>. Same thing, longer word!', 'Righty is the most useful trick in the whole cube. Say it out loud: "Right up, Top left, Right down, Top right."', 'Your right hand does the R moves and your left hand does the U moves. Fast cubers do this without looking!'],
       algs: [{ name: 'Righty', moves: "R U R' U'", note: 'Repeat until the corner is home.' }],
     },
     {
@@ -128,10 +128,10 @@
       story: [
         'The bottom layer is finished. Now look at the top layer for an edge that has <b>no yellow</b> on it. That edge belongs in the middle layer.',
         'Turn the top layer until the side colour of that edge matches the centre below it. It makes an upside-down T shape. Turn the whole cube so that T faces you.',
-        'Now look at the TOP sticker of the edge. If that colour is on your <b>right</b>, do the <b>Right trick</b>. If it is on your <b>left</b>, do the <b>Left trick</b>. The edge slides down into its slot.',
+        'Now look at the TOP sticker of the edge. If the centre of that colour is on your <b>right</b>, do the <b>Right trick</b>. If that centre is on your <b>left</b>, do the <b>Left trick</b>. The edge slides down into its slot.',
         'Repeat for all four middle edges. If every edge on top has yellow but a middle edge is in the wrong slot, put that slot at the front-right and do the Right trick to pop the wrong edge out.',
       ],
-      tips: ['The Right trick starts by turning the top AWAY from the right side (U), the Left trick starts by turning the top away from the left (U\').', 'Both tricks are just two Righty-style moves put together: an R part and an F part.'],
+      tips: ['The Right trick starts by turning the top away from the right side (U). The Left trick starts by turning the top away from the left (U\').', 'Both tricks are just two Righty-style moves put together: an R part and an F part.'],
       algs: [
         { name: 'Right trick', moves: "U R U' R' U' F' U F", note: 'Top colour matches the RIGHT centre.' },
         { name: 'Left trick', moves: "U' L' U L U F U' F'", note: 'Top colour matches the LEFT centre.' },
@@ -145,7 +145,7 @@
       stage: 'ycross',
       story: [
         'Two layers done! Now we only care about the yellow stickers on <b>top</b>. Do not worry about the side colours yet.',
-        'Look at the top and find the yellow edges. You will see a <b>dot</b> (no yellow edges), an <b>L shape</b> (two yellow edges next to each other), a <b>line</b> (two yellow edges opposite), or the finished <b>cross</b>.',
+        'Look at the top and find the yellow edges. You will see a <b>dot</b> (no yellow edges), an <b>L shape</b> (two yellow edges next to each other), a <b>line</b> (two yellow edges opposite each other), or the finished <b>cross</b>.',
         'For an L: turn the top so the L points to the back and to the left (like 9 o\'clock and 12 o\'clock). For a line: turn the top so it goes from left to right. Then do the <b>Cross trick</b>.',
         'A dot becomes an L, an L becomes a line, a line becomes a cross. So you might need to do the trick up to three times, checking the shape each time.',
       ],
@@ -190,9 +190,9 @@
       stage: 'ytwist',
       story: [
         'All the corners are home, but some are twisted so their yellow sticker faces sideways. One more trick and you are done.',
-        'Turn the top layer (only the top layer!) so a twisted corner is at the <b>front-right</b>. Do the <b>Twist trick</b> R\' D\' R D two times, then check. If yellow is not on top yet, do it two more times.',
+        'Turn the top layer (only the top layer!) so a twisted corner is at the <b>front-right</b>. Do the <b>Twist trick</b> R\' D\' R D twice, then check. If yellow is not on top yet, do it twice more.',
         'IMPORTANT: the bottom two layers will look completely scrambled while you do this. <b>Do not panic and do not turn the whole cube.</b> Keep going: it all comes back at the end.',
-        'When that corner has yellow on top, turn ONLY the top layer to bring the next twisted corner to the front-right and repeat. When every corner is yellow, turn the top layer to line it up. You solved the cube!',
+        'When that corner has yellow on top, turn ONLY the top layer to bring the next twisted corner to the front-right and repeat. When every corner is yellow, turn the top layer to line it up. Then you have solved the cube!',
       ],
       tips: ['Count your Twist tricks: it is always 2 or 4 for one corner.', 'Keep your right hand ready: R\' D\' R D uses only the right side and the bottom.'],
       algs: [{ name: 'Twist trick', moves: "R' D' R D", note: 'Repeat 2 or 4 times per corner. Only the top layer turns between corners.' }],
@@ -200,7 +200,7 @@
   ];
 
   const STAGE_TITLES = {
-    orient: 'Hold it right',
+    orient: 'Hold it correctly',
     daisy: 'Daisy',
     cross: 'White cross',
     corners: 'White corners',

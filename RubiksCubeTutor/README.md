@@ -52,11 +52,11 @@ Run the tests with `node tests/run-tests.js` (Node 18+; no packages needed).
 | 3 | The Daisy | Bring four white edges around the yellow centre. Intuitive, no algorithm. | – |
 | 4 | The White Cross | Match a petal's side colour to its centre, turn that side twice. | – |
 | 5 | White Corners | Put a corner above its home and repeat Righty until it drops in. | Righty `R U R' U'` |
-| 6 | The Middle Layer | Upside-down T, then the Right or Left trick. | `U R U' R' U' F' U F`, `U' L' U L U F U' F'` |
-| 7 | The Yellow Cross | Dot → L → line → cross, with the L held at back-left. | `F R U R' U' F'` |
-| 8 | Yellow Edges Home | Match two edges at back and right; the trick swaps front and left. | `R U R' U R U2 R' U` |
-| 9 | Yellow Corners Home | Keep a correct corner at the front-right; the other three cycle. | `U R U' L' U R' U' L` |
-| 10 | The Grand Finale | Twist each corner with 2 or 4 repetitions; only the top layer turns between corners. | `R' D' R D` |
+| 6 | The Middle Layer | Upside-down T, then the Right or Left trick. | Right trick `U R U' R' U' F' U F`, Left trick `U' L' U L U F U' F'` |
+| 7 | The Yellow Cross | Dot → L → line → cross, with the L held at back-left. | Cross trick `F R U R' U' F'` |
+| 8 | Yellow Edges Home | Match two edges at back and right; the trick swaps front and left. | Edge trick `R U R' U R U2 R' U` |
+| 9 | Yellow Corners Home | Keep a correct corner at the front-right; the other three cycle. | Corner trick `U R U' L' U R' U' L` |
+| 10 | The Grand Finale | Twist each corner with 2 or 4 repetitions; only the top layer turns between corners. | Twist trick `R' D' R D` |
 
 Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" button.
 
@@ -157,7 +157,7 @@ viewport.
 ## 6. Ideas for later
 
 * Camera scanning of a real cube instead of painting the net.
-* A "parent mode" printable cheat sheet of the eight tricks.
+* A "parent mode" printable cheat sheet of the seven tricks.
 * Translations: all copy lives in `js/lessons.js` and `MOVE_WORDS`.
 * Badges for solving in Play under a time, and a simple leaderboard per device.
 * Optional 2×2 cube mode (same corners stage, no edges) as an even gentler start.

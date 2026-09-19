@@ -32,6 +32,9 @@
       this.rotX = this.opts.rotX;
       this.rotY = this.opts.rotY;
       this.queue = Promise.resolve();
+      // Bumped whenever the state is replaced from outside. An animation that was
+      // in flight at that moment must not apply its move to the new state.
+      this.gen = 0;
       this.highlights = new Set();
       this.build();
       this.enableDrag();
@@ -102,7 +105,9 @@
     }
 
     setState(state) {
+      this.gen++;
       this.state = state.slice();
+      this.resetTransforms();
       this.paint();
     }
 
@@ -115,6 +120,7 @@
     animateMove(token, duration) {
       const mv = Cube.parseMove(token);
       const ms = duration === undefined ? this.opts.duration : duration;
+      const gen = this.gen;
       const ai = AXIS_IDX[mv.axis];
       const angle = CSS_ANGLE[mv.axis] * mv.k;
       const layer = this.cubies.filter((c) => mv.layers.includes(c.pos[ai]));
@@ -124,6 +130,7 @@
           c.el.style.transform = 'rotate' + mv.axis.toUpperCase() + '(' + angle + 'deg) ' + this.translate(c.pos);
         }
         setTimeout(() => {
+          if (gen !== this.gen) { resolve(); return; }  // superseded: setState already repainted
           this.state = Cube.applyMove(this.state, token);
           this.resetTransforms();
           this.paint();
@@ -136,19 +143,20 @@
     play(moves, duration, onMove) {
       const tokens = Cube.parseAlg(moves);
       const run = async () => {
+        const myGen = this.gen;
         for (let i = 0; i < tokens.length; i++) {
-          if (this.cancelled) break;
+          if (this.gen !== myGen) break;       // the cube was replaced under us
           await this.animateMove(tokens[i], duration);
+          if (this.gen !== myGen) break;
           if (onMove) onMove(tokens[i], i);
         }
       };
-      this.cancelled = false;
       this.queue = this.queue.then(run, run);
       return this.queue;
     }
 
     cancel() {
-      this.cancelled = true;
+      this.gen++;
     }
 
     enableDrag() {

@@ -28,10 +28,13 @@
   // ------------------------------------------------------------ progress
   const PROGRESS_KEY = 'cubebuddy.progress';
   function loadProgress() {
-    try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) { return {}; }
+    try {
+      const p = JSON.parse(localStorage.getItem(PROGRESS_KEY));
+      return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+    } catch { return {}; }   // private mode, blocked site data, or junk
   }
   function saveProgress(p) {
-    try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch (e) { /* private mode */ }
+    try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch { /* private mode, or the quota is full */ }
   }
   let progress = loadProgress();
   function award(lessonId, stars) {
@@ -61,7 +64,7 @@
       }
       container.appendChild(r);
     }
-    const hint = el('div', 'pad-hint', 'Keyboard: letters turn a side, hold Shift for the ′ (prime) turn. Drag the cube to look around.');
+    const hint = el('div', 'pad-hint', 'Keyboard: press U, D, L, R, F or B to turn a side; hold Shift for the ′ (prime) turn. Drag the cube to look around.');
     container.appendChild(hint);
   }
 
@@ -97,6 +100,12 @@
         st.emit();
         return view.play(tokens, duration, onMove);
       },
+      // st.state updates the moment a move is applied, while the cube is still
+      // turning on screen. Celebrations wait for the picture to catch up. emit()
+      // runs before play() queues the animation, so let this tick finish first.
+      settled() {
+        return Promise.resolve().then(() => view.queue).catch(() => {});
+      },
       undo() {
         const last = st.history.pop();
         if (!last) return Promise.resolve();
@@ -123,12 +132,16 @@
       try {
         res = Solver.solve(state);
       } catch (e) {
-        container.innerHTML = '<div class="guide-error">I cannot solve this cube: ' + e.message + '</div>';
+        const why = e && e.internal
+          ? 'Something went wrong on my side. Press Scramble and try again.'
+          : (e && e.message) || 'I do not recognise this cube.';
+        container.innerHTML = '<div class="guide-error">Hmm, I cannot solve this cube. ' + why + '</div>';
         return false;
       }
       steps = res.steps;
       i = 0;
       shown = false;
+      busy = false;
       render();
       return true;
     }
@@ -167,7 +180,7 @@
       container.appendChild(el('p', 'guide-text', step.text));
       container.appendChild(el('div', 'guide-moves', moveChips(step.moves)));
       const words = el('ul', 'guide-words');
-      for (const m of step.moves.slice(0, 12)) words.appendChild(el('li', '', '<b>' + m + '</b> ' + (MOVE_WORDS[m] || '')));
+      for (const m of step.moves.slice(0, 12)) words.appendChild(el('li', '', '<b>' + m + '</b> – ' + (MOVE_WORDS[m] || '')));
       if (step.moves.length > 12) words.appendChild(el('li', '', '… and so on, the same pattern.'));
       container.appendChild(words);
 
@@ -215,16 +228,24 @@
       autoBtn.addEventListener('click', async () => {
         if (busy) return;
         busy = true;
-        if (shown) { i++; shown = false; }
-        for (; i < steps.length; i++) {
-          if (station.view.cancelled) break;
-          count.textContent = 'Step ' + (i + 1) + ' of ' + steps.length + ' · ' + STAGE_TITLES[steps[i].stage];
-          $('.guide-text', container).textContent = steps[i].text;
-          $('.guide-moves', container).innerHTML = moveChips(steps[i].moves);
-          station.view.setHighlights(steps[i].highlight);
-          await station.play(steps[i].moves, 140);
+        try {
+          if (shown) { i++; shown = false; }
+          const myGen = station.view.gen;
+          for (; i < steps.length; i++) {
+            // The guide panel can be torn down mid-run (a manual move, a new cube),
+            // and the cube can be replaced under us. Either way, stop quietly.
+            const textEl = $('.guide-text', container);
+            const movesEl = $('.guide-moves', container);
+            if (!textEl || !movesEl || station.view.gen !== myGen) return;
+            count.textContent = 'Step ' + (i + 1) + ' of ' + steps.length + ' · ' + STAGE_TITLES[steps[i].stage];
+            textEl.textContent = steps[i].text;
+            movesEl.innerHTML = moveChips(steps[i].moves);
+            station.view.setHighlights(steps[i].highlight);
+            await station.play(steps[i].moves, 140);
+          }
+        } finally {
+          busy = false;
         }
-        busy = false;
         render();
       });
       btns.append(showBtn, nextBtn, backBtn, sayBtn);
@@ -253,7 +274,11 @@
     const viewWrap = $('#lesson-view', section);
     const station = Station($('#lesson-cube', section));
     let current = null;
-    let practice = null;
+
+    // Never let a solver failure strand the learner on a half-built lesson.
+    function practiceCube(stage) {
+      try { return Solver.stateForStage(stage); } catch { return Cube.solved(); }
+    }
 
     function renderList() {
       list.innerHTML = '';
@@ -282,8 +307,7 @@
       renderInteractive(L);
       renderPractice(L);
       station.view.resetView();
-      if (L.stage) station.set(Solver.stateForStage(L.stage));
-      else station.set(Cube.solved());
+      station.set(L.stage ? practiceCube(L.stage) : Cube.solved());
       window.scrollTo(0, 0);
     }
 
@@ -384,7 +408,7 @@
               if (streak >= 5) { award('moves', 3); status.textContent += ' 🌟 Three stars!'; renderList(); }
               else if (streak >= 2) award('moves', Math.max(progress.moves || 0, 1));
             } else {
-              status.textContent = '❌ Not quite. It was ' + answer + ' (' + MOVE_WORDS[answer] + '). Streak reset.';
+              status.textContent = '❌ Not quite. It was ' + answer + ' (' + MOVE_WORDS[answer] + '). Streak: 0';
               streak = 0;
               award('moves', Math.max(progress.moves || 0, 1));
             }
@@ -401,45 +425,61 @@
     function renderPractice(L) {
       const box = $('#lesson-practice');
       box.innerHTML = '';
-      practice = null;
+      // Drop the previous lesson's goal watcher BEFORE returning early, otherwise it
+      // keeps scoring moves made in a lesson that has no practice of its own.
+      station.listeners = [];
       if (!L.stage) return;
       box.appendChild(el('h3', '', '🎮 Your turn'));
-      const intro = el('p', '', 'The cube on the left is ready for this step. Use the move buttons under the cube (or your keyboard) and try it yourself. Press <b>Hint</b> if you get stuck.');
+      const intro = el('p', '', 'The cube next to this text is ready for this step. Use the move buttons under the cube (or your keyboard) and try it yourself. Press <b>Hint</b> if you get stuck.');
       const status = el('div', 'practice-status', 'Goal: ' + L.subtitle);
       const row = el('div', 'btn-row');
       const hintBtn = el('button', 'btn primary', '💡 Hint');
       const newBtn = el('button', 'btn ghost', '🎲 New cube');
-      const undoBtn = el('button', 'btn ghost', '↩ Undo move');
+      const undoBtn = el('button', 'btn ghost', '↩ Undo');
       const hintBox = el('div', 'hint-box');
       hintBox.hidden = true;
-      let hintsUsed = 0, solvedThis = false;
+      let hintsUsed = 0, solvedThis = false, hintFor = null;
+
+      // The first solver step that belongs to this lesson's stage, for the state as it
+      // is right now. Recomputed on every use so a hint can never go stale.
+      function nextStep() {
+        const stageIdx = Solver.STAGES.indexOf(L.stage);
+        let res;
+        try { res = Solver.solve(station.state); } catch { return null; }
+        return res.steps.filter((s) => Solver.STAGES.indexOf(s.stage) <= stageIdx)[0] || null;
+      }
 
       function check(state) {
-        if (solvedThis) return;
-        if (Solver.goals[L.stage](state)) {
-          solvedThis = true;
-          const stars = hintsUsed === 0 ? 3 : 2;
-          award(L.id, stars);
-          status.innerHTML = '🎉 <b>You did it!</b> ' + starString(stars) + (hintsUsed ? ' (Try again without hints for 3 stars.)' : ' Perfect, no hints!');
-          status.classList.add('win');
+        // any move of the child's own retires the hint on screen
+        if (hintFor && Cube.toString(state) !== hintFor) {
+          hintFor = null;
           hintBox.hidden = true;
           station.view.setHighlights([]);
+        }
+        if (solvedThis) return;
+        if (Solver.goals[L.stage](state)) {
+          solvedThis = true;                       // latch now so this fires exactly once
+          const stars = hintsUsed === 0 ? 3 : 2;
+          award(L.id, stars);
           renderList();
+          station.settled().then(() => {
+            status.innerHTML = '🎉 <b>You did it!</b> ' + starString(stars) + (hintsUsed ? ' (Try again without hints for 3 stars.)' : ' Perfect, no hints!');
+            status.classList.add('win');
+            hintBox.hidden = true;
+            station.view.setHighlights([]);
+          });
         }
       }
-      station.listeners = [];
       station.onChange(check);
 
       hintBtn.addEventListener('click', () => {
         hintsUsed++;
         hintBox.hidden = false;
-        // The guide re-solves from the current state; only the first step is the hint.
-        const res = Solver.solve(station.state);
-        const stageIdx = Solver.STAGES.indexOf(L.stage);
-        const mine = res.steps.filter((s) => Solver.STAGES.indexOf(s.stage) <= stageIdx);
-        if (!mine.length) { hintBox.innerHTML = '<div class="guide-done">This step is already done. Nice!</div>'; return; }
-        const one = mine[0];
+        const one = nextStep();
+        if (!one) { hintBox.innerHTML = '<div class="guide-done">This step is already done. Nice!</div>'; return; }
+        hintFor = Cube.toString(station.state);
         hintBox.innerHTML = '';
+        const stageIdx = Solver.STAGES.indexOf(L.stage);
         if (one.stage !== 'orient' && Solver.STAGES.indexOf(one.stage) < stageIdx) {
           hintBox.appendChild(el('p', 'guide-warn', '😮 Uh-oh, an earlier part got broken: the ' + STAGE_TITLES[one.stage].toLowerCase() + '. Press Undo a few times to go back, or follow the hints to rebuild it.'));
         }
@@ -447,9 +487,13 @@
         hintBox.appendChild(el('div', 'guide-moves', moveChips(one.moves)));
         const b = el('button', 'btn small primary', '▶ Show me');
         b.addEventListener('click', async () => {
-          station.view.setHighlights(one.highlight);
-          await station.play(one.moves, 380);
+          const fresh = nextStep();          // the cube may have moved since the hint
+          if (!fresh) return;
+          hintFor = null;                    // this play is ours, do not retire the hint
+          station.view.setHighlights(fresh.highlight);
+          await station.play(fresh.moves, 380);
           station.view.setHighlights([]);
+          hintFor = Cube.toString(station.state);
         });
         hintBox.appendChild(b);
         station.view.setHighlights(one.highlight);
@@ -457,15 +501,15 @@
       newBtn.addEventListener('click', () => {
         solvedThis = false;
         hintsUsed = 0;
+        hintFor = null;
         status.textContent = 'Goal: ' + L.subtitle;
         status.classList.remove('win');
         hintBox.hidden = true;
-        station.set(Solver.stateForStage(L.stage));
+        station.set(practiceCube(L.stage));
       });
       undoBtn.addEventListener('click', () => station.undo());
       row.append(hintBtn, undoBtn, newBtn);
       box.append(intro, status, row, hintBox);
-      practice = { stage: L.stage };
     }
 
     MovePad($('#lesson-controls', section), (m) => station.move(m));
@@ -504,20 +548,24 @@
       timerId = null;
     }
     station.onChange((state) => {
-      if (Cube.isSolved(state)) {
-        if (scrambled && timerStart) {
-          stopTimer();
-          statusEl.innerHTML = '🎉 <b>Solved</b> in ' + fmt(Date.now() - timerStart) + ' with ' + moveCount + ' moves!';
-          scrambled = false;
+      if (Cube.isSolved(state) && scrambled && timerStart) {
+        const took = Date.now() - timerStart;      // the solve ended on this move
+        const moves = moveCount;
+        stopTimer();
+        scrambled = false;
+        station.settled().then(() => {
+          statusEl.innerHTML = '🎉 <b>Solved</b> in ' + fmt(took) + ' with ' + moves + (moves === 1 ? ' move!' : ' moves!');
           confetti();
-        }
+        });
       }
     });
+    function staleGuide() {
+      if (!guideBox.childElementCount) return;
+      guideBox.innerHTML = '';
+      statusEl.textContent = 'You moved the cube yourself. Press "Help me solve it" again for fresh steps.';
+    }
     function userMove(m) {
-      if (guideBox.childElementCount) {
-        guideBox.innerHTML = '';
-        statusEl.textContent = 'You moved the cube yourself. Press "Help me solve it" again for fresh steps.';
-      }
+      staleGuide();
       if (scrambled && !timerId) startTimer();
       moveCount++;
       station.move(m);
@@ -544,7 +592,10 @@
       station.set(Cube.solved());
       statusEl.textContent = 'Fresh cube. Press Scramble to start a challenge.';
     });
-    $('#play-undo').addEventListener('click', () => station.undo());
+    $('#play-undo').addEventListener('click', () => {
+      staleGuide();
+      station.undo();
+    });
     $('#play-help').addEventListener('click', () => {
       stopTimer();
       scrambled = false;
@@ -627,7 +678,7 @@
 
   function keyboard() {
     document.addEventListener('keydown', (e) => {
-      if (e.target.matches('input, textarea, button, select')) return;
+      if (e.target.matches('input, textarea, select, [contenteditable]')) return;
       const letter = e.key.toUpperCase();
       if (!'UDLRFB'.includes(letter) || e.ctrlKey || e.metaKey || e.altKey || letter.length !== 1) return;
       const active = Object.keys(screens).find((k) => !screens[k].section.hidden);
@@ -647,7 +698,12 @@
     buildSolve();
     keyboard();
     document.querySelectorAll('nav button[data-screen]').forEach((b) => b.addEventListener('click', () => showScreen(b.dataset.screen)));
+    window.addEventListener('hashchange', () => {
+      const n = location.hash.replace('#', '');
+      if (Object.prototype.hasOwnProperty.call(screens, n)) showScreen(n);
+    });
     const start = location.hash.replace('#', '');
-    showScreen(screens[start] ? start : 'learn');
+    // hasOwnProperty, so that a hash like #toString cannot hide every screen at once
+    showScreen(Object.prototype.hasOwnProperty.call(screens, start) ? start : 'learn');
   });
 })(window);

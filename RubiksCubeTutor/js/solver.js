@@ -38,6 +38,10 @@
     twist: "R' D' R D",
   };
 
+  // Internal failures are tagged so the UI can show a friendly message instead of a
+  // developer string. A bad cube reported by validate() stays a plain Error.
+  function SolverBug(msg) { const e = new Error(msg); e.internal = true; return e; }
+
   const STAGES = ['orient', 'daisy', 'cross', 'corners', 'middle', 'ycross', 'yedges', 'ycorners', 'ytwist', 'finish'];
 
   const SIDE_CYCLE = ['F', 'L', 'B', 'R'];               // where the F face goes under U / y
@@ -56,6 +60,7 @@
     return k === 0 ? null : k === 1 ? letter : k === 2 ? letter + '2' : letter + "'";
   };
   const sortLetters = (t) => t.split('').sort().join('');
+  const joinWords = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
   const nameOf = (piece) => piece.faces.join('');
   function cycleIndex(cycle, name) {
     const want = sortLetters(name);
@@ -237,10 +242,10 @@
           });
           if (path && (!best || path.length < best.path.length)) best = { path, sc, piece };
         }
-        if (!best) throw new Error('Daisy search failed');
+        if (!best) throw SolverBug('Daisy search failed');
         emit('daisy', 'Find the edge piece with WHITE and ' + CN(best.sc) + '. Bring it up to the top so its white sticker faces up, like a daisy petal.', best.path, best.piece.idx);
       }
-      if (!goals.daisy(cur)) throw new Error('Daisy stage failed');
+      if (!goals.daisy(cur)) throw SolverBug('Daisy stage failed');
     }
 
     // ---- stage 2: white cross
@@ -248,7 +253,7 @@
       let guard = 0;
       while (!goals.cross(cur) && guard++ < 6) {
         const pos = U_EDGE_CYCLE.find((e) => petal(cur, e));
-        if (!pos) throw new Error('Cross: no petal left');
+        if (!pos) throw SolverBug('Cross: no petal left');
         const p = Cube.pieceAt(pos);
         const sideFace = p.faces.find((f) => f !== 'U');
         const sideColor = cur[Cube.sticker(pos, sideFace)];
@@ -257,7 +262,7 @@
         const moves = [turnToken('U', k), target + '2'].filter(Boolean);
         emit('cross', 'Look at the petal with the ' + CN(sideColor) + ' sticker on its side. Turn the top until that sticker is right above the ' + cname(sideColor) + ' centre. Then turn that side twice to send the white sticker to the bottom.', moves, p.idx);
       }
-      if (!goals.cross(cur)) throw new Error('Cross stage failed');
+      if (!goals.cross(cur)) throw SolverBug('Cross stage failed');
     }
 
     // ---- stage 3: white corners
@@ -277,21 +282,21 @@
           let reps = 0;
           while (!pieceSolved(cur, 'DFR') && reps < 6) {
             emit('corners', reps === 0
-              ? 'Do RIGHTY (R U R\' U\'). Then look at the front-right corner: is white on the bottom and do the colours match the centres? If not, do Righty again.'
+              ? 'Do Righty (R U R\' U\'). Then look at the front-right corner. Is white on the bottom? Do the side colours match the centres? If not, do Righty again.'
               : 'Not there yet? Do Righty once more and check again.', ALGS.righty, Cube.pieceAt('DFR').idx.concat(Cube.pieceAt('UFR').idx));
             reps++;
           }
-          if (!pieceSolved(cur, 'DFR')) throw new Error('Corner insertion failed');
+          if (!pieceSolved(cur, 'DFR')) throw SolverBug('Corner insertion failed');
         } else {
           const bad = D_CORNERS.find((n) => !pieceSolved(cur, n));
           const p = Cube.pieceAt(bad);
           const sides = p.faces.filter((f) => f !== 'D');
           const yTok = yTokenForFR(sides[0], sides[1]);
           if (yTok) emit('corners', 'A white corner is in the bottom layer but in the wrong spot or twisted. Turn the whole cube so it is at the front-right.', yTok, p.idx);
-          emit('corners', 'Pop that corner out of the bottom with one RIGHTY. Then we will put it back the right way.', ALGS.righty, Cube.pieceAt('DFR').idx);
+          emit('corners', 'Pop that corner out of the bottom with one Righty. Then we will put it back the right way.', ALGS.righty, Cube.pieceAt('DFR').idx);
         }
       }
-      if (!goals.corners(cur)) throw new Error('Corners stage failed');
+      if (!goals.corners(cur)) throw SolverBug('Corners stage failed');
     }
 
     // ---- stage 4: middle layer
@@ -313,21 +318,21 @@
           const uTok = turnToken('U', uTurnsFor(U_EDGE_CYCLE, nameOf(piece), 'UF'));
           if (uTok) emit('middle', 'Turn the top layer until the ' + cname(sideColor) + ' sticker of that edge sits right above the ' + cname(sideColor) + ' centre. It makes an upside-down T.', uTok, piece.idx);
           if (topColor === C('R')) {
-            emit('middle', 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the RIGHT. Do the RIGHT algorithm to slide the edge into the right slot.', ALGS.middleRight, piece.idx);
+            emit('middle', 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the RIGHT. Do the RIGHT TRICK to slide the edge into its slot on the right.', ALGS.middleRight, piece.idx);
           } else if (topColor === C('L')) {
-            emit('middle', 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the LEFT. Do the LEFT algorithm to slide the edge into the left slot.', ALGS.middleLeft, piece.idx);
+            emit('middle', 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the LEFT. Do the LEFT TRICK to slide the edge into its slot on the left.', ALGS.middleLeft, piece.idx);
           } else {
-            throw new Error('Middle edge colour mismatch');
+            throw SolverBug('Middle edge colour mismatch');
           }
         } else {
           const bad = E_EDGES.find((n) => !pieceSolved(cur, n));
           const p = Cube.pieceAt(bad);
           const yTok = yTokenForFR(p.faces[0], p.faces[1]);
           if (yTok) emit('middle', 'Every edge on top has yellow, but a middle edge is in the wrong slot. Turn the whole cube so that slot is at the front-right.', yTok, p.idx);
-          emit('middle', 'Do the RIGHT algorithm once to pop the wrong edge up to the top. Then we will put the right one in.', ALGS.middleRight, Cube.pieceAt('FR').idx);
+          emit('middle', 'Do the RIGHT TRICK once to pop the wrong edge up to the top. Then we will put the correct edge in.', ALGS.middleRight, Cube.pieceAt('FR').idx);
         }
       }
-      if (!goals.middle(cur)) throw new Error('Middle stage failed');
+      if (!goals.middle(cur)) throw SolverBug('Middle stage failed');
     }
 
     // ---- stage 5: yellow cross
@@ -335,15 +340,15 @@
       let guard = 0;
       while (!goals.ycross(cur) && guard++ < 4) {
         const plan = planAlg(cur, ALGS.yellowCross, (s) => countYellowEdges(s) === 4, 3);
-        if (!plan) throw new Error('Yellow cross plan failed');
+        if (!plan) throw SolverBug('Yellow cross plan failed');
         const up = U_EDGE_CYCLE.filter((e) => yellowUp(cur, e));
         let text;
-        if (up.length === 0) text = 'Only the yellow centre is on top: a DOT. Do the CROSS algorithm. You will get an L shape.';
-        else if (up.length === 2 && up.includes('UF') === up.includes('UB')) text = 'Two yellow edges make a LINE. Turn the top so the line goes from left to right, then do the CROSS algorithm.';
-        else text = 'Two yellow edges make an L shape. Turn the top so the L points to the back and to the left (like 9 o\'clock and 12 o\'clock), then do the CROSS algorithm.';
+        if (up.length === 0) text = 'No yellow edges on top yet, just the yellow centre. That shape is called the DOT. Do the CROSS TRICK and you will get an L shape.';
+        else if (up.length === 2 && up.includes('UF') === up.includes('UB')) text = 'Two yellow edges make a LINE. Turn the top so the line goes from left to right, then do the CROSS TRICK.';
+        else text = 'Two yellow edges make an L shape. Turn the top so the L points to the back and to the left (like 9 o\'clock and 12 o\'clock), then do the CROSS TRICK.';
         emit('ycross', text, [turnToken('U', plan[0])].filter(Boolean).concat(Cube.parseAlg(ALGS.yellowCross)), uStickers(U_EDGE_CYCLE));
       }
-      if (!goals.ycross(cur)) throw new Error('Yellow cross failed');
+      if (!goals.ycross(cur)) throw SolverBug('Yellow cross failed');
     }
 
     // ---- stage 6: yellow edges
@@ -357,15 +362,15 @@
           break;
         }
         const plan = planAlg(cur, ALGS.yellowEdges, solvableByTopTurn, 3);
-        if (!plan) throw new Error('Yellow edge plan failed');
+        if (!plan) throw SolverBug('Yellow edge plan failed');
         const afterTurn = withU(cur, plan[0]);
         const matched = U_EDGE_CYCLE.filter((e) => pieceSolved(afterTurn, e));
         let text;
-        if (matched.length === 0) text = 'No edge can match a centre right now. Do the EDGE algorithm once; it swaps the front and left edges. Then some will match.';
-        else text = 'Turn the top so the ' + matched.map((e) => POSITION_WORD[e].toUpperCase()).join(' and ') + ' edge' + (matched.length > 1 ? 's match their centres' : ' matches its centre') + '. Then do the EDGE algorithm: it swaps the front and left edges.';
+        if (matched.length === 0) text = 'No edge can match a centre right now. Do the EDGE TRICK once; it swaps the front and left edges. Then some will match.';
+        else text = 'Turn the top so the ' + joinWords(matched.map((e) => POSITION_WORD[e].toUpperCase())) + ' edge' + (matched.length > 1 ? 's match their centres' : ' matches its centre') + '. Then do the EDGE TRICK: it swaps the front and left edges.';
         emit('yedges', text, [turnToken('U', plan[0])].filter(Boolean).concat(Cube.parseAlg(ALGS.yellowEdges)), uStickers(U_EDGE_CYCLE));
       }
-      if (!goals.yedges(cur)) throw new Error('Yellow edges failed');
+      if (!goals.yedges(cur)) throw SolverBug('Yellow edges failed');
     }
 
     // ---- stage 7: yellow corners in place
@@ -381,12 +386,12 @@
           while (k < 4 && sides.map((f) => faceAfterY(f, k)).sort().join('') !== fixedSides) k++;
           const yTok = turnToken('y', k);
           if (yTok) emit('ycorners', 'One yellow corner is already in its right spot: its three colours match the centres around it, even if it is twisted. Turn the whole cube so that corner is at the front-right.', yTok, p.idx);
-          emit('ycorners', 'Do the CORNER algorithm. The front-right corner stays, the other three move around. Then check: are all four corners in their right spots? If not, do it once more.', ALGS.yellowCorners, uStickers(U_CORNER_CYCLE));
+          emit('ycorners', 'Do the CORNER TRICK. The front-right corner stays, the other three move around. Then check: are all four corners in their correct spots? If not, do it once more.', ALGS.yellowCorners, uStickers(U_CORNER_CYCLE));
         } else {
-          emit('ycorners', 'No yellow corner is in its right spot yet. Do the CORNER algorithm once, and one corner will be right.', ALGS.yellowCorners, uStickers(U_CORNER_CYCLE));
+          emit('ycorners', 'No yellow corner is in its right spot yet. Do the CORNER TRICK once, and one corner will land in its correct spot.', ALGS.yellowCorners, uStickers(U_CORNER_CYCLE));
         }
       }
-      if (!goals.ycorners(cur)) throw new Error('Yellow corner placement failed');
+      if (!goals.ycorners(cur)) throw SolverBug('Yellow corner placement failed');
     }
 
     // ---- stage 8: twist yellow corners
@@ -407,33 +412,33 @@
           reps++;
         }
         const text = (first
-          ? 'Do the TWIST algorithm (R\' D\' R D) until the yellow sticker of the front-right corner faces up. That takes 2 or 4 times. The bottom layers will look messy: that is normal, they fix themselves at the end! '
-          : 'Do the TWIST algorithm again until this corner has yellow on top. ') + 'Here it is ' + reps + ' times.';
+          ? 'Do the TWIST TRICK (R\' D\' R D) until the yellow sticker of the front-right corner faces up. That takes 2 or 4 times. The bottom layers will look messy. That is normal, they fix themselves at the end! '
+          : 'Do the TWIST TRICK again until this corner has yellow on top. ') + 'This time you need it ' + reps + (reps === 1 ? ' time.' : ' times.');
         emit('ytwist', text, moves, Cube.pieceAt('UFR').idx);
         first = false;
       }
       if (!goals.middle(cur)) {
         // Only reachable when a learner twisted a corner by hand: finish the cycle.
         const j = midTwistPhase(cur);
-        if (!j) throw new Error('Corner twist failed');
+        if (!j) throw SolverBug('Corner twist failed');
         const moves = [];
         for (let r = 0; r < j; r++) moves.push(...Cube.parseAlg(ALGS.twist));
-        emit('ytwist', 'The bottom is still messy. Do the TWIST algorithm ' + j + ' more time' + (j > 1 ? 's' : '') + ' to fix it.', moves, []);
+        emit('ytwist', 'The bottom is still messy. Do the TWIST TRICK ' + j + ' more time' + (j > 1 ? 's' : '') + ' to fix it.', moves, []);
       }
-      if (!goals.ytwist(cur)) throw new Error('Corner twist failed');
+      if (!goals.ytwist(cur)) throw SolverBug('Corner twist failed');
     }
 
     // ---- stage 9: finish
     if (!Cube.isSolved(cur)) {
       const k = [1, 2, 3].find((k) => Cube.isSolved(withU(cur, k)));
-      if (k !== undefined) emit('finish', 'Turn the top layer to line everything up. You solved the cube!', turnToken('U', k), []);
+      if (k !== undefined) emit('finish', 'Turn the top layer to line everything up. Then you have solved the cube!', turnToken('U', k), []);
     }
     if (!Cube.isSolved(cur)) throw new Error('Solver did not reach a solved cube');
     return { steps, state: cur };
   }
 
   // State a learner sees at the start of `stage`: scramble, then solve every earlier stage.
-  function stateForStage(stage, scrambleMoves) {
+  function buildStage(stage, scrambleMoves) {
     const scrambled = Cube.applyAlg(Cube.solved(), scrambleMoves || Cube.scramble(25));
     const idx = STAGES.indexOf(stage);
     const { steps } = solve(scrambled);
@@ -442,6 +447,17 @@
       if (STAGES.indexOf(st.stage) >= idx) break;
       s = Cube.applyAlg(s, st.moves);
     }
+    return s;
+  }
+
+  // A practice cube for `stage`. Some scrambles land on a state where the stage is
+  // already done (about 1 in 9 for the yellow cross), which would hand a learner a win
+  // they did not earn, so re-roll until the stage has real work in it. Passing an
+  // explicit scramble keeps the result deterministic for tests.
+  function stateForStage(stage, scrambleMoves) {
+    let s = buildStage(stage, scrambleMoves);
+    if (scrambleMoves) return s;
+    for (let i = 0; i < 25 && goals[stage](s); i++) s = buildStage(stage);
     return s;
   }
 
