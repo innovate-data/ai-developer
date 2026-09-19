@@ -57,13 +57,13 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
   { const p = await newPage();
     await p.locator('.lesson-card').nth(2).click(); await p.waitForTimeout(250);
     await p.locator('#lesson-practice .btn', { hasText: 'Hint' }).click(); await p.waitForTimeout(50);
-    await p.locator('.hint-box .btn', { hasText: 'Show me' }).click(); await p.waitForTimeout(100);
-    await p.locator('#lesson-practice .btn', { hasText: 'New cube' }).click(); await p.waitForTimeout(1500);
+    await p.locator('.hint-box .btn', { hasText: '▶ Watch' }).click(); await p.waitForTimeout(100);
+    await p.locator('#lesson-practice .btn', { hasText: 'Another puzzle' }).click(); await p.waitForTimeout(1500);
     for (let k = 0; k < 30; k++) {
       if (await p.locator('.practice-status.win').count()) break;
       await p.locator('#lesson-practice .btn', { hasText: 'Hint' }).click(); await p.waitForTimeout(60);
       if (await p.locator('.hint-box .guide-done').count()) break;
-      await p.locator('.hint-box .btn', { hasText: 'Show me' }).click(); await p.waitForTimeout(120);
+      await p.locator('.hint-box .btn', { hasText: '▶ Watch' }).click(); await p.waitForTimeout(120);
       await settle(p, '#lesson-cube');
     }
     const final = await settle(p, '#lesson-cube');
@@ -80,7 +80,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       if (await p.locator('.practice-status.win').count()) break;
       await p.locator('#lesson-practice .btn', { hasText: 'Hint' }).click(); await p.waitForTimeout(60);
       if (await p.locator('.hint-box .guide-done').count()) break;
-      await p.locator('.hint-box .btn', { hasText: 'Show me' }).click(); await p.waitForTimeout(120);
+      await p.locator('.hint-box .btn', { hasText: '▶ Watch' }).click(); await p.waitForTimeout(120);
       if (await p.locator('.practice-status.win').count()) {
         const stillTurning = await p.evaluate(() =>
           [...document.querySelectorAll('#lesson-cube .cubie')].some((e) => /rotate/.test(e.style.transform)));
@@ -105,7 +105,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#play-scramble').click(); await p.waitForTimeout(700);
     await p.locator('#play-scramble').click(); await p.waitForTimeout(4000);
     await p.locator('#play-help').click(); await p.waitForTimeout(400);
-    await p.locator('#play-guide .btn', { hasText: 'Do it all' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 120000 });
     ck('auto-solve ends on a visibly solved cube', await p.evaluate(`RC.Cube.isSolved(${view('#play-cube')}.split(''))`));
     await p.close(); }
@@ -115,12 +115,12 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('nav button[data-screen="play"]').click();
     await p.locator('#play-scramble').click(); await p.waitForTimeout(2600);
     await p.locator('#play-help').click(); await p.waitForTimeout(300);
-    await p.locator('#play-guide .btn', { hasText: 'Do it all' }).click(); await p.waitForTimeout(900);
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click(); await p.waitForTimeout(900);
     await p.locator('#play-controls .pad-btn').first().click();   // tears down the guide mid-run
     await p.waitForTimeout(1200);
     await p.locator('#play-help').click(); await p.waitForTimeout(400);
     const before = await p.evaluate(view('#play-cube'));
-    await p.locator('#play-guide .btn', { hasText: 'Show me' }).click(); await p.waitForTimeout(1400);
+    await p.locator('#play-guide .btn', { hasText: '▶ Watch' }).click(); await p.waitForTimeout(1400);
     const after = await p.evaluate(view('#play-cube'));
     ck('guide still responds after being torn down', before !== after);
     await p.close(); }
@@ -183,7 +183,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('.lesson-card').nth(6).click(); await p.waitForTimeout(300);   // yellow cross, was 11%
     for (let k = 0; k < 40; k++) {
       if (await p.locator('.practice-status.win').count()) instant++;
-      await p.locator('#lesson-practice .btn', { hasText: 'New cube' }).click(); await p.waitForTimeout(120);
+      await p.locator('#lesson-practice .btn', { hasText: 'Another puzzle' }).click(); await p.waitForTimeout(120);
     }
     ck('40 fresh yellow-cross cubes all need work', instant === 0, 'instant wins=' + instant);
     await p.close(); }

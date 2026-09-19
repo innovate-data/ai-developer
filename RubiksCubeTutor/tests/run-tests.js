@@ -265,12 +265,14 @@ test('the lesson text and the solver cannot drift apart', () => {
   for (const L of LESSONS) for (const a of L.algs) taught[a.name] = a.moves;
   const expect = {
     Righty: Solver.ALGS.righty,
-    'Right trick': Solver.ALGS.middleRight,
-    'Left trick': Solver.ALGS.middleLeft,
+    'Righty backwards': Solver.ALGS.rightyBack,
+    'Slide-right trick': Solver.ALGS.middleRight,
+    'Slide-left trick': Solver.ALGS.middleLeft,
     'Cross trick': Solver.ALGS.yellowCross,
     'Edge trick': Solver.ALGS.yellowEdges,
     'Corner trick': Solver.ALGS.yellowCorners,
     'Twist trick': Solver.ALGS.twist,
+    'Twist trick backwards': Solver.ALGS.twistBack,
   };
   for (const [name, moves] of Object.entries(expect)) {
     assert.strictEqual(taught[name], moves, 'lesson "' + name + '" does not match the solver');
@@ -291,10 +293,14 @@ test('the lesson text and the solver cannot drift apart', () => {
     Cube.pieceColors(S, Cube.pieceAt('UF')).join(''), 'U should send the front edge to the left');
   assert.strictEqual(Cube.pieceColors(Cube.applyMove(S, 'D'), Cube.pieceAt('DR')).join(''),
     Cube.pieceColors(S, Cube.pieceAt('DF')).join(''), 'D should send the front edge to the right');
-  // "never more than five Righties"
+  // "never more than five Righties", and the backwards versions the solver leans on
   let t = S;
   for (let i = 1; i <= 5; i++) { t = Cube.applyAlg(t, Solver.ALGS.righty); assert(!eq(t, S) || i === 6); }
   assert(eq(Cube.applyAlg(t, Solver.ALGS.righty), S), 'Righty should have order 6');
+  assert(eq(Cube.applyAlg(S, Solver.ALGS.righty + ' ' + Solver.ALGS.rightyBack), S), 'Righty backwards must undo Righty');
+  assert(eq(Cube.applyAlg(S, Solver.ALGS.twist + ' ' + Solver.ALGS.twistBack), S), 'the Twist trick backwards must undo the Twist trick');
+  assert(eq(Cube.applyAlg(S, (Solver.ALGS.righty + ' ').repeat(5)), Cube.applyAlg(S, Solver.ALGS.rightyBack)), 'five Righties equal one backwards');
+  assert(eq(Cube.applyAlg(S, (Solver.ALGS.twist + ' ').repeat(4)), Cube.applyAlg(S, (Solver.ALGS.twistBack + ' ').repeat(2))), 'four twists equal two backwards');
 });
 test('stateForStage always hands back a cube that still needs the stage', () => {
   const r = rng(558);
@@ -307,6 +313,26 @@ test('stateForStage always hands back a cube that still needs the stage', () => 
       assert(!Solver.goals[stage](Solver.stateForStage(stage)), stage + ' practice cube (no scramble) is already finished');
     }
   }
+});
+
+test('a corner is never asked for more than three Righties or two twists, and the count in the text is honest', () => {
+  const r = rng(808);
+  let corners = 0, twists = 0, backwards = 0;
+  for (let i = 0; i < 100; i++) {
+    for (const st of Solver.solve(Cube.applyAlg(S, Cube.scramble(25, r))).steps) {
+      if (!/Righty|TWIST TRICK/.test(st.text) || /more times|to fix it/.test(st.text)) continue;
+      const m = /\b(once|(\d+) times)\b/.exec(st.text);
+      if (!m) continue;
+      const said = m[1] === 'once' ? 1 : +m[2];
+      const alg = st.stage === 'corners' ? (/BACKWARDS/.test(st.text) ? Solver.ALGS.rightyBack : Solver.ALGS.righty)
+                                         : (/BACKWARDS/.test(st.text) ? Solver.ALGS.twistBack : Solver.ALGS.twist);
+      assert.strictEqual(st.moves.join(' '), (alg + ' ').repeat(said).trim(), 'the moves must be exactly what the text says: ' + st.text);
+      assert(said <= 3, 'never more than three repetitions: ' + st.text);
+      if (st.stage === 'corners') corners++; else twists++;
+      if (/BACKWARDS/.test(st.text)) backwards++;
+    }
+  }
+  assert(corners > 200 && twists > 100 && backwards > 50, 'too few sampled: ' + [corners, twists, backwards]);
 });
 
 console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));

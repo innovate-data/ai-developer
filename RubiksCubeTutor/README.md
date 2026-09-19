@@ -53,8 +53,24 @@ npm run test:all       # all three
 5. **Reassurance where the method looks scary.** The last stage temporarily scrambles two layers; the text says so up front and repeats "do not turn the whole cube".
 6. **Rewards, not punishments.** Stars per lesson (3 without hints, 2 with hints) are stored locally; nothing resets, no timers in lessons, confetti when a Play solve finishes.
 7. **Accessible.** Large targets, readable font, keyboard shortcuts, `aria-label`s on cube stickers and move buttons, and a 🔊 *Read* button using the browser's speech synthesis for early readers.
-8. **Privacy by construction.** Everything runs in the browser; the only persisted data is the star progress in `localStorage`, and the app still works when that throws or is blocked.
-9. **Both themes.** Colours are CSS tokens with a light and a dark palette, honouring the reader's system setting and an explicit `data-theme`. The six cube colours are deliberately identical in both, because they are the cube itself.
+8. **Written to be read at seven.** Every sentence a child sees, in lessons, hints and
+   solver steps, scores at a word-weighted Flesch-Kincaid grade of 2.0, with an average
+   sentence of nine words. New words (layer, front, front-right, home, twisted) are
+   explained the first time they are used. Move meanings are things a hand can do
+   ("rolls up and away from you"), not "clockwise".
+9. **Nothing needs reading to be understood.** Every lesson has a Read to me button; every
+   hint and every guide step has one too, and it speaks the moves in words, not letters.
+   Every move chip is a button: tap it to hear what it means and watch the cube do it
+   and undo it. Whole-cube turns carry a 🔄 picture. Repeated tricks show once with a
+   "× 2" badge to count against.
+10. **Hints are not cheating.** Finishing a practice earns all three stars; doing it
+   without hints adds a 🧠 badge on top. A mistake reads "Oops, the white cross came
+   apart. That happens to everyone!", never "wrong".
+11. **Honest about the real cube.** The guide's next button says "I did it", because it
+   applies the moves; auto-play ends with "That was the whole solve" and an offer to
+   start again, not "You solved it".
+12. **Privacy by construction.** Everything runs in the browser; the only persisted data is the star progress in `localStorage`, and the app still works when that throws or is blocked.
+13. **Both themes.** Colours are CSS tokens with a light and a dark palette, honouring the reader's system setting and an explicit `data-theme`. The six cube colours are deliberately identical in both, because they are the cube itself.
 
 The copy is British English throughout (centre, colour, memorise, anticlockwise).
 
@@ -68,12 +84,12 @@ The copy is British English throughout (centre, colour, memorise, anticlockwise)
 | 2 | Cube Talk | Move notation R L U D F B, prime and 2. Try every move; quiz "name that move". | – |
 | 3 | The Daisy | Bring four white edges around the yellow centre. Intuitive, no algorithm. | – |
 | 4 | The White Cross | Match a petal's side colour to its centre, turn that side twice. | – |
-| 5 | White Corners | Put a corner above its home and repeat Righty until it drops in. | Righty `R U R' U'` |
-| 6 | The Middle Layer | Upside-down T, then the Right or Left trick. | Right trick `U R U' R' U' F' U F`, Left trick `U' L' U L U F U' F'` |
+| 5 | White Corners | Put a corner above its home and do Righty 1 or 3 times. A corner that would need 5 gets Righty backwards instead. | Righty `R U R' U'`, Righty backwards `U R U' R'` |
+| 6 | The Middle Layer | Upside-down T, then the Slide-right or Slide-left trick. | Slide-right `U R U' R' U' F' U F`, Slide-left `U' L' U L U F U' F'` |
 | 7 | The Yellow Cross | Dot → L → line → cross, with the L held at back-left. | Cross trick `F R U R' U' F'` |
 | 8 | Yellow Edges Home | Turn the top to match two edges, turn the whole cube to hold them at back and right. | Edge trick `R U R' U R U2 R' U` |
 | 9 | Yellow Corners Home | Keep a correct corner at the front-right; the other three cycle. | Corner trick `U R U' L' U R' U' L` |
-| 10 | The Grand Finale | Twist each corner with 2 or 4 repetitions; only the top layer turns between corners. | Twist trick `R' D' R D` |
+| 10 | The Grand Finale | Twist each corner with 2 repetitions, forwards or backwards; only the top layer turns between corners. | Twist trick `R' D' R D`, backwards `D' R' D R` |
 
 Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" button.
 
@@ -144,8 +160,14 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   restarting from the daisy. This matters for hints.
 * `stateForStage(stage)` produces a practice cube: scramble, solve, replay the steps of
   earlier stages.
-* Average solution length is ~170 moves over 400 random scrambles (normal for the
-  beginner method).
+* **The same trick, backwards.** Both Righty and the Twist trick have order 6, so a
+  corner that would need five Righties gets one Righty backwards (`U R U' R'`), and one
+  that would need four twists gets two backwards (`D' R' D R`). One idea for the child
+  to learn, and 17% fewer moves: the average solve is 142 moves over 400 random
+  scrambles, down from 172, with never more than three repetitions of anything.
+* The solver emits small steps (turn the cube, turn the top, do the trick) so a hint can
+  be a small nudge. The walkthrough folds each piece's set-up turns into its trick, so a
+  child sees about 23 cards per solve instead of 47.
 
 ### 3D view (`js/view.js`)
 * 27 cubie `<div>`s with six faces each, positioned with CSS 3D transforms. A layer turn
@@ -197,6 +219,9 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R11 | Undo on Play left stale guide steps on screen. |
 | R12 | A practice cube could open already solved, handing out an unearned win. |
 | R13 | An impossible painted cube has to be explained in words a child understands. |
+
+`npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
+produces, by touch, on an iPhone and an iPad profile: 27 checks.
 
 A note on testing animations: a layer turn is a CSS transform, so the sticker colours
 do not change until the move lands. Tests that wait for colours to stop changing pass

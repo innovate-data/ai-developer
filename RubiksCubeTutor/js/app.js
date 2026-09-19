@@ -20,10 +20,72 @@
     if (!('speechSynthesis' in window)) return;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(speakable(text));
-    u.rate = 0.95;
+    u.rate = 0.9;                     // a touch slower for young listeners
     speechSynthesis.speak(u);
   }
-  const moveChips = (moves) => Cube.parseAlg(moves).map((m) => '<span class="chip' + (Cube.parseMove(m).isRotation ? ' rot' : '') + '" title="' + (MOVE_WORDS[m] || m) + '">' + m + '</span>').join('');
+  function hush() {
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+  }
+  // If a step is one trick repeated, say so once ("the Twist trick, 2 times") instead
+  // of reading sixteen letters; otherwise say each move in words.
+  function repeatedAlg(moves) {
+    for (const [key, alg] of Object.entries(Solver.ALGS)) {
+      const a = Cube.parseAlg(alg);
+      if (moves.length >= a.length * 2 && moves.length % a.length === 0) {
+        const n = moves.length / a.length;
+        if (moves.join(' ') === Array(n).fill(alg).join(' ')) return { key, alg, tokens: a, times: n };
+      }
+    }
+    return null;
+  }
+  const movesInWords = (moves) => {
+    const rep = repeatedAlg(moves);
+    if (rep) return 'The trick is ' + rep.alg + '. Do it ' + rep.times + ' times.';
+    return moves.slice(0, 10).map((m) => MOVE_WORDS[m] || m).join(' ') + (moves.length > 10 ? ' Tap each letter to hear the rest.' : '');
+  };
+  // Chips for a step: a repeated trick shows once with a "× N" badge a child can count with.
+  const stepChips = (moves) => {
+    const rep = repeatedAlg(moves);
+    if (!rep) return moveChips(moves);
+    return moveChips(rep.tokens) + '<span class="times">× ' + rep.times + '</span>';
+  };
+  const wordsList = (moves) => {
+    const rep = repeatedAlg(moves);
+    const list = rep ? rep.tokens : moves.slice(0, 12);
+    const items = list.map((m) => '<li><b>' + m + '</b> – ' + (MOVE_WORDS[m] || '') + '</li>').join('');
+    const more = !rep && moves.length > 12 ? '<li>Tap a letter above to hear it.</li>' : '';
+    return '<ul class="guide-words">' + items + more + '</ul>';
+  };
+  const readButton = (getText, label) => {
+    const b = el('button', 'btn small ghost', '🔊 ' + (label || 'Read to me'));
+    b.addEventListener('click', () => speak(getText()));
+    return b;
+  };
+  // Every move chip is a button: tap it to hear what the move means and watch the cube
+  // do it and undo it. A hover tooltip is invisible on an iPad, and to a child who
+  // cannot read yet, so the chip has to speak for itself.
+  const moveChips = (moves) => Cube.parseAlg(moves).map((m) => '<button type="button" class="chip' + (Cube.parseMove(m).isRotation ? ' rot' : '') + '" data-move="' + m + '" aria-label="' + m + ': ' + (MOVE_WORDS[m] || m) + '">' + m + '</button>').join('');
+  const plain = (html) => html.replace(/<[^>]+>/g, '');
+
+  // Wire up chip taps for one screen: show the words, say them, and wiggle the cube.
+  function explainChipsIn(section, station) {
+    section.addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip[data-move]');
+      if (!chip) return;
+      const m = chip.dataset.move;
+      const words = MOVE_WORDS[m] || m;
+      const box = chip.parentElement;
+      let cap = box.nextElementSibling;
+      if (!cap || !cap.classList.contains('chip-words')) {
+        cap = el('div', 'chip-words');
+        cap.setAttribute('aria-live', 'polite');
+        box.after(cap);
+      }
+      cap.innerHTML = '<b>' + m + '</b> ' + words;
+      speak(m + '. ' + words);
+      station.demo(m);
+    });
+  }
 
   // ------------------------------------------------------------ progress
   const PROGRESS_KEY = 'cubeclubhouse.progress';
@@ -39,10 +101,15 @@
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch { /* private mode, or the quota is full */ }
   }
   let progress = loadProgress();
-  function award(lessonId, stars) {
+  function award(lessonId, stars, noHints) {
     progress[lessonId] = Math.max(progress[lessonId] || 0, stars);
+    if (noHints) {
+      if (!progress.brain || typeof progress.brain !== 'object') progress.brain = {};
+      progress.brain[lessonId] = true;
+    }
     saveProgress(progress);
   }
+  const hasBrain = (lessonId) => !!(progress.brain && progress.brain[lessonId]);
   const starString = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
 
   // ------------------------------------------------------------- MovePad
@@ -66,7 +133,10 @@
       }
       container.appendChild(r);
     }
-    const hint = el('div', 'pad-hint', 'Keyboard: press U, D, L, R, F or B to turn a side; hold Shift for the ′ (prime) turn. Drag the cube to look around.');
+    const hasKeyboard = !window.matchMedia || window.matchMedia('(hover: hover)').matches;
+    const hint = el('div', 'pad-hint', hasKeyboard
+      ? 'Drag the cube to look around. Keyboard: U, D, L, R, F or B turn a side; hold Shift for the ′ turn.'
+      : 'Drag the cube to look around.');
     container.appendChild(hint);
   }
 
@@ -102,6 +172,12 @@
         st.emit();
         return view.play(tokens, duration, onMove);
       },
+      // Show one move and take it straight back. Only the picture moves: st.state is
+      // untouched, so a hint, the guide and the practice goal all stay exactly as they
+      // were. If the cube is replaced mid-wiggle, set() repaints it, so nothing is lost.
+      demo(token) {
+        return view.play([token, Cube.invertMove(token)], 450);
+      },
       // st.state updates the moment a move is applied, while the cube is still
       // turning on screen. Celebrations wait for the picture to catch up. emit()
       // runs before play() queues the animation, so let this tick finish first.
@@ -120,14 +196,35 @@
     return st;
   }
 
+  // The solver emits small steps (turn the cube, turn the top, do the trick) so a hint can
+  // be a small nudge. For the walkthrough, fold each piece's set-up turns into the trick
+  // that follows, so a child sees one card per piece: 47 steps become about 27. The
+  // highlight of the first step is kept, because it is right for the cube as it is now.
+  function mergeSteps(steps) {
+    const isSetup = (st) => st.moves.length === 1 && /^[Uy]/.test(st.moves[0]);
+    const out = [];
+    for (const st of steps) {
+      const prev = out[out.length - 1];
+      if (prev && prev.stage === st.stage && prev.open) {
+        prev.moves = prev.moves.concat(st.moves);
+        prev.text += ' ' + st.text;
+        prev.open = isSetup(st);
+      } else {
+        out.push({ stage: st.stage, text: st.text, moves: st.moves.slice(), highlight: st.highlight, open: isSetup(st) });
+      }
+    }
+    return out;
+  }
+
   // ---------------------------------------------------------------- Guide
-  // Walks through solver steps on a station. `filterStage` limits to one stage (lesson hints).
+  // Walks through solver steps on a station, one card per piece.
   function Guide(container, station, options) {
     const opts = Object.assign({ onFinish: null, compact: false }, options || {});
     let steps = [];
     let i = 0;
     let shown = false;   // has the current step been animated already?
     let busy = false;
+    let watchedAll = false;   // the app did the solve, so do not praise the child for it
 
     function start(state) {
       let res;
@@ -135,15 +232,16 @@
         res = Solver.solve(state);
       } catch (e) {
         const why = e && e.internal
-          ? 'Something went wrong on my side. Press Scramble and try again.'
-          : (e && e.message) || 'I do not recognise this cube.';
-        container.innerHTML = '<div class="guide-error">Hmm, I cannot solve this cube. ' + why + '</div>';
+          ? 'Something went wrong on my side. Press Mix it up and try again.'
+          : ((e && e.message) || 'One of the stickers does not look right.') + ' Let\'s check the stickers together.';
+        container.innerHTML = '<div class="guide-error">Hmm, this does not look like a real cube yet. ' + why + '</div>';
         return false;
       }
-      steps = res.steps;
+      steps = mergeSteps(res.steps);
       i = 0;
       shown = false;
       busy = false;
+      watchedAll = false;
       render();
       return true;
     }
@@ -163,7 +261,20 @@
         return;
       }
       if (i >= steps.length) {
-        container.appendChild(el('div', 'guide-done', '🎉 <b>You solved it!</b> Take a bow, cube master!'));
+        if (watchedAll) {
+          container.appendChild(el('div', 'guide-done', '👀 That was the whole solve! Want to do it yourself, step by step?'));
+          const again = el('button', 'btn primary', '◀ Start from the first step');
+          again.addEventListener('click', () => {
+            let s = station.state;
+            for (let k = steps.length - 1; k >= 0; k--) s = Cube.applyAlg(s, Cube.invertAlg(steps[k].moves));
+            station.set(s);
+            i = 0; shown = false; watchedAll = false;
+            render();
+          });
+          container.appendChild(again);
+        } else {
+          container.appendChild(el('div', 'guide-done', '🎉 <b>You solved it!</b> Take a bow, cube master!'));
+        }
         station.view.setHighlights([]);
         if (opts.onFinish) opts.onFinish();
         return;
@@ -177,21 +288,20 @@
         bar.appendChild(el('span', 'stage-chip' + (idx < curIdx ? ' done' : idx === curIdx ? ' current' : ''), STAGE_TITLES[st]));
       }
       container.appendChild(bar);
-      const count = el('div', 'guide-count', 'Step ' + (i + 1) + ' of ' + steps.length + ' · ' + STAGE_TITLES[step.stage]);
+      // "Step 3 of 47" is a wall to a child; count within the stage instead.
+      const inStage = steps.filter((s) => s.stage === step.stage);
+      const count = el('div', 'guide-count', STAGE_TITLES[step.stage] + ' · step ' + (inStage.indexOf(step) + 1) + ' of ' + inStage.length);
       container.appendChild(count);
       container.appendChild(el('p', 'guide-text', step.text));
-      container.appendChild(el('div', 'guide-moves', moveChips(step.moves)));
-      const words = el('ul', 'guide-words');
-      for (const m of step.moves.slice(0, 12)) words.appendChild(el('li', '', '<b>' + m + '</b> – ' + (MOVE_WORDS[m] || '')));
-      if (step.moves.length > 12) words.appendChild(el('li', '', '… and so on, the same pattern.'));
-      container.appendChild(words);
+      container.appendChild(el('div', 'guide-moves', stepChips(step.moves)));
+      container.insertAdjacentHTML('beforeend', wordsList(step.moves));
 
       const btns = el('div', 'guide-btns');
-      const showBtn = el('button', 'btn primary', shown ? '▶ Show me again' : '▶ Show me');
-      const nextBtn = el('button', 'btn', 'Next ▶');
-      const backBtn = el('button', 'btn ghost', '◀ Back');
+      const showBtn = el('button', 'btn primary', shown ? '▶ Watch again' : '▶ Watch');
+      const nextBtn = el('button', 'btn', 'I did it ▶');
+      const backBtn = el('button', 'btn ghost', '◀ Last step');
       const sayBtn = el('button', 'btn ghost', '🔊 Read');
-      const autoBtn = el('button', 'btn ghost', '⏩ Do it all for me');
+      const autoBtn = el('button', 'btn ghost', '⏩ Watch the whole solve');
       backBtn.disabled = i === 0;
       showBtn.addEventListener('click', async () => {
         if (busy) return;
@@ -207,7 +317,7 @@
         station.view.setHighlights([]);
         shown = true;
         busy = false;
-        showBtn.textContent = '▶ Show me again';
+        showBtn.textContent = '▶ Watch again';
         nextBtn.classList.add('primary');
         showBtn.classList.remove('primary');
       });
@@ -226,7 +336,7 @@
         shown = false;
         render();
       });
-      sayBtn.addEventListener('click', () => speak(step.text + ' The moves are: ' + step.moves.join(', ')));
+      sayBtn.addEventListener('click', () => speak(step.text + ' ' + movesInWords(step.moves)));
       autoBtn.addEventListener('click', async () => {
         if (busy) return;
         busy = true;
@@ -239,15 +349,18 @@
             const textEl = $('.guide-text', container);
             const movesEl = $('.guide-moves', container);
             if (!textEl || !movesEl || station.view.gen !== myGen) return;
-            count.textContent = 'Step ' + (i + 1) + ' of ' + steps.length + ' · ' + STAGE_TITLES[steps[i].stage];
-            textEl.textContent = steps[i].text;
-            movesEl.innerHTML = moveChips(steps[i].moves);
+            const st = steps[i];
+            const same = steps.filter((s) => s.stage === st.stage);
+            count.textContent = STAGE_TITLES[st.stage] + ' · step ' + (same.indexOf(st) + 1) + ' of ' + same.length;
+            textEl.textContent = st.text;
+            movesEl.innerHTML = stepChips(st.moves);
             station.view.setHighlights(steps[i].highlight);
             await station.play(steps[i].moves, 140);
           }
         } finally {
           busy = false;
         }
+        watchedAll = true;
         render();
       });
       btns.append(showBtn, nextBtn, backBtn, sayBtn);
@@ -262,6 +375,7 @@
   // ------------------------------------------------------------- screens
   const screens = {};
   function showScreen(name) {
+    hush();
     for (const k of Object.keys(screens)) {
       screens[k].section.hidden = k !== name;
       $('nav button[data-screen="' + k + '"]').classList.toggle('active', k === name);
@@ -288,7 +402,8 @@
         const stars = progress[L.id] || 0;
         const card = el('button', 'lesson-card' + (stars ? ' done' : ''));
         card.type = 'button';
-        card.innerHTML = '<span class="lesson-num">' + (n + 1) + '</span><span class="lesson-emoji">' + L.emoji + '</span><span class="lesson-name">' + L.title + '</span><span class="lesson-sub">' + L.subtitle + '</span><span class="stars">' + (L.stage || L.interactive === 'notation' ? starString(stars) : '') + '</span>';
+        const badge = hasBrain(L.id) ? ' <span class="brain" title="Done without hints">🧠</span>' : '';
+        card.innerHTML = '<span class="lesson-num">' + (n + 1) + '</span><span class="lesson-emoji">' + L.emoji + '</span><span class="lesson-name">' + L.title + '</span><span class="lesson-sub">' + L.subtitle + '</span><span class="stars">' + (L.stage || L.interactive === 'notation' ? starString(stars) + badge : '') + '</span>';
         card.addEventListener('click', () => openLesson(n));
         list.appendChild(card);
       });
@@ -299,9 +414,13 @@
       const L = LESSONS[n];
       list.hidden = true;
       viewWrap.hidden = false;
+      hush();
       $('#lesson-title').textContent = L.emoji + ' ' + L.title;
       $('#lesson-subtitle').textContent = L.subtitle;
       $('#lesson-story').innerHTML = L.story.map((p) => '<p>' + p + '</p>').join('');
+      const readRow = el('div', 'btn-row read-row');
+      readRow.appendChild(readButton(() => L.title + '. ' + L.subtitle + '. ' + L.story.map(plain).join(' ')));
+      $('#lesson-story').prepend(readRow);
       $('#lesson-tips').innerHTML = L.tips.length ? '<h3>💡 Tips</h3><ul>' + L.tips.map((t) => '<li>' + t + '</li>').join('') + '</ul>' : '';
       $('#lesson-prev').disabled = n === 0;
       $('#lesson-next').textContent = n === LESSONS.length - 1 ? 'Back to lessons' : 'Next lesson ▶';
@@ -344,13 +463,13 @@
           Centres: Cube.FACES.map((f) => Cube.centerIndex(f)),
           Edges: Cube.EDGES.flatMap((e) => e.idx),
           Corners: Cube.CORNERS.flatMap((c) => c.idx),
-          Clear: [],
+          'Lights off': [],
         };
         for (const name of Object.keys(groups)) {
           const b = el('button', 'btn small', name);
           b.addEventListener('click', () => {
             station.view.setHighlights(groups[name]);
-            const fact = { Centres: '6 centres. They never move!', Edges: '12 edges with 2 colours each.', Corners: '8 corners with 3 colours each.', Clear: '' }[name];
+            const fact = { Centres: '6 centres. They never move!', Edges: '12 edges with 2 colours each.', Corners: '8 corners with 3 colours each.', 'Lights off': '' }[name];
             $('#parts-fact').textContent = fact;
           });
           row.appendChild(b);
@@ -359,7 +478,7 @@
         const fact = el('p', 'fact', 'Tap a button to light up that kind of block.');
         fact.id = 'parts-fact';
         box.appendChild(fact);
-        const spin = el('button', 'btn small ghost', '🔄 Spin one side (R)');
+        const spin = el('button', 'btn small ghost', '🔄 Turn the right side');
         spin.addEventListener('click', () => station.move('R'));
         box.appendChild(spin);
       } else if (L.interactive === 'notation') {
@@ -387,13 +506,24 @@
       const q = el('div', 'quiz');
       const status = el('p', 'fact', 'Watch the cube do a move, then tap the right letter. Get 5 in a row to earn 3 stars!');
       const choices = el('div', 'btn-row');
-      const go = el('button', 'btn primary', '▶ Play a move');
-      let answer = null, streak = 0, best = 0;
+      const go = el('button', 'btn primary', '▶ Do a move');
+      const again = el('button', 'btn ghost', '▶ Show it again');
+      again.hidden = true;
+      let answer = null, lastMove = null, streak = 0, best = 0;
+      again.addEventListener('click', async () => {
+        if (!lastMove) return;
+        station.set(Cube.solved());
+        again.disabled = true;
+        await station.play([lastMove], 650);
+        again.disabled = false;
+      });
       const pool = ['U', "U'", 'D', "D'", 'L', "L'", 'R', "R'", 'F', "F'", 'B', "B'"];
       go.addEventListener('click', async () => {
         choices.innerHTML = '';
         station.set(Cube.solved());
         answer = pool[Math.floor(Math.random() * pool.length)];
+        lastMove = answer;
+        again.hidden = false;
         go.disabled = true;
         await station.play([answer], 650);
         go.disabled = false;
@@ -406,11 +536,11 @@
             if (m === answer) {
               streak++;
               best = Math.max(best, streak);
-              status.textContent = '✅ Yes! That was ' + answer + '. Streak: ' + streak;
+              status.textContent = '✅ Yes! That was ' + answer + '. In a row: ' + streak;
               if (streak >= 5) { award('moves', 3); status.textContent += ' 🌟 Three stars!'; renderList(); }
               else if (streak >= 2) award('moves', Math.max(progress.moves || 0, 1));
             } else {
-              status.textContent = '❌ Not quite. It was ' + answer + ' (' + MOVE_WORDS[answer] + '). Streak: 0';
+              status.textContent = 'Almost! It was ' + answer + ': ' + MOVE_WORDS[answer] + ' Press Show it again to see it. Best so far: ' + best + ' in a row.';
               streak = 0;
               award('moves', Math.max(progress.moves || 0, 1));
             }
@@ -420,7 +550,9 @@
           choices.appendChild(b);
         });
       });
-      q.append(go, choices, status);
+      const row = el('div', 'btn-row');
+      row.append(go, again);
+      q.append(row, choices, status);
       box.appendChild(q);
     }
 
@@ -432,11 +564,11 @@
       station.listeners = [];
       if (!L.stage) return;
       box.appendChild(el('h3', '', '🎮 Your turn'));
-      const intro = el('p', '', 'The cube next to this text is ready for this step. Use the move buttons under the cube (or your keyboard) and try it yourself. Press <b>Hint</b> if you get stuck.');
+      const intro = el('p', '', 'This is a pretend cube on the screen, not your real one. It is set up for this step. Use the buttons under the cube and try it. Stuck? Press <b>Hint</b>.');
       const status = el('div', 'practice-status', 'Goal: ' + L.subtitle);
       const row = el('div', 'btn-row');
       const hintBtn = el('button', 'btn primary', '💡 Hint');
-      const newBtn = el('button', 'btn ghost', '🎲 New cube');
+      const newBtn = el('button', 'btn ghost', '🎲 Another puzzle');
       const undoBtn = el('button', 'btn ghost', '↩ Undo');
       const hintBox = el('div', 'hint-box');
       hintBox.hidden = true;
@@ -461,11 +593,12 @@
         if (solvedThis) return;
         if (Solver.goals[L.stage](state)) {
           solvedThis = true;                       // latch now so this fires exactly once
-          const stars = hintsUsed === 0 ? 3 : 2;
-          award(L.id, stars);
+          // Finishing earns all three stars. Hints are how a child learns, not cheating;
+          // doing it without any earns a separate brain badge on top.
+          award(L.id, 3, hintsUsed === 0);
           renderList();
           station.settled().then(() => {
-            status.innerHTML = '🎉 <b>You did it!</b> ' + starString(stars) + (hintsUsed ? ' (Try again without hints for 3 stars.)' : ' Perfect, no hints!');
+            status.innerHTML = '🎉 <b>You did it!</b> ★★★' + (hintsUsed ? '' : ' 🧠 No hints!');
             status.classList.add('win');
             hintBox.hidden = true;
             station.view.setHighlights([]);
@@ -483,11 +616,13 @@
         hintBox.innerHTML = '';
         const stageIdx = Solver.STAGES.indexOf(L.stage);
         if (one.stage !== 'orient' && Solver.STAGES.indexOf(one.stage) < stageIdx) {
-          hintBox.appendChild(el('p', 'guide-warn', '😮 Uh-oh, an earlier part got broken: the ' + STAGE_TITLES[one.stage].toLowerCase() + '. Press Undo a few times to go back, or follow the hints to rebuild it.'));
+          hintBox.appendChild(el('p', 'guide-warn', 'Oops, the ' + STAGE_TITLES[one.stage].toLowerCase() + ' came apart. That happens to everyone! Press Undo a few times, or follow the hints to fix it.'));
         }
         hintBox.appendChild(el('p', 'guide-text', '💡 ' + one.text));
-        hintBox.appendChild(el('div', 'guide-moves', moveChips(one.moves)));
-        const b = el('button', 'btn small primary', '▶ Show me');
+        hintBox.appendChild(el('div', 'guide-moves', stepChips(one.moves)));
+        hintBox.insertAdjacentHTML('beforeend', wordsList(one.moves));
+        const say = readButton(() => one.text + ' ' + movesInWords(one.moves), 'Read');
+        const b = el('button', 'btn small primary', '▶ Watch');
         b.addEventListener('click', async () => {
           const fresh = nextStep();          // the cube may have moved since the hint
           if (!fresh) return;
@@ -497,7 +632,9 @@
           station.view.setHighlights([]);
           hintFor = Cube.toString(station.state);
         });
-        hintBox.appendChild(b);
+        const hintBtns = el('div', 'btn-row');
+        hintBtns.append(b, say);
+        hintBox.appendChild(hintBtns);
         station.view.setHighlights(one.highlight);
       });
       newBtn.addEventListener('click', () => {
@@ -515,6 +652,7 @@
     }
 
     MovePad($('#lesson-controls', section), (m) => station.move(m));
+    explainChipsIn(section, station);
     $('#lesson-back').addEventListener('click', () => { viewWrap.hidden = true; list.hidden = false; renderList(); });
     $('#lesson-prev').addEventListener('click', () => openLesson(Math.max(0, current - 1)));
     $('#lesson-next').addEventListener('click', () => {
@@ -564,7 +702,7 @@
     function staleGuide() {
       if (!guideBox.childElementCount) return;
       guideBox.innerHTML = '';
-      statusEl.textContent = 'You moved the cube yourself. Press "Help me solve it" again for fresh steps.';
+      statusEl.textContent = 'You made your own move, so the steps changed. Press "Help me solve it" for new steps.';
     }
     function userMove(m) {
       staleGuide();
@@ -573,17 +711,18 @@
       station.move(m);
     }
     MovePad($('#play-controls', section), userMove);
+    explainChipsIn(section, station);
     $('#play-scramble').addEventListener('click', async () => {
       guideBox.innerHTML = '';
       stopTimer();
       timerEl.textContent = '00:00';
       timerStart = null;
       moveCount = 0;
-      statusEl.textContent = 'Scrambling…';
+      statusEl.textContent = 'Mixing it up…';
       station.set(Cube.solved());
       await station.play(Cube.scramble(20), 90);
       scrambled = true;
-      statusEl.textContent = 'Go! The timer starts on your first move. Stuck? Press "Help me solve it".';
+      statusEl.textContent = 'Go! The clock starts on your first move. Stuck? Press "Help me solve it".';
     });
     $('#play-reset').addEventListener('click', () => {
       guideBox.innerHTML = '';
@@ -592,7 +731,7 @@
       scrambled = false;
       moveCount = 0;
       station.set(Cube.solved());
-      statusEl.textContent = 'Fresh cube. Press Scramble to start a challenge.';
+      statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
     });
     $('#play-undo').addEventListener('click', () => {
       staleGuide();
@@ -652,8 +791,9 @@
         msg.className = 'msg bad';
         return;
       }
-      msg.innerHTML = '✅ That is a real cube! Follow the steps below. Hold your cube exactly like the picture.';
+      msg.innerHTML = '✅ That is a real cube! Hold your cube like the picture, then follow the steps below.';
       msg.className = 'msg good';
+      station.view.resetView();
       station.set(painted);
       guide.start(painted);
       guideBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -661,6 +801,7 @@
     $('#solve-clear').addEventListener('click', () => setPainted(Cube.solved()));
     $('#solve-random').addEventListener('click', () => setPainted(Cube.applyAlg(Cube.solved(), Cube.scramble(20))));
     $('#solve-from-play').addEventListener('click', () => setPainted(screens.play.station.state));
+    explainChipsIn(section, station);
     screens.solve = { section, station };
   }
 

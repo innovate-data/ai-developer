@@ -6,19 +6,19 @@
   --card: #ffffff;
   --ink: #1f2440;
   --muted: #5d6485;
-  --accent: #5b5bff;
+  --accent: #4f4ff5;
   --accent-ink: #ffffff;
   --accent-soft: #eeeeff;
   --accent-line: #d5d8ff;
-  --good: #1f9d55;
+  --good: #15803d;
   --good-bg: #e9fff1;
-  --bad: #d8342c;
+  --bad: #c62828;
   --bad-bg: #ffecec;
   --line: #e3e7f5;
   --warm-bg: #fff8dc;
   --rot-bg: #fff1e0;
   --rot-line: #ffd9a8;
-  --star: #f4b400;
+  --star: #b07d00;   /* a symbol needs 3:1 on white; the old #f4b400 managed 1.85 */
   --scene-1: #fdfdff;
   --scene-2: #eef1fb;
   --plastic: #1a1a1a;
@@ -223,9 +223,17 @@ main {
 .alg-btns { display: flex; gap: 8px; margin-top: 8px; }
 .chip {
   display: inline-grid; place-items: center; min-width: 44px; height: 40px; padding: 0 10px; border-radius: 10px; background: var(--accent-soft); border: 2px solid var(--accent-line);
-  font-weight: 700; font-size: 1.15rem;
+  font-weight: 700; font-size: 1.15rem; color: var(--ink); cursor: pointer; font-family: inherit;
+  transition: transform 0.08s ease;
 }
+.chip:active { transform: scale(0.94); }
 .chip.rot { background: var(--rot-bg); border-color: var(--rot-line); }
+.chip.rot::before { content: '🔄'; font-size: 0.75em; margin-right: 4px; }
+.times { display: inline-grid; place-items: center; height: 40px; padding: 0 12px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 1.1rem; }
+.brain { font-size: 1rem; letter-spacing: 0; }
+.chip-words { color: var(--muted); font-size: 0.98rem; margin: 2px 0 6px; min-height: 1.4em; }
+.chip-words b { color: var(--ink); }
+.read-row { margin: 0 0 6px; }
 
 /* ---- guide */
 .guide { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); margin-top: 14px; }
@@ -257,7 +265,7 @@ main {
 .swatch.active { outline: 4px solid var(--accent); outline-offset: 2px; }
 /* The net is fluid: four equal face columns that shrink with the container, so it
    fits its column on a desktop and the screen on a phone without a fixed pixel size. */
-.net { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; max-width: 474px; margin: 8px 0; }
+.net { display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 6px; row-gap: 24px; width: 100%; max-width: 474px; margin: 22px 0 8px; }
 .nf-U { grid-column: 2; grid-row: 1; }
 .nf-L { grid-column: 1; grid-row: 2; }
 .nf-F { grid-column: 2; grid-row: 2; }
@@ -270,7 +278,10 @@ main {
   .net { grid-template-columns: repeat(3, 1fr); max-width: 356px; }
   .nf-B { grid-column: 2; grid-row: 4; }
 }
-.net-face { display: grid; grid-template-columns: repeat(3, 1fr); aspect-ratio: 1; gap: 3px; background: var(--plastic); padding: 3px; border-radius: 8px; }
+.net-face { display: grid; grid-template-columns: repeat(3, 1fr); aspect-ratio: 1; gap: 3px; background: var(--plastic); padding: 3px; border-radius: 8px; position: relative; }
+.net-face::before { position: absolute; left: 0; right: 0; top: -1.25em; text-align: center; font-size: 0.72rem; font-weight: 700; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.nf-U::before { content: 'Top'; } .nf-D::before { content: 'Bottom'; } .nf-F::before { content: 'Front'; }
+.nf-B::before { content: 'Back'; } .nf-L::before { content: 'Left'; } .nf-R::before { content: 'Right'; }
 .net-cell { border: 0; border-radius: 5px; padding: 0; min-width: 0; aspect-ratio: 1; }
 .net-cell.centre { box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.35); cursor: default; }
 .net-cell:not(.centre):hover { outline: 3px solid var(--accent); outline-offset: -3px; }

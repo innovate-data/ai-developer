@@ -112,7 +112,7 @@ function runCopyPhase() {
     await p.waitForTimeout(2600);
     await p.locator('#play-help').tap();
     await p.waitForTimeout(400);
-    await p.locator('#play-guide .btn', { hasText: 'Do it all' }).tap();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).tap();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 120000 });
     ck('a tap-only solve reaches a solved cube', await p.evaluate(() => {
       const by = {};

@@ -21,7 +21,7 @@
     <nav aria-label="Main">
       <button type="button" data-screen="learn">📚 Learn</button>
       <button type="button" data-screen="play">🎮 Play</button>
-      <button type="button" data-screen="solve">🔍 Solve my cube</button>
+      <button type="button" data-screen="solve">🔍 My real cube</button>
     </nav>
   </header>
 
@@ -35,12 +35,12 @@
           <div class="col-cube">
             <div class="cube-card">
               <div id="lesson-cube" class="cube-box"></div>
-              <button type="button" id="lesson-reset-view" class="btn tiny ghost">🔄 Reset view</button>
+              <button type="button" id="lesson-reset-view" class="btn tiny ghost">🔄 Straighten the picture</button>
             </div>
             <div id="lesson-controls"></div>
           </div>
           <div class="col-text">
-            <button type="button" id="lesson-back" class="btn ghost small">◀ All lessons</button>
+            <button type="button" id="lesson-back" class="btn ghost small">◀ Lessons</button>
             <h2 id="lesson-title"></h2>
             <p id="lesson-subtitle" class="subtitle"></p>
             <div id="lesson-story" class="story"></div>
@@ -49,7 +49,7 @@
             <div id="lesson-practice"></div>
             <div id="lesson-tips" class="tips"></div>
             <div class="lesson-nav">
-              <button type="button" id="lesson-prev" class="btn ghost">◀ Previous</button>
+              <button type="button" id="lesson-prev" class="btn ghost">◀ Back</button>
               <button type="button" id="lesson-next" class="btn primary">Next lesson ▶</button>
             </div>
           </div>
@@ -63,21 +63,21 @@
         <div class="col-cube">
           <div class="cube-card">
             <div id="play-cube" class="cube-box tall"></div>
-            <button type="button" id="play-reset-view" class="btn tiny ghost">🔄 Reset view</button>
+            <button type="button" id="play-reset-view" class="btn tiny ghost">🔄 Straighten the picture</button>
           </div>
           <div id="play-controls"></div>
         </div>
         <div class="col-text">
           <h2>🎮 Play</h2>
-          <p class="subtitle">Scramble the cube, then solve it as fast as you can. Stuck? Cube Clubhouse will help.</p>
+          <p class="subtitle">Mix up the cube, then see how fast you can solve it. Stuck? Cube Clubhouse will help.</p>
           <div class="timer" id="play-timer" aria-live="polite">00:00</div>
           <div class="btn-row">
-            <button type="button" id="play-scramble" class="btn primary">🎲 Scramble</button>
+            <button type="button" id="play-scramble" class="btn primary">🎲 Mix it up</button>
             <button type="button" id="play-undo" class="btn ghost">↩ Undo</button>
-            <button type="button" id="play-reset" class="btn ghost">✨ Reset</button>
+            <button type="button" id="play-reset" class="btn ghost">✨ Make it solved</button>
             <button type="button" id="play-help" class="btn">🦸 Help me solve it</button>
           </div>
-          <p id="play-status" class="fact">Fresh cube. Press Scramble to start a challenge.</p>
+          <p id="play-status" class="fact">The cube is solved. Press Mix it up to start.</p>
           <div id="play-guide"></div>
         </div>
       </div>
@@ -87,19 +87,19 @@
     <section id="screen-solve" class="screen" hidden>
       <div class="two-col">
         <div class="col-cube">
-          <h2>🔍 Solve my cube</h2>
+          <h2>🔍 My real cube</h2>
           <ol class="howto">
-            <li>Hold your cube with the <b>yellow centre on top</b> and the <b>green centre facing you</b>.</li>
-            <li>Pick a colour, then tap the stickers on the picture until the picture matches your cube. The centres are already set for you.</li>
+            <li>Hold your cube with the <b>yellow centre on top</b> and the <b>green centre facing you</b>. The centre is the middle square of a side.</li>
+            <li>The picture is your cube opened out flat, like a box. Each face has a name. Pick a colour, then tap the stickers until the picture matches your cube. The centres are already done. Ask a grown-up to help with this part.</li>
             <li>Press <b>Check my cube</b> and follow the steps.</li>
           </ol>
           <div id="solve-palette" class="palette" aria-label="Colours"></div>
           <div id="solve-net"></div>
           <div class="btn-row">
             <button type="button" id="solve-check" class="btn primary">✅ Check my cube</button>
-            <button type="button" id="solve-clear" class="btn ghost">Reset picture</button>
-            <button type="button" id="solve-random" class="btn ghost">🎲 Random cube</button>
-            <button type="button" id="solve-from-play" class="btn ghost">Copy from Play</button>
+            <button type="button" id="solve-clear" class="btn ghost">Clear my colours</button>
+            <button type="button" id="solve-random" class="btn ghost">🎲 Try a pretend cube</button>
+            <button type="button" id="solve-from-play" class="btn ghost">Use the cube from Play</button>
           </div>
           <p id="solve-msg" class="msg" aria-live="polite"></p>
         </div>
