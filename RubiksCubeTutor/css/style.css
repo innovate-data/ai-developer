@@ -243,9 +243,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
 .palette { display: flex; gap: 8px; margin: 8px 0; }
 .swatch { width: 44px; height: 44px; border-radius: 12px; border: 3px solid var(--plastic); }
 .swatch.active { outline: 4px solid var(--accent); outline-offset: 2px; }
-.net { display: grid; grid-template-columns: repeat(4, auto); grid-template-rows: repeat(3, auto); gap: 6px; width: max-content; margin: 8px 0; }
-.net-face { display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(3, 34px); gap: 3px; background: var(--plastic); padding: 3px; border-radius: 8px; }
-.net-cell { border: 0; border-radius: 5px; padding: 0; }
+/* The net is fluid: four equal face columns that shrink with the container, so it
+   fits its column on a desktop and the screen on a phone without a fixed pixel size. */
+.net { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; max-width: 474px; margin: 8px 0; }
+.net-face { display: grid; grid-template-columns: repeat(3, 1fr); aspect-ratio: 1; gap: 3px; background: var(--plastic); padding: 3px; border-radius: 8px; }
+.net-cell { border: 0; border-radius: 5px; padding: 0; min-width: 0; aspect-ratio: 1; }
 .net-cell.centre { box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.35); cursor: default; }
 .net-cell:not(.centre):hover { outline: 3px solid var(--accent); outline-offset: -3px; }
 .msg { font-weight: 600; min-height: 1.5em; }

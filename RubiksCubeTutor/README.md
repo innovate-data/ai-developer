@@ -7,17 +7,24 @@ including on a phone or tablet.
 
 ```
 RubiksCubeTutor/
-├── index.html          the app shell (three screens: Learn, Play, Solve my cube)
-├── css/style.css       kid-friendly styling, 3D cube faces, net editor
-├── js/cube.js          cube model: facelets, moves, pieces, validity check
-├── js/solver.js        beginner-method solver that explains every step
-├── js/view.js          3D cube (CSS transforms) and 2D net view
-├── js/lessons.js       the course content (plain data, easy to edit or translate)
-├── js/app.js           screens, move pad, guided walkthrough, practice, quiz
-└── tests/run-tests.js  Node test-suite for the model and the solver
+├── index.html            the app shell (three screens: Learn, Play, Solve my cube)
+├── css/style.css         kid-friendly styling, light and dark themes, 3D cube, net editor
+├── js/cube.js            cube model: facelets, moves, pieces, validity check
+├── js/solver.js          beginner-method solver that explains every step
+├── js/view.js            3D cube (CSS transforms) and 2D net view
+├── js/lessons.js         the course content (plain data, easy to edit or translate)
+├── js/app.js             screens, move pad, guided walkthrough, practice, quiz
+├── build-artifact.js     bundles index.html + css into a single publishable page
+├── tests/run-tests.js    model and solver tests (Node only, no packages)
+└── tests/browser-tests.js end-to-end regression tests (needs Chromium)
 ```
 
-Run the tests with `node tests/run-tests.js` (Node 18+; no packages needed).
+```sh
+npm test           # model and solver tests, Node 18+, no packages needed
+npm run lint       # eslint, fetched on demand by npx
+npm run build      # dist/artifact.html, a single-page build
+npm run test:browser   # end-to-end tests; needs: npm i --no-save playwright-core
+```
 
 ---
 
@@ -39,7 +46,10 @@ Run the tests with `node tests/run-tests.js` (Node 18+; no packages needed).
 5. **Reassurance where the method looks scary.** The last stage temporarily scrambles two layers; the text says so up front and repeats "do not turn the whole cube".
 6. **Rewards, not punishments.** Stars per lesson (3 without hints, 2 with hints) are stored locally; nothing resets, no timers in lessons, confetti when a Play solve finishes.
 7. **Accessible.** Large targets, readable font, keyboard shortcuts, `aria-label`s on cube stickers and move buttons, and a 🔊 *Read* button using the browser's speech synthesis for early readers.
-8. **Privacy by construction.** Everything runs in the browser; the only persisted data is the star progress in `localStorage`.
+8. **Privacy by construction.** Everything runs in the browser; the only persisted data is the star progress in `localStorage`, and the app still works when that throws or is blocked.
+9. **Both themes.** Colours are CSS tokens with a light and a dark palette, honouring the reader's system setting and an explicit `data-theme`. The six cube colours are deliberately identical in both, because they are the cube itself.
+
+The copy is British English throughout (centre, colour, memorise, anticlockwise).
 
 ---
 
@@ -137,22 +147,37 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
 
 ## 5. Testing
 
-`node tests/run-tests.js` covers:
+`npm test` (`tests/run-tests.js`) covers the logic, with no browser and no packages:
 * move algebra (order 4, inverses, doubles, rotation identities such as x = R M' L');
-* validity checks accepting scrambled/rotated cubes and rejecting a twisted corner, a
-  flipped edge, a swapped pair and bad sticker counts;
-* 400 random scrambles solved with stages in order, every stage goal holding after its
-  steps and the replayed steps reproducing the final state;
+* validity checks accepting scrambled and rotated cubes, and rejecting a twisted
+  corner, a flipped edge, a swapped pair and bad sticker counts;
+* 400 random scrambles solved with stages in order, every stage goal holding after
+  its steps, and the replayed steps reproducing the final state;
 * lesson facts (algorithms keep the first two layers; L shape at back-left; line
   horizontal);
 * resuming from mid-twist states, including after an extra top-layer turn.
 
-A headless-browser smoke test (Playwright with the system Chromium) was used during
-development to click through every screen, win practice lessons via hints, auto-solve
-in Play, validate/reject painted cubes and check for horizontal overflow on a phone
-viewport.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium.
+Every case is a bug that was found and fixed, kept so it cannot come back:
 
----
+| Case | The bug it guards against |
+|------|---------------------------|
+| R1 | The lesson list stayed on screen behind every open lesson, because a class-level `display: grid` outranks the `hidden` attribute. |
+| R2, R3, R4 | Interrupting an animation desynchronised the drawn cube from the state the app reasons about, so "Reset" mid-scramble left an unsolved cube. |
+| R2b | The celebration appeared while the cube was still turning. |
+| R5 | "Do it all for me" wedged every guide button until a page reload if the guide was dismissed mid-run. |
+| R6 | Opening a lesson with no practice awarded stars for the previously opened lesson. |
+| R7 | Keyboard shortcuts stopped working after any button click. |
+| R8, R9 | The browser Back button did not change screens; a hash like `#toString` hid every screen. |
+| R10 | A hint replayed an algorithm for a cube that had since moved on. |
+| R11 | Undo on Play left stale guide steps on screen. |
+| R12 | A practice cube could open already solved, handing out an unearned win. |
+| R13 | An impossible painted cube has to be explained in words a child understands. |
+
+A note on testing animations: a layer turn is a CSS transform, so the sticker colours
+do not change until the move lands. Tests that wait for colours to stop changing pass
+while the cube is mid-turn. The harness waits for every cubie to return to a plain
+translate instead.
 
 ## 6. Ideas for later
 

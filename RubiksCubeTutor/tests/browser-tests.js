@@ -14,7 +14,7 @@
 let chromium;
 try {
   ({ chromium } = require('playwright-core'));
-} catch (e) {
+} catch {
   console.log('skipped: playwright-core is not installed (npm i --no-save playwright-core)');
   process.exit(0);
 }
