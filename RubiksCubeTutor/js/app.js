@@ -28,33 +28,45 @@
   }
   // If a step is one trick repeated, say so once ("the Twist trick, 2 times") instead
   // of reading sixteen letters; otherwise say each move in words.
+  // A merged guide card is "set-up turns, then one trick N times". Find that shape:
+  // up to three leading top-layer or whole-cube turns, then a trick repeated at
+  // least twice. Returns null for anything else.
   function repeatedAlg(moves) {
-    for (const [key, alg] of Object.entries(Solver.ALGS)) {
-      const a = Cube.parseAlg(alg);
-      if (moves.length >= a.length * 2 && moves.length % a.length === 0) {
-        const n = moves.length / a.length;
-        if (moves.join(' ') === Array(n).fill(alg).join(' ')) return { key, alg, tokens: a, times: n };
+    const isSetup = (m) => /^[Uy]/.test(m);
+    for (let lead = 0; lead <= 3 && lead < moves.length; lead++) {
+      if (lead > 0 && !isSetup(moves[lead - 1])) break;
+      const rest = moves.slice(lead);
+      for (const [key, alg] of Object.entries(Solver.ALGS)) {
+        const a = Cube.parseAlg(alg);
+        if (rest.length >= a.length * 2 && rest.length % a.length === 0) {
+          const n = rest.length / a.length;
+          if (rest.join(' ') === Array(n).fill(alg).join(' ')) {
+            return { key, alg, tokens: a, times: n, setup: moves.slice(0, lead) };
+          }
+        }
       }
     }
     return null;
   }
+  const words = (m) => MOVE_WORDS[m] || m;
   const movesInWords = (moves) => {
     const rep = repeatedAlg(moves);
-    if (rep) return 'The trick is ' + rep.alg + '. Do it ' + rep.times + ' times.';
-    return moves.slice(0, 10).map((m) => MOVE_WORDS[m] || m).join(' ') + (moves.length > 10 ? ' Tap each letter to hear the rest.' : '');
+    if (rep) return rep.setup.map(words).join(' ') + ' Then the trick: ' + rep.alg + '. Do it ' + rep.times + ' times.';
+    return moves.slice(0, 10).map(words).join(' ') + (moves.length > 10 ? ' Tap each letter to hear the rest.' : '');
   };
   // Chips for a step: a repeated trick shows once with a "× N" badge a child can count with.
   const stepChips = (moves) => {
     const rep = repeatedAlg(moves);
     if (!rep) return moveChips(moves);
-    return moveChips(rep.tokens) + '<span class="times">× ' + rep.times + '</span>';
+    return moveChips(rep.setup) + (rep.setup.length ? '<span class="then">then</span>' : '') + moveChips(rep.tokens) + '<span class="times">× ' + rep.times + '</span>';
   };
   const wordsList = (moves) => {
     const rep = repeatedAlg(moves);
-    const list = rep ? rep.tokens : moves.slice(0, 12);
-    const items = list.map((m) => '<li><b>' + m + '</b> – ' + (MOVE_WORDS[m] || '') + '</li>').join('');
+    const list = rep ? rep.setup.concat(rep.tokens) : moves.slice(0, 12);
+    const items = list.map((m) => '<li><b>' + m + '</b> – ' + words(m) + '</li>').join('');
     const more = !rep && moves.length > 12 ? '<li>Tap a letter above to hear it.</li>' : '';
-    return '<ul class="guide-words">' + items + more + '</ul>';
+    const count = rep ? '<li>Do the trick <b>' + rep.times + ' times</b>.</li>' : '';
+    return '<ul class="guide-words">' + items + count + more + '</ul>';
   };
   const readButton = (getText, label) => {
     const b = el('button', 'btn small ghost', '🔊 ' + (label || 'Read to me'));

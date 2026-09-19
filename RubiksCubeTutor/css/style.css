@@ -229,6 +229,7 @@ main {
 .chip:active { transform: scale(0.94); }
 .chip.rot { background: var(--rot-bg); border-color: var(--rot-line); }
 .chip.rot::before { content: '🔄'; font-size: 0.75em; margin-right: 4px; }
+.then { align-self: center; color: var(--muted); font-weight: 600; padding: 0 2px; }
 .times { display: inline-grid; place-items: center; height: 40px; padding: 0 12px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 1.1rem; }
 .brain { font-size: 1rem; letter-spacing: 0; }
 .chip-words { color: var(--muted); font-size: 0.98rem; margin: 2px 0 6px; min-height: 1.4em; }
