@@ -5,7 +5,14 @@
  * a `stage` map to a solver stage: the practice mode sets up a cube that needs
  * exactly that stage, and the hint button asks the solver for the next step.
  */
-(function (root) {
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.RC = root.RC || {};
+    Object.assign(root.RC, factory());
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
   const MOVE_WORDS = {
@@ -159,12 +166,12 @@
       subtitle: 'Line up the sides of the cross',
       stage: 'yedges',
       story: [
-        'You have a yellow cross, but the side colours of the yellow edges probably do not match the centres. Turn the top layer and see how many edges you can make match at once.',
-        'If all four match, you are done with this step! If only two match, turn the top so the matching edges are at the <b>back and the right</b>.',
-        'Now do the <b>Edge trick</b>. It swaps the edge at the front with the edge at the left. Then check again.',
-        'If the two matching edges are opposite each other (front and back), do the Edge trick once, and then two edges next to each other will match. Line them up at back and right and do it once more.',
+        'You have a yellow cross, but the side colours of the yellow edges probably do not match the centres. Turn the top layer and see how many edges you can make match at once. It is always two or all four.',
+        'If all four match, you are done! If only two match, stop turning the top: another turn would only break them. Instead turn the <b>whole cube</b> so those two matching edges are at the <b>back and the right</b>.',
+        'Now do the <b>Edge trick</b>. It swaps the front edge with the left edge and leaves the back and right ones alone, so all four end up matching.',
+        'If the two matching edges are opposite each other, no amount of turning puts them at the back and the right. Do the Edge trick once anyway: afterwards two matching edges will be next to each other, and then you can do it properly.',
       ],
-      tips: ['The Edge trick starts like a wave: R U R\' U, R U2 R\', then one more U.', 'Only turn the top layer between tricks. Do not turn the whole cube here.'],
+      tips: ['The Edge trick starts like a wave: R U R\' U, R U2 R\', then one more U.', 'Turning the TOP picks how many edges match. Turning the WHOLE cube moves the centres too, so it keeps them matching while you aim them at the back and the right.'],
       algs: [{ name: 'Edge trick', moves: "R U R' U R U2 R' U", note: 'Swaps the front and left yellow edges.' }],
     },
     {
@@ -212,7 +219,5 @@
     finish: 'Finish',
   };
 
-  root.RC.LESSONS = LESSONS;
-  root.RC.MOVE_WORDS = MOVE_WORDS;
-  root.RC.STAGE_TITLES = STAGE_TITLES;
-})(window);
+  return { LESSONS, MOVE_WORDS, STAGE_TITLES };
+});

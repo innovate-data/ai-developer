@@ -168,4 +168,145 @@ test('a single R\' D\' R D on a ready cube is handled (learner twisted by hand)'
   }
 });
 
+test('validate rejects a corner whose colours are in the wrong order (a mirrored corner)', () => {
+  const r = rng(909);
+  let rejected = 0, total = 0;
+  for (let i = 0; i < 20; i++) {
+    const base = Cube.applyAlg(S, Cube.scramble(20, r));
+    for (const name of ['UFR', 'UFL', 'UBL', 'UBR', 'DFR', 'DFL', 'DBL', 'DBR']) {
+      const p = Cube.pieceAt(name);
+      const sides = p.faces.map((f, k) => ({ f, k })).filter((o) => o.f !== 'U' && o.f !== 'D');
+      const bad = base.slice();
+      const a = p.idx[sides[0].k], b = p.idx[sides[1].k];
+      [bad[a], bad[b]] = [bad[b], bad[a]];
+      total++;
+      if (!Cube.validate(bad).ok) rejected++;
+    }
+  }
+  assert.strictEqual(rejected, total, 'mirrored corners accepted: ' + (total - rejected));
+});
+test('anything validate accepts, the solver can actually solve', () => {
+  const r = rng(4242);
+  for (let i = 0; i < 60; i++) {
+    const s = Cube.applyAlg(Cube.applyAlg(S, Cube.scramble(25, r)), ['', 'x', "y'", 'z2'][i % 4]);
+    assert(Cube.validate(s).ok);
+    assert(Cube.isSolved(Solver.solve(s).state));
+  }
+});
+test('the yellow-cross step holds the shape where its words say', () => {
+  const r = rng(555);
+  const U = ['UF', 'UL', 'UB', 'UR'];
+  const yUp = (s, n) => s[Cube.sticker(n, 'U')] === Cube.center(s, 'U');
+  let lines = 0, els = 0, dots = 0;
+  for (let i = 0; i < 120; i++) {
+    let cur = Cube.applyAlg(S, Cube.scramble(25, r));
+    for (const st of Solver.solve(cur).steps) {
+      if (st.stage === 'ycross') {
+        const before = U.filter((e) => yUp(cur, e));
+        const lead = st.moves[0] && st.moves[0][0] === 'U' ? [st.moves[0]] : [];
+        const held = U.filter((e) => yUp(Cube.applyAlg(cur, lead), e)).sort().join(',');
+        if (before.length === 0) { dots++; assert.strictEqual(lead.length, 0, 'the dot case needs no top turn'); }
+        else if (before.includes('UF') === before.includes('UB')) { lines++; assert.strictEqual(held, 'UL,UR', 'the line must be held left to right'); }
+        else { els++; assert.strictEqual(held, 'UB,UL', 'the L must be held at the back and the left'); }
+      }
+      cur = Cube.applyAlg(cur, st.moves);
+    }
+  }
+  assert(lines > 10 && els > 10 && dots > 5, 'too few shapes sampled: ' + [dots, els, lines]);
+});
+test('the yellow-edge step delivers what it promises, and never claims nothing matches', () => {
+  const r = rng(556);
+  const U = ['UF', 'UL', 'UB', 'UR'];
+  let promises = 0;
+  for (let i = 0; i < 120; i++) {
+    let cur = Cube.applyAlg(S, Cube.scramble(25, r));
+    for (const st of Solver.solve(cur).steps) {
+      if (st.stage === 'yedges') {
+        assert(!/No edge can match/.test(st.text), 'the best top turn always matches two or four edges');
+        const after = Cube.applyAlg(cur, st.moves);
+        if (/BACK and the RIGHT/.test(st.text)) {
+          assert(Solver.goals.ycross(after), 'must not break the yellow cross');
+          assert(['UB', 'UR'].every((e) => Cube.pieceAt(e).idx.every((k, j) => after[k] === Cube.center(after, Cube.pieceAt(e).faces[j]))),
+            'the pair must end up at the back and the right');
+        }
+        if (/all four end up right/.test(st.text)) {
+          promises++;
+          assert(U.every((e) => Cube.pieceAt(e).idx.every((k, j) => after[k] === Cube.center(after, Cube.pieceAt(e).faces[j]))),
+            'the step promised all four would match');
+        }
+      }
+      cur = Cube.applyAlg(cur, st.moves);
+    }
+  }
+  assert(promises > 20, 'too few promises checked: ' + promises);
+});
+test('every step highlights a real piece, and the middle trick highlights the edge it means', () => {
+  const r = rng(557);
+  let checked = 0;
+  for (let i = 0; i < 80; i++) {
+    let cur = Cube.applyAlg(S, Cube.scramble(25, r));
+    for (const st of Solver.solve(cur).steps) {
+      for (const h of st.highlight) assert(Number.isInteger(h) && h >= 0 && h < 54, 'bad highlight ' + h);
+      assert(st.moves.length > 0, 'a step with no moves would be dropped');
+      if (st.stage === 'middle' && /TRICK to slide/.test(st.text)) {
+        checked++;
+        assert.deepStrictEqual(st.highlight.slice().sort(), Cube.pieceAt('UF').idx.slice().sort(),
+          'the trick step must highlight the edge it is about to insert');
+      }
+      cur = Cube.applyAlg(cur, st.moves);
+    }
+  }
+  assert(checked > 100, 'too few middle steps: ' + checked);
+});
+test('the lesson text and the solver cannot drift apart', () => {
+  const { LESSONS, MOVE_WORDS, STAGE_TITLES } = require('../js/lessons.js');
+  // every algorithm a lesson prints must be the one the solver actually performs
+  const taught = {};
+  for (const L of LESSONS) for (const a of L.algs) taught[a.name] = a.moves;
+  const expect = {
+    Righty: Solver.ALGS.righty,
+    'Right trick': Solver.ALGS.middleRight,
+    'Left trick': Solver.ALGS.middleLeft,
+    'Cross trick': Solver.ALGS.yellowCross,
+    'Edge trick': Solver.ALGS.yellowEdges,
+    'Corner trick': Solver.ALGS.yellowCorners,
+    'Twist trick': Solver.ALGS.twist,
+  };
+  for (const [name, moves] of Object.entries(expect)) {
+    assert.strictEqual(taught[name], moves, 'lesson "' + name + '" does not match the solver');
+  }
+  // every lesson stage is a real solver stage, and every stage has a title
+  for (const L of LESSONS) {
+    if (L.stage) assert(Solver.STAGES.includes(L.stage), 'unknown stage ' + L.stage);
+  }
+  for (const st of Solver.STAGES) assert(STAGE_TITLES[st], 'no title for stage ' + st);
+  // every move the app can describe must parse, and doubles/primes must agree
+  for (const token of Object.keys(MOVE_WORDS)) {
+    const mv = Cube.parseMove(token);
+    assert(mv, token + ' does not parse');
+    assert(!eq(Cube.applyMove(S, token), S), token + ' does nothing');
+  }
+  // the claims the lessons make about direction, checked against the geometry
+  assert.strictEqual(Cube.pieceColors(Cube.applyMove(S, 'U'), Cube.pieceAt('UL')).join(''),
+    Cube.pieceColors(S, Cube.pieceAt('UF')).join(''), 'U should send the front edge to the left');
+  assert.strictEqual(Cube.pieceColors(Cube.applyMove(S, 'D'), Cube.pieceAt('DR')).join(''),
+    Cube.pieceColors(S, Cube.pieceAt('DF')).join(''), 'D should send the front edge to the right');
+  // "never more than five Righties"
+  let t = S;
+  for (let i = 1; i <= 5; i++) { t = Cube.applyAlg(t, Solver.ALGS.righty); assert(!eq(t, S) || i === 6); }
+  assert(eq(Cube.applyAlg(t, Solver.ALGS.righty), S), 'Righty should have order 6');
+});
+test('stateForStage always hands back a cube that still needs the stage', () => {
+  const r = rng(558);
+  for (const stage of ['daisy', 'cross', 'corners', 'middle', 'ycross', 'yedges', 'ycorners', 'ytwist']) {
+    for (let i = 0; i < 25; i++) {
+      const s = Solver.stateForStage(stage, Cube.scramble(25, r));
+      assert(!Solver.goals[stage](s), stage + ' practice cube is already finished');
+    }
+    for (let i = 0; i < 10; i++) {
+      assert(!Solver.goals[stage](Solver.stateForStage(stage)), stage + ' practice cube (no scramble) is already finished');
+    }
+  }
+});
+
 console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));

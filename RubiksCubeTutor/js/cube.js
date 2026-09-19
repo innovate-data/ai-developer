@@ -387,9 +387,18 @@
       if (home < 0) return { ok: false, reason: 'There is no ' + cols.map((x) => COLOR_NAMES[x]).join('-') + ' corner on a real cube. Check the corner stickers.' };
       if (cornerHome.includes(home)) return { ok: false, reason: 'The ' + cols.map((x) => COLOR_NAMES[x]).join('-') + ' corner appears twice.' };
       cornerHome[i] = home;
-      const cw = cornerClockwise(c);
-      const udColor = cols.find((x) => udColors.includes(x));
-      twist += cw.findIndex((k) => state[k] === udColor);
+      // Compare the three colours in clockwise order, not as an unordered set. A corner
+      // with two of its side stickers swapped is a mirror image: it has the right colours
+      // and the right U/D sticker on top, so counts, piece identity and twist parity all
+      // pass, yet no such corner exists on a real cube.
+      const cwHome = cornerClockwise(CORNERS[home]);
+      const refCols = cwHome.map((k) => ref[k]);
+      const cols3 = cornerClockwise(c).map((k) => state[k]);
+      const rot = refCols.indexOf(cols3[0]);
+      if (rot < 0 || cols3.some((x, j) => x !== refCols[(rot + j) % 3])) {
+        return { ok: false, reason: 'The three colours on one corner are in the wrong order: ' + cols3.map((x) => COLOR_NAMES[x]).join(', ') + '. Two of them need swapping.' };
+      }
+      twist += rot;
     }
     if (twist % 3 !== 0) return { ok: false, reason: 'One corner piece looks twisted. Double-check the corner stickers.' };
 

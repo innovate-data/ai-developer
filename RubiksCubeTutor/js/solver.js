@@ -72,6 +72,10 @@
     const t = turnToken('U', k);
     return t ? Cube.applyMove(s, t) : s;
   };
+  const withY = (s, k) => {
+    const t = turnToken('y', k);
+    return t ? Cube.applyMove(s, t) : s;
+  };
 
   // ------------------------------------------------------------ predicates
   const center = (s, f) => Cube.center(s, f);
@@ -105,6 +109,16 @@
     ytwist: (s) => goals.middle(s) && [0, 1, 2, 3].some((k) => Cube.isSolved(withU(s, k))),
     finish: (s) => Cube.isSolved(s),
   };
+
+  // The top-layer turn that puts the yellow edges into a named shape, e.g. 'UB,UL'
+  // for the L the lesson asks the child to hold at the back and the left.
+  function aufForShape(s, target) {
+    for (let k = 0; k < 4; k++) {
+      const set = U_EDGE_CYCLE.filter((e) => yellowUp(withU(s, k), e)).sort().join(',');
+      if (set === target) return k;
+    }
+    return null;
+  }
 
   // Shortest list of top-layer turns k (0..3) such that doing "U^k then alg"
   // repeatedly makes done(state) true. Depth-limited iterative deepening.
@@ -272,17 +286,20 @@
         const topName = U_CORNER_CYCLE.find((n) => Cube.pieceColors(cur, Cube.pieceAt(n)).includes(white()));
         if (topName) {
           const cols = Cube.pieceColors(cur, Cube.pieceAt(topName)).filter((c) => c !== white());
+          // Name the piece on whichever step comes first, so it is never left unsaid.
+          let intro = 'The white corner with ' + CN(cols[0]) + ' and ' + CN(cols[1]) + ' belongs between the ' + cname(cols[0]) + ' and ' + cname(cols[1]) + ' centres. ';
+          const take = () => { const t = intro; intro = ''; return t; };
           const yTok = yTokenForFR(faceOfCenter(cols[0]), faceOfCenter(cols[1]));
           if (yTok) {
-            emit('corners', 'The white corner with ' + CN(cols[0]) + ' and ' + CN(cols[1]) + ' belongs between the ' + cname(cols[0]) + ' and ' + cname(cols[1]) + ' centres. Turn the whole cube so that home spot is at the front-right.', yTok, Cube.pieceAt(topName).idx);
+            emit('corners', take() + 'Turn the whole cube so that home spot is at the front-right.', yTok, Cube.pieceAt(topName).idx);
           }
           const piece = Cube.findPiece(cur, [white(), cols[0], cols[1]]);
           const uTok = turnToken('U', uTurnsFor(U_CORNER_CYCLE, nameOf(piece), 'UFR'));
-          if (uTok) emit('corners', 'Turn the top layer so the white corner sits right above its home (front-right, on top).', uTok, piece.idx);
+          if (uTok) emit('corners', take() + 'Turn the top layer so that corner sits right above its home (front-right, on top).', uTok, piece.idx);
           let reps = 0;
           while (!pieceSolved(cur, 'DFR') && reps < 6) {
             emit('corners', reps === 0
-              ? 'Do Righty (R U R\' U\'). Then look at the front-right corner. Is white on the bottom? Do the side colours match the centres? If not, do Righty again.'
+              ? take() + 'Do Righty (R U R\' U\'). Then look at the front-right corner. Is white on the bottom? Do the side colours match the centres? If not, do Righty again.'
               : 'Not there yet? Do Righty once more and check again.', ALGS.righty, Cube.pieceAt('DFR').idx.concat(Cube.pieceAt('UFR').idx));
             reps++;
           }
@@ -312,15 +329,19 @@
           const sideFace = p.faces.find((f) => f !== 'U');
           const sideColor = cur[Cube.sticker(topName, sideFace)];
           const topColor = cur[Cube.sticker(topName, 'U')];
+          let intro = 'Find an edge on top with NO yellow: the ' + CN(sideColor) + ' and ' + CN(topColor) + ' edge. ';
+          const take = () => { const t = intro; intro = ''; return t; };
           const yTok = turnToken('y', yTurnsToFront(faceOfCenter(sideColor)));
-          if (yTok) emit('middle', 'Find an edge on top with NO yellow: the ' + CN(sideColor) + ' and ' + CN(topColor) + ' edge. Turn the whole cube so the ' + cname(sideColor) + ' centre faces you.', yTok, p.idx);
+          if (yTok) emit('middle', take() + 'Turn the whole cube so the ' + cname(sideColor) + ' centre faces you.', yTok, p.idx);
           const piece = Cube.findPiece(cur, [sideColor, topColor]);
           const uTok = turnToken('U', uTurnsFor(U_EDGE_CYCLE, nameOf(piece), 'UF'));
-          if (uTok) emit('middle', 'Turn the top layer until the ' + cname(sideColor) + ' sticker of that edge sits right above the ' + cname(sideColor) + ' centre. It makes an upside-down T.', uTok, piece.idx);
+          if (uTok) emit('middle', take() + 'Turn the top layer until the ' + cname(sideColor) + ' sticker of that edge sits right above the ' + cname(sideColor) + ' centre. It makes an upside-down T.', uTok, piece.idx);
+          // by now the edge has been turned to UF, so highlight where it actually is
+          const atUF = Cube.pieceAt('UF').idx;
           if (topColor === C('R')) {
-            emit('middle', 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the RIGHT. Do the RIGHT TRICK to slide the edge into its slot on the right.', ALGS.middleRight, piece.idx);
+            emit('middle', take() + 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the RIGHT. Do the RIGHT TRICK to slide the edge into its slot on the right.', ALGS.middleRight, atUF);
           } else if (topColor === C('L')) {
-            emit('middle', 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the LEFT. Do the LEFT TRICK to slide the edge into its slot on the left.', ALGS.middleLeft, piece.idx);
+            emit('middle', take() + 'The top sticker is ' + CN(topColor) + ' and the ' + cname(topColor) + ' centre is on the LEFT. Do the LEFT TRICK to slide the edge into its slot on the left.', ALGS.middleLeft, atUF);
           } else {
             throw SolverBug('Middle edge colour mismatch');
           }
@@ -336,39 +357,76 @@
     }
 
     // ---- stage 5: yellow cross
+    // The shape decides the top-layer turn, exactly as the lesson teaches it: hold an
+    // L at back-left and a line left-to-right. Searching for any turn that "works"
+    // would print those words and then do something else, which is worse than useless
+    // to a child holding a real cube. Verified: L at back-left -> line left-to-right
+    // -> cross, and the dot lands on the back-left L by itself.
     if (!resumeTwist) {
       let guard = 0;
-      while (!goals.ycross(cur) && guard++ < 4) {
-        const plan = planAlg(cur, ALGS.yellowCross, (s) => countYellowEdges(s) === 4, 3);
-        if (!plan) throw SolverBug('Yellow cross plan failed');
+      while (!goals.ycross(cur) && guard++ < 5) {
         const up = U_EDGE_CYCLE.filter((e) => yellowUp(cur, e));
+        const isLine = up.length === 2 && up.includes('UF') === up.includes('UB');
+        let k = 0;
         let text;
-        if (up.length === 0) text = 'No yellow edges on top yet, just the yellow centre. That shape is called the DOT. Do the CROSS TRICK and you will get an L shape.';
-        else if (up.length === 2 && up.includes('UF') === up.includes('UB')) text = 'Two yellow edges make a LINE. Turn the top so the line goes from left to right, then do the CROSS TRICK.';
-        else text = 'Two yellow edges make an L shape. Turn the top so the L points to the back and to the left (like 9 o\'clock and 12 o\'clock), then do the CROSS TRICK.';
-        emit('ycross', text, [turnToken('U', plan[0])].filter(Boolean).concat(Cube.parseAlg(ALGS.yellowCross)), uStickers(U_EDGE_CYCLE));
+        if (up.length === 0) {
+          text = 'No yellow edges on top yet, just the yellow centre. That shape is called the DOT. Do the CROSS TRICK and you will get an L shape.';
+        } else if (isLine) {
+          k = aufForShape(cur, 'UL,UR');
+          text = 'Two yellow edges make a LINE. Turn the top so the line goes from left to right, then do the CROSS TRICK.';
+        } else {
+          k = aufForShape(cur, 'UB,UL');
+          text = 'Two yellow edges make an L shape. Turn the top so the L points to the back and to the left (like 9 o\'clock and 12 o\'clock), then do the CROSS TRICK.';
+        }
+        if (k === null) throw SolverBug('Yellow cross shape not recognised');
+        emit('ycross', text, [turnToken('U', k)].filter(Boolean).concat(Cube.parseAlg(ALGS.yellowCross)), uStickers(U_EDGE_CYCLE));
       }
       if (!goals.ycross(cur)) throw SolverBug('Yellow cross failed');
     }
 
     // ---- stage 6: yellow edges
+    // Turning the top chooses how many edges match; it cannot move a matched pair,
+    // because the centres stay put. Turning the WHOLE cube moves the pieces and the
+    // centres together, so that is how the matching pair is brought to the back and
+    // the right. Verified over 500 states: the best top turn always leaves exactly 2
+    // or 4 matching, an adjacent pair held at back-right is finished by one trick,
+    // and an opposite pair becomes an adjacent one after a single trick.
     if (!resumeTwist) {
-      const solvableByTopTurn = (s) => [0, 1, 2, 3].some((k) => U_EDGE_CYCLE.every((e) => pieceSolved(withU(s, k), e)));
+      const matchesOf = (s) => U_EDGE_CYCLE.filter((e) => pieceSolved(s, e));
+      const bestAuf = (s) => {
+        let bk = 0;
+        let bc = -1;
+        for (let k = 0; k < 4; k++) {
+          const n = matchesOf(withU(s, k)).length;
+          if (n > bc) { bc = n; bk = k; }
+        }
+        return { k: bk, count: bc };
+      };
       let guard = 0;
-      while (!goals.yedges(cur) && guard++ < 5) {
-        const auf = [0, 1, 2, 3].find((k) => U_EDGE_CYCLE.every((e) => pieceSolved(withU(cur, k), e)));
-        if (auf !== undefined) {
-          emit('yedges', 'Turn the top layer until every yellow edge matches the centre below it.', turnToken('U', auf), uStickers(U_EDGE_CYCLE));
+      while (!goals.yedges(cur) && guard++ < 6) {
+        const auf = bestAuf(cur);
+        if (auf.count === 4) {
+          emit('yedges', 'Turn the top layer until every yellow edge matches the centre below it.', turnToken('U', auf.k), uStickers(U_EDGE_CYCLE));
           break;
         }
-        const plan = planAlg(cur, ALGS.yellowEdges, solvableByTopTurn, 3);
-        if (!plan) throw SolverBug('Yellow edge plan failed');
-        const afterTurn = withU(cur, plan[0]);
-        const matched = U_EDGE_CYCLE.filter((e) => pieceSolved(afterTurn, e));
-        let text;
-        if (matched.length === 0) text = 'No edge can match a centre right now. Do the EDGE TRICK once; it swaps the front and left edges. Then some will match.';
-        else text = 'Turn the top so the ' + joinWords(matched.map((e) => POSITION_WORD[e].toUpperCase())) + ' edge' + (matched.length > 1 ? 's match their centres' : ' matches its centre') + '. Then do the EDGE TRICK: it swaps the front and left edges.';
-        emit('yedges', text, [turnToken('U', plan[0])].filter(Boolean).concat(Cube.parseAlg(ALGS.yellowEdges)), uStickers(U_EDGE_CYCLE));
+        const uTok = turnToken('U', auf.k);
+        if (uTok) {
+          emit('yedges', 'Turn the top layer until two yellow edges match the centres under them. Two is the most you can match by turning the top.', uTok, uStickers(U_EDGE_CYCLE));
+        }
+        const matched = matchesOf(cur);
+        const opposite = matched.length === 2 && matched.includes('UF') === matched.includes('UB');
+        if (!opposite && matched.length === 2) {
+          let k = 0;
+          while (k < 4 && !(pieceSolved(withY(cur, k), 'UB') && pieceSolved(withY(cur, k), 'UR'))) k++;
+          if (k === 4) throw SolverBug('Yellow edge pair could not be held at the back and right');
+          const yTok = turnToken('y', k);
+          if (yTok) {
+            emit('yedges', 'The ' + joinWords(matched.map((e) => POSITION_WORD[e].toUpperCase())) + ' edges match their centres. Turn the WHOLE cube so those two are at the BACK and the RIGHT.', yTok, uStickers(U_EDGE_CYCLE));
+          }
+          emit('yedges', 'Now do the EDGE TRICK. It swaps the front and left edges and leaves the back and right ones alone, so all four end up right.', ALGS.yellowEdges, uStickers(U_EDGE_CYCLE));
+        } else {
+          emit('yedges', 'The two matching edges are opposite each other, so the trick cannot finish in one go. Do the EDGE TRICK once and they will end up next to each other.', ALGS.yellowEdges, uStickers(U_EDGE_CYCLE));
+        }
       }
       if (!goals.yedges(cur)) throw SolverBug('Yellow edges failed');
     }
@@ -438,27 +496,39 @@
   }
 
   // State a learner sees at the start of `stage`: scramble, then solve every earlier stage.
+  // The cube as a learner meets it at the start of `stage`: scramble, then replay the
+  // steps of every earlier stage. `needsStage` is false when the solve contains no
+  // step for this stage at all, i.e. the scramble happened to arrive with it done.
   function buildStage(stage, scrambleMoves) {
     const scrambled = Cube.applyAlg(Cube.solved(), scrambleMoves || Cube.scramble(25));
     const idx = STAGES.indexOf(stage);
     const { steps } = solve(scrambled);
     let s = scrambled;
+    let needsStage = false;
     for (const st of steps) {
-      if (STAGES.indexOf(st.stage) >= idx) break;
+      const k = STAGES.indexOf(st.stage);
+      if (k >= idx) { needsStage = k === idx; break; }
       s = Cube.applyAlg(s, st.moves);
     }
-    return s;
+    return { state: s, needsStage };
   }
 
   // A practice cube for `stage`. Some scrambles land on a state where the stage is
-  // already done (about 1 in 9 for the yellow cross), which would hand a learner a win
-  // they did not earn, so re-roll until the stage has real work in it. Passing an
-  // explicit scramble keeps the result deterministic for tests.
+  // already done (about 1 in 9 for the yellow cross), which would hand a learner a
+  // win they did not earn, so re-roll until the stage has real work in it. With an
+  // explicit scramble the extra rolls are derived from it, so tests stay repeatable.
   function stateForStage(stage, scrambleMoves) {
-    let s = buildStage(stage, scrambleMoves);
-    if (scrambleMoves) return s;
-    for (let i = 0; i < 25 && goals[stage](s); i++) s = buildStage(stage);
-    return s;
+    let out = buildStage(stage, scrambleMoves);
+    let extra = scrambleMoves ? Cube.parseAlg(scrambleMoves) : null;
+    for (let i = 0; i < 25 && !out.needsStage; i++) {
+      if (extra) {
+        extra = extra.concat(FACE_MOVES[(i * 7 + 3) % FACE_MOVES.length]);
+        out = buildStage(stage, extra);
+      } else {
+        out = buildStage(stage);
+      }
+    }
+    return out.state;
   }
 
   return { ALGS, STAGES, goals, solve, search, planAlg, stateForStage, midTwistPhase, fixedCorner: FIXED_CORNER };
