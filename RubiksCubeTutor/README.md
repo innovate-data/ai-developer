@@ -64,7 +64,7 @@ The copy is British English throughout (centre, colour, memorise, anticlockwise)
 | 5 | White Corners | Put a corner above its home and repeat Righty until it drops in. | Righty `R U R' U'` |
 | 6 | The Middle Layer | Upside-down T, then the Right or Left trick. | Right trick `U R U' R' U' F' U F`, Left trick `U' L' U L U F U' F'` |
 | 7 | The Yellow Cross | Dot → L → line → cross, with the L held at back-left. | Cross trick `F R U R' U' F'` |
-| 8 | Yellow Edges Home | Match two edges at back and right; the trick swaps front and left. | Edge trick `R U R' U R U2 R' U` |
+| 8 | Yellow Edges Home | Turn the top to match two edges, turn the whole cube to hold them at back and right. | Edge trick `R U R' U R U2 R' U` |
 | 9 | Yellow Corners Home | Keep a correct corner at the front-right; the other three cycle. | Corner trick `U R U' L' U R' U' L` |
 | 10 | The Grand Finale | Twist each corner with 2 or 4 repetitions; only the top layer turns between corners. | Twist trick `R' D' R D` |
 
@@ -122,6 +122,16 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
 * Facts the text relies on (which corner the corner trick keeps, which edges the edge
   trick swaps, where the L must be held) are computed by simulation and asserted in
   tests, not remembered.
+* **The words drive the moves, not the other way round.** For the last-layer stages the
+  top-layer turn is derived from the case the lesson names, not from a search for any
+  turn that happens to work. An earlier version searched, and so printed "hold the L at
+  the back and the left" while doing something else: harmless on screen, but it would
+  strand a child following along with a real cube. The tests now assert the shape is
+  where the sentence says it is.
+* One subtlety worth knowing when editing: turning the **top** changes *which* last-layer
+  edges match their centres, because the centres stay put. Only turning the **whole cube**
+  carries the pieces and their centres together, so that is how a matching pair is
+  brought round to the back and the right.
 * `midTwistPhase()` recognises a cube whose bottom layers are scrambled only because the
   learner is halfway through the final twist stage, and resumes there instead of
   restarting from the daisy. This matters for hints.
@@ -155,7 +165,14 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   its steps, and the replayed steps reproducing the final state;
 * lesson facts (algorithms keep the first two layers; L shape at back-left; line
   horizontal);
-* resuming from mid-twist states, including after an extra top-layer turn.
+* resuming from mid-twist states, including after an extra top-layer turn;
+* that each step's words match the moves it performs: the yellow-cross shape really
+  is held where the text says, the yellow-edge step really delivers what it promises,
+  and the middle-layer step highlights the edge it is talking about;
+* that anything `validate()` accepts, the solver can actually solve;
+* that the algorithms printed in the lessons are the ones the solver runs, so the
+  teaching and the code cannot drift apart;
+* that a practice cube always still needs the stage it was built for.
 
 `npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium.
 Every case is a bug that was found and fixed, kept so it cannot come back:
