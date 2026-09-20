@@ -176,13 +176,11 @@ main {
 .cube { position: relative; width: 0; height: 0; transform-style: preserve-3d; }
 .cubie { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
 .face {
-  position: absolute; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 7px;
+  position: absolute; border-radius: 7px;   /* size, margin and border width are set per cube by view.js */
   background: var(--plastic); border: 3px solid var(--plastic); backface-visibility: hidden;
   transition: filter 0.2s ease, box-shadow 0.2s ease;
 }
 .face.inner { background: var(--plastic); border-color: var(--plastic); filter: brightness(0.6); }
-#play-cube .face { width: 60px; height: 60px; margin: -30px 0 0 -30px; }
-#solve-cube .face { width: 44px; height: 44px; margin: -22px 0 0 -22px; border-width: 2px; border-radius: 5px; }
 .c-W { background: var(--W); } .c-Y { background: var(--Y); } .c-G { background: var(--G); }
 .c-B { background: var(--B); } .c-R { background: var(--R); } .c-O { background: var(--O); }
 .face.hl { box-shadow: inset 0 0 0 5px var(--hl), 0 0 14px var(--hl); animation: pulse 0.9s ease-in-out infinite alternate; }
@@ -197,6 +195,15 @@ main {
 }
 .pad-btn:active { transform: translateY(2px); box-shadow: none; }
 .pad-btn.rot { background: var(--rot-bg); border-color: var(--rot-line); }
+.pad-btn.inner { background: var(--accent-soft); border-color: var(--accent-line); font-size: 1.05rem; }
+.pad-label { color: var(--muted); font-size: 0.8rem; font-weight: 600; margin-top: 4px; }
+.size-pick { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
+.size-btn {
+  min-width: 60px; height: 46px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); color: var(--ink);
+  font-weight: 700; font-size: 1.05rem; box-shadow: 0 2px 0 var(--line);
+}
+.size-btn:active { transform: translateY(2px); box-shadow: none; }
+.size-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); box-shadow: none; }
 .pad-btn sup { font-size: 0.8em; }
 .pad-hint { color: var(--muted); font-size: 0.8rem; text-align: center; max-width: 420px; }
 

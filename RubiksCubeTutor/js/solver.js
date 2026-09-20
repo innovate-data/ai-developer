@@ -131,6 +131,43 @@
     return null;
   }
 
+  // A 2x2 is the corners of a 3x3. To guide one, the 3x3 solver runs with these goals,
+  // which never look at an edge, and skips every stage that only moves edges.
+  const dCorners = (s) => D_CORNERS.every((c) => pieceSolved(s, c));
+  const allCorners = (s) => D_CORNERS.concat(U_CORNER_CYCLE).every((c) => pieceSolved(s, c));
+  const cornerGoals = {
+    orient: () => true,
+    daisy: () => true,
+    cross: () => true,
+    corners: dCorners,
+    middle: dCorners,
+    ycross: dCorners,
+    yedges: dCorners,
+    ycorners: (s) => dCorners(s) && U_CORNER_CYCLE.every((c) => cornerPositioned(s, c)),
+    ytwist: (s) => dCorners(s) && [0, 1, 2, 3].some((k) => allCorners(withU(s, k))),
+    finish: allCorners,
+  };
+
+  // Parity of where the four top corners sit against where their colours say they
+  // belong. On a 3x3 it is always even once the edges are solved; on a 2x2 a single
+  // top turn flips it, which is how the corner trick (a 3-cycle) can finish the job.
+  function uCornerParity(s) {
+    const perm = U_CORNER_CYCLE.map((name) => {
+      const cols = Cube.pieceColors(s, Cube.pieceAt(name)).sort().join('');
+      return U_CORNER_CYCLE.findIndex((n) => Cube.pieceAt(n).faces.map((f) => center(s, f)).sort().join('') === cols);
+    });
+    if (perm.includes(-1)) return -1;
+    let parity = 0;
+    const seen = [false, false, false, false];
+    for (let i = 0; i < 4; i++) {
+      if (seen[i]) continue;
+      let j = i, len = 0;
+      while (!seen[j]) { seen[j] = true; j = perm[j]; len++; }
+      parity ^= (len - 1) & 1;
+    }
+    return parity;
+  }
+
   // Shortest list of top-layer turns k (0..3) such that doing "U^k then alg"
   // repeatedly makes done(state) true. Depth-limited iterative deepening.
   function planAlg(state, alg, done, maxDepth) {
@@ -192,16 +229,17 @@
   // If the first two layers are broken only because a learner is in the middle
   // of the twist stage, return how many more R' D' R D would restore them (1-5).
   // Returns 0 when the cube is not in such a state.
-  function midTwistPhase(s) {
-    if (goals.middle(s)) return 0;
+  function midTwistPhase(s, G) {
+    G = G || goals;
+    if (G.middle(s)) return 0;
     let t = s;
     for (let j = 1; j <= 5; j++) {
       t = Cube.applyAlg(t, ALGS.twist);
-      if (goals.middle(t)) {
+      if (G.middle(t)) {
         // the restored cube must also have its top layer ready for twisting
         const ready = [0, 1, 2, 3].some((k) => {
           const u = withU(t, k);
-          return U_EDGE_CYCLE.every((e) => pieceSolved(u, e)) && U_CORNER_CYCLE.every((c) => cornerPositioned(u, c));
+          return (G === cornerGoals || U_EDGE_CYCLE.every((e) => pieceSolved(u, e))) && U_CORNER_CYCLE.every((c) => cornerPositioned(u, c));
         });
         return ready ? j : 0;
       }
@@ -210,13 +248,17 @@
   }
 
   // -------------------------------------------------------------- solver
-  function solve(start) {
-    const v = Cube.validate(start);
-    if (!v.ok) throw new Error(v.reason);
+  function solve(start, options) {
+    const opts = options || {};
+    const G = opts.cornersOnly ? cornerGoals : goals;
+    if (!opts.cornersOnly) {
+      const v = Cube.validate(start);
+      if (!v.ok) throw new Error(v.reason);
+    }
 
     let cur = start.slice();
     const steps = [];
-    if (Cube.isSolved(cur)) return { steps, state: cur };
+    if (G.finish(cur)) return { steps, state: cur };
 
     function emit(stage, text, alg, highlight) {
       const moves = Cube.parseAlg(alg || '');
@@ -255,12 +297,12 @@
       }
     }
 
-    const resumeTwist = midTwistPhase(cur) > 0;
+    const resumeTwist = midTwistPhase(cur, G) > 0;
 
     // ---- stage 1: daisy
     if (!resumeTwist) {
       let guard = 0;
-      while (!goals.daisy(cur) && guard++ < 8) {
+      while (!G.daisy(cur) && guard++ < 8) {
         const before = countPetals(cur) + countCrossEdges(cur);
         let best = null;
         for (const sc of ['F', 'R', 'B', 'L'].map((f) => C(f))) {
@@ -276,13 +318,13 @@
         if (!best) throw SolverBug('Daisy search failed');
         emit('daisy', 'Find the edge with WHITE and ' + CN(best.sc) + '. ' + whereIs(best.piece) + stickerFaces(best.piece, white()) + ' Bring it up to the top, white facing up, like a daisy petal.', best.path, best.piece.idx);
       }
-      if (!goals.daisy(cur)) throw SolverBug('Daisy stage failed');
+      if (!G.daisy(cur)) throw SolverBug('Daisy stage failed');
     }
 
     // ---- stage 2: white cross
     if (!resumeTwist) {
       let guard = 0;
-      while (!goals.cross(cur) && guard++ < 6) {
+      while (!G.cross(cur) && guard++ < 6) {
         const pos = U_EDGE_CYCLE.find((e) => petal(cur, e));
         if (!pos) throw SolverBug('Cross: no petal left');
         const p = Cube.pieceAt(pos);
@@ -293,13 +335,13 @@
         const moves = [turnToken('U', k), target + '2'].filter(Boolean);
         emit('cross', 'Look at the petal with the ' + CN(sideColor) + ' sticker on its side. Turn ONLY the top layer until that sticker is right above the ' + cname(sideColor) + ' centre. Then turn that side twice. The white sticker goes down to the bottom.', moves, p.idx);
       }
-      if (!goals.cross(cur)) throw SolverBug('Cross stage failed');
+      if (!G.cross(cur)) throw SolverBug('Cross stage failed');
     }
 
     // ---- stage 3: white corners
     if (!resumeTwist) {
       let guard = 0;
-      while (!goals.corners(cur) && guard++ < 20) {
+      while (!G.corners(cur) && guard++ < 20) {
         const topName = U_CORNER_CYCLE.find((n) => Cube.pieceColors(cur, Cube.pieceAt(n)).includes(white()));
         if (topName) {
           const cols = Cube.pieceColors(cur, Cube.pieceAt(topName)).filter((c) => c !== white());
@@ -334,13 +376,13 @@
           emit('corners', 'Pop that corner out of the bottom with one Righty. Then we will put it back the right way.', ALGS.righty, Cube.pieceAt('DFR').idx);
         }
       }
-      if (!goals.corners(cur)) throw SolverBug('Corners stage failed');
+      if (!G.corners(cur)) throw SolverBug('Corners stage failed');
     }
 
     // ---- stage 4: middle layer
     if (!resumeTwist) {
       let guard = 0;
-      while (!goals.middle(cur) && guard++ < 20) {
+      while (!G.middle(cur) && guard++ < 20) {
         const topName = U_EDGE_CYCLE.find((n) => {
           const cols = Cube.pieceColors(cur, Cube.pieceAt(n));
           return !cols.includes(white()) && !cols.includes(yellow());
@@ -374,7 +416,7 @@
           emit('middle', 'Do the SLIDE-RIGHT TRICK once. It pops the wrong edge up to the top. Then we will put the correct edge in.', ALGS.middleRight, Cube.pieceAt('FR').idx);
         }
       }
-      if (!goals.middle(cur)) throw SolverBug('Middle stage failed');
+      if (!G.middle(cur)) throw SolverBug('Middle stage failed');
     }
 
     // ---- stage 5: yellow cross
@@ -385,7 +427,7 @@
     // -> cross, and the dot lands on the back-left L by itself.
     if (!resumeTwist) {
       let guard = 0;
-      while (!goals.ycross(cur) && guard++ < 5) {
+      while (!G.ycross(cur) && guard++ < 5) {
         const up = U_EDGE_CYCLE.filter((e) => yellowUp(cur, e));
         const isLine = up.length === 2 && up.includes('UF') === up.includes('UB');
         let k = 0;
@@ -402,7 +444,7 @@
         if (k === null) throw SolverBug('Yellow cross shape not recognised');
         emit('ycross', text, [turnToken('U', k)].filter(Boolean).concat(Cube.parseAlg(ALGS.yellowCross)), uStickers(U_EDGE_CYCLE));
       }
-      if (!goals.ycross(cur)) throw SolverBug('Yellow cross failed');
+      if (!G.ycross(cur)) throw SolverBug('Yellow cross failed');
     }
 
     // ---- stage 6: yellow edges
@@ -424,7 +466,7 @@
         return { k: bk, count: bc };
       };
       let guard = 0;
-      while (!goals.yedges(cur) && guard++ < 6) {
+      while (!G.yedges(cur) && guard++ < 6) {
         const auf = bestAuf(cur);
         if (auf.count === 4) {
           emit('yedges', 'Turn ONLY the top layer until every yellow edge matches the centre under it.', turnToken('U', auf.k), uStickers(U_EDGE_CYCLE));
@@ -449,14 +491,24 @@
           emit('yedges', 'The two matching edges are opposite each other, so the trick cannot finish in one go. Do the EDGE TRICK once and they will end up next to each other.', ALGS.yellowEdges, uStickers(U_EDGE_CYCLE));
         }
       }
-      if (!goals.yedges(cur)) throw SolverBug('Yellow edges failed');
+      if (!G.yedges(cur)) throw SolverBug('Yellow edges failed');
     }
 
     // ---- stage 7: yellow corners in place
     if (!resumeTwist) {
       const fixedSides = Cube.pieceAt(FIXED_CORNER).faces.filter((f) => f !== 'U').sort().join('');
+      if (opts.cornersOnly && uCornerParity(cur) === 1) {
+        let bestK = -1, bestPlaced = -1;
+        for (let k = 0; k < 4; k++) {
+          const u = withU(cur, k);
+          if (uCornerParity(u) !== 0) continue;
+          const n = U_CORNER_CYCLE.filter((c) => cornerPositioned(u, c)).length;
+          if (n > bestPlaced) { bestPlaced = n; bestK = k; }
+        }
+        if (bestK > 0) emit('ycorners', 'Turn ONLY the top layer, so that as many yellow corners as possible are home.', turnToken('U', bestK), uStickers(U_CORNER_CYCLE));
+      }
       let guard = 0;
-      while (!goals.ycorners(cur) && guard++ < 4) {
+      while (!G.ycorners(cur) && guard++ < 4) {
         const placed = U_CORNER_CYCLE.find((c) => cornerPositioned(cur, c));
         if (placed) {
           const p = Cube.pieceAt(placed);
@@ -470,7 +522,7 @@
           emit('ycorners', 'No yellow corner is home yet. Do the CORNER TRICK once, and one corner will land in its home.', ALGS.yellowCorners, uStickers(U_CORNER_CYCLE));
         }
       }
-      if (!goals.ycorners(cur)) throw SolverBug('Yellow corner placement failed');
+      if (!G.ycorners(cur)) throw SolverBug('Yellow corner placement failed');
     }
 
     // ---- stage 8: twist yellow corners
@@ -496,28 +548,85 @@
         emit('ytwist', text, moves, Cube.pieceAt('UFR').idx);
         first = false;
       }
-      if (!goals.middle(cur)) {
+      if (!G.middle(cur)) {
         // Only reachable when a learner twisted a corner by hand: finish the cycle.
-        const j = midTwistPhase(cur);
+        const j = midTwistPhase(cur, G);
         if (!j) throw SolverBug('Corner twist failed');
         const plan = repeatOrBackwards(j, ALGS.twist, ALGS.twistBack);
         const moves = [];
         for (let r = 0; r < plan.count; r++) moves.push(...Cube.parseAlg(plan.alg));
         emit('ytwist', 'The bottom is still messy. Do the TWIST TRICK' + (plan.backwards ? ' BACKWARDS' : '') + ' ' + (plan.count === 1 ? 'once' : plan.count + ' more times') + ' to fix it.', moves, []);
       }
-      if (!goals.ytwist(cur)) throw SolverBug('Corner twist failed');
+      if (!G.ytwist(cur)) throw SolverBug('Corner twist failed');
     }
 
     // ---- stage 9: finish
-    if (!Cube.isSolved(cur)) {
-      const k = [1, 2, 3].find((k) => Cube.isSolved(withU(cur, k)));
+    if (!G.finish(cur)) {
+      const k = [1, 2, 3].find((k) => G.finish(withU(cur, k)));
       if (k !== undefined) emit('finish', 'Turn ONLY the top layer to line everything up. You did it!', turnToken('U', k), []);
     }
-    if (!Cube.isSolved(cur)) throw new Error('Solver did not reach a solved cube');
+    if (!G.finish(cur)) throw SolverBug('Solver did not reach a solved cube');
     return { steps, state: cur };
   }
 
   // State a learner sees at the start of `stage`: scramble, then solve every earlier stage.
+  // ------------------------------------------------------------- 2x2 cubes
+  // A 2x2 sticker (face f, row r, column c in 0..1) is the 3x3 corner sticker at
+  // row 2r, column 2c of the same face. Put the 2x2's stickers on those spots of a
+  // solved 3x3, and the 3x3 solver's corner stages solve it with the same tricks.
+  const TWO_TO_THREE = [];
+  const THREE_TO_TWO = new Map();
+  for (let f = 0; f < 6; f++) for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
+    const i3 = f * 9 + 2 * r * 3 + 2 * c;
+    TWO_TO_THREE.push(i3);
+    THREE_TO_TWO.set(i3, TWO_TO_THREE.length - 1);
+  }
+
+  function validate2x2(state2) {
+    if (!state2 || state2.length !== 24) return { ok: false, reason: 'A 2x2 has exactly 24 stickers.' };
+    const counts = {};
+    for (const c of state2) counts[c] = (counts[c] || 0) + 1;
+    for (const c of Object.keys(Cube.COLOR_NAMES)) {
+      if ((counts[c] || 0) !== 4) return { ok: false, reason: 'There should be 4 ' + Cube.COLOR_NAMES[c] + ' stickers, but I count ' + (counts[c] || 0) + '.' };
+    }
+    const ref = Cube.solved();
+    const s3 = ref.slice();
+    state2.forEach((col, i2) => { s3[TWO_TO_THREE[i2]] = col; });
+    const used = new Set();
+    let twist = 0;
+    for (const corner of Cube.CORNERS) {
+      const cols3 = Cube.cornerClockwise(corner).map((k) => s3[k]);
+      let home = null, rot = -1;
+      for (let i = 0; i < Cube.CORNERS.length && home === null; i++) {
+        const refCols = Cube.cornerClockwise(Cube.CORNERS[i]).map((k) => ref[k]);
+        const r = refCols.indexOf(cols3[0]);
+        if (r >= 0 && cols3.every((x, j) => x === refCols[(r + j) % 3])) { home = i; rot = r; }
+      }
+      if (home === null) return { ok: false, reason: 'There is no ' + cols3.map((x) => Cube.COLOR_NAMES[x]).join('-') + ' corner on a real cube. Check that corner\'s three stickers.' };
+      if (used.has(home)) return { ok: false, reason: 'The ' + cols3.map((x) => Cube.COLOR_NAMES[x]).join('-') + ' corner appears twice.' };
+      used.add(home);
+      twist += rot;
+    }
+    if (twist % 3 !== 0) return { ok: false, reason: 'One corner looks twisted. Double-check its stickers.' };
+    return { ok: true, embedded: s3 };
+  }
+
+  function solve2x2(state2) {
+    const v = validate2x2(state2);
+    if (!v.ok) throw new Error(v.reason);
+    const res = solve(v.embedded, { cornersOnly: true });
+    const steps = res.steps.map((st) => ({
+      stage: st.stage,
+      // a 2x2 has no centres; its "sides" are wherever the corners say they are
+      text: st.text.replace(/centres/g, 'sides').replace(/centre/g, 'side'),
+      moves: st.moves,
+      highlight: st.highlight.map((i) => THREE_TO_TWO.get(i)).filter((i) => i !== undefined),
+    }));
+    const state = state2.slice();
+    for (let i2 = 0; i2 < 24; i2++) state[i2] = res.state[TWO_TO_THREE[i2]];
+    return { steps, state };
+  }
+
   // The cube as a learner meets it at the start of `stage`: scramble, then replay the
   // steps of every earlier stage. `needsStage` is false when the solve contains no
   // step for this stage at all, i.e. the scramble happened to arrive with it done.
@@ -553,5 +662,5 @@
     return out.state;
   }
 
-  return { ALGS, STAGES, goals, solve, search, planAlg, stateForStage, midTwistPhase, fixedCorner: FIXED_CORNER };
+  return { ALGS, STAGES, goals, cornerGoals, solve, solve2x2, validate2x2, search, planAlg, stateForStage, midTwistPhase, fixedCorner: FIXED_CORNER };
 });

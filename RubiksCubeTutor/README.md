@@ -9,7 +9,8 @@ including on a phone or tablet.
 RubiksCubeTutor/
 ├── index.html            the app shell (three screens: Learn, Play, Solve my cube)
 ├── css/style.css         kid-friendly styling, light and dark themes, 3D cube, net editor
-├── js/cube.js            cube model: facelets, moves, pieces, validity check
+├── js/cube.js            3x3 model: facelets, moves, pieces, validity check
+├── js/ncube.js           N x N model for 2x2 to 6x6, sticker-identical to cube.js at N=3
 ├── js/solver.js          beginner-method solver that explains every step
 ├── js/view.js            3D cube (CSS transforms) and 2D net view
 ├── js/lessons.js         the course content (plain data, easy to edit or translate)
@@ -105,9 +106,11 @@ Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" bu
 cube with a move pad on the left, text, tricks, interactive widgets, practice area and
 tips on the right.
 
-**Play** – free play with a scramble button, undo, a timer that starts on the first move
-and a move counter. *Help me solve it* opens the guided walkthrough for the current
-cube; making a manual move clears the (now stale) guide.
+**Play** – free play on a 2×2, 3×3, 4×4, 5×5 or 6×6, with a mix-up button, undo, a timer
+that starts on the first move and a move counter. Bigger cubes get a row of buttons per
+inner layer ("2U" is the second layer from the top). *Help me solve it* opens the guided
+walkthrough on the 2×2 and the 3×3; making a manual move clears the (now stale) guide.
+The chosen size is remembered on the device.
 
 **Solve my cube** – a net editor: pick a colour, tap stickers to copy a real cube
 (centres are fixed to yellow on top, green in front). *Check my cube* runs the validity
@@ -173,8 +176,28 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   be a small nudge. The walkthrough folds each piece's set-up turns into its trick, so a
   child sees about 23 cards per solve instead of 47.
 
+### Other sizes (`js/ncube.js`)
+* `NCube.make(N)` builds a model the same way cube.js does, from sticker positions and
+  normals, for any N from 2 up. At N = 3 its sticker indices are identical to cube.js,
+  which a test asserts move by move, so a 3×3 state from either module works in both.
+* Move tokens follow the usual notation: outer faces, `2U` for the second layer in from
+  the top, `Uw` and lowercase `u` for wide turns, `M E S` on odd cubes, `x y z` for the
+  whole cube. Each size's move pad shows depths down to the middle, since the exact
+  middle of an odd cube never needs to turn.
+* **A 2×2 is solved by the 3×3 solver.** Its 24 stickers are the corner stickers of a
+  3×3, so they are placed on a solved 3×3 and the solver runs in a corners-only mode:
+  every edge stage is skipped, and the goals never look at an edge. One extra step
+  covers the difference between the puzzles: on a 2×2 a single top turn changes the
+  parity of the top corners, so the solver makes it even before the corner trick, which
+  is a 3-cycle, can finish. Average: 72 moves, 19 steps, over 300 scrambles.
+* **4×4 and up are free play only.** Guiding those needs the reduction method (centres,
+  edge pairing, parity algorithms), a different curriculum from the one this app
+  teaches, so the guide says so rather than pretending.
+
 ### 3D view (`js/view.js`)
-* 27 cubie `<div>`s with six faces each, positioned with CSS 3D transforms. A layer turn
+* N³ cubie `<div>`s with six faces each, positioned with CSS 3D transforms. The view
+  takes a model and sizes stickers so every cube is about the same size on screen;
+  cubies buried inside a big cube are never created. A layer turn
   transitions the cubies of that layer, then the new state is painted and transforms
   reset. No WebGL, no canvas, so it works everywhere and is easy to style.
 * Drag to orbit; highlights pulse the stickers a step talks about.
@@ -224,6 +247,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R12 | A practice cube could open already solved, handing out an unearned win. |
 | R13 | An impossible painted cube has to be explained in words a child understands. |
 | R14 | The Read button had no way to stop; a second press now stops the narration. |
+| R15 | Every size from 2×2 to 6×6 draws, turns, undoes, mixes and resets; the guide solves a 2×2 and declines a 4×4; the size survives a reload. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
 produces, by touch, on an iPhone and an iPad profile: 27 checks.

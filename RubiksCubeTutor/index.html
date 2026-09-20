@@ -70,6 +70,8 @@
         <div class="col-text">
           <h2>🎮 Play</h2>
           <p class="subtitle">Mix up the cube, then see how fast you can solve it. Stuck? Cube Clubhouse will help.</p>
+          <div id="play-size" class="size-pick" role="group" aria-label="Cube size"></div>
+          <p id="play-size-note" class="fact"></p>
           <div class="timer" id="play-timer" aria-live="polite">00:00</div>
           <div class="btn-row">
             <button type="button" id="play-scramble" class="btn primary">🎲 Mix it up</button>
@@ -116,6 +118,7 @@
   <footer class="foot">Cube Clubhouse · a kid-friendly Rubik's Cube tutor · everything runs in your browser, and nothing is sent anywhere.</footer>
 
   <script src="js/cube.js"></script>
+  <script src="js/ncube.js"></script>
   <script src="js/solver.js"></script>
   <script src="js/view.js"></script>
   <script src="js/lessons.js"></script>

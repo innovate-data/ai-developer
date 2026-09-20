@@ -269,6 +269,79 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.close();
   }
 
+  console.log('R15 cubes from 2x2 to 6x6 can be picked, turned, mixed and solved');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+    const stickers = () => p.evaluate(() => document.querySelectorAll('#play-cube .face:not(.inner)').length);
+    const viewState = () => p.evaluate(() => [...document.querySelectorAll('#play-cube .face:not(.inner)')].map((f) => f.className.match(/c-\w/)[0]).join(''));
+    const solvedOnScreen = () => p.evaluate(() => {
+      const by = {};
+      document.querySelectorAll('#play-cube .face:not(.inner)').forEach((f) => {
+        const i = +f.dataset.index; const N = Math.round(Math.sqrt(document.querySelectorAll('#play-cube .face:not(.inner)').length / 6));
+        (by[Math.floor(i / (N * N))] = by[Math.floor(i / (N * N))] || new Set()).add(f.className.match(/c-\w/)[0]);
+      });
+      return Object.values(by).every((set) => set.size === 1);
+    });
+    ck('five sizes are offered', await p.locator('#play-size .size-btn').count() === 5);
+    for (const n of [2, 4, 5, 6, 3]) {
+      await p.locator('#play-size .size-btn', { hasText: n + '×' + n }).click();
+      await p.waitForTimeout(250);
+      ck(n + 'x' + n + ' draws ' + (6 * n * n) + ' stickers', (await stickers()) === 6 * n * n, await stickers());
+      const before = await viewState();
+      await p.locator('#play-controls .pad-btn').first().click();
+      await p.waitForTimeout(600);
+      ck(n + 'x' + n + ' turns on a tap', (await viewState()) !== before);
+      await p.locator('#play-undo').click();
+      await p.waitForTimeout(600);
+      ck(n + 'x' + n + ' undo puts it back', (await viewState()) === before);
+      if (n >= 4) {
+        const innerBtn = p.locator('#play-controls .pad-btn.inner').first();
+        ck(n + 'x' + n + ' offers inner-layer buttons', (await innerBtn.count()) === 1);
+        await innerBtn.click();
+        await p.waitForTimeout(600);
+        ck(n + 'x' + n + ' an inner layer turn changes the cube', (await viewState()) !== before);
+        await p.locator('#play-reset').click();
+        await p.waitForTimeout(400);
+      }
+      await p.locator('#play-scramble').click();
+      await p.waitForTimeout(2600);
+      ck(n + 'x' + n + ' mixes up', !(await solvedOnScreen()));
+      await p.locator('#play-reset').click();
+      await p.waitForTimeout(400);
+      ck(n + 'x' + n + ' Make it solved', await solvedOnScreen());
+    }
+    // the guide works on a 2x2
+    await p.locator('#play-size .size-btn', { hasText: '2×2' }).click();
+    await p.waitForTimeout(250);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForTimeout(400);
+    ck('2x2: the guide offers steps', /step 1 of/.test(await p.locator('#play-guide .guide-count').textContent()));
+    ck('2x2: no step mentions a centre', !/centre/.test(await p.locator('#play-guide').textContent()));
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 120000 });
+    ck('2x2: the guide solves it', await solvedOnScreen());
+    // and refuses politely on a 4x4
+    await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
+    await p.waitForTimeout(250);
+    ck('4x4: help is not offered', await p.locator('#play-help').isDisabled());
+    ck('4x4: the note says why', /2×2 and the 3×3/.test(await p.locator('#play-size-note').textContent()));
+    // the choice is remembered, and My real cube knows Play is not a 3x3
+    await p.reload();
+    await p.waitForTimeout(300);
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+    ck('the chosen size survives a reload', (await stickers()) === 6 * 16);
+    await p.locator('nav button[data-screen="solve"]').click();
+    await p.locator('#solve-from-play').click();
+    ck('My real cube explains it needs a 3x3', /4×4/.test(await p.locator('#solve-msg').textContent()));
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-size .size-btn', { hasText: '3×3' }).click();
+    await p.waitForTimeout(200);
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

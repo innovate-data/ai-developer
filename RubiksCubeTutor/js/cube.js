@@ -413,6 +413,6 @@
     GEO, EDGES, CORNERS, CUBIES,
     parseMove, parseAlg, movePerm, applyMove, applyAlg, invertMove, invertAlg,
     pieceAt, sticker, pieceColors, findPiece, faceOfColor, center, centerIndex, faceOfIndex,
-    solved, isSolved, toString, fromString, scramble, validate, referenceFor,
+    solved, isSolved, toString, fromString, scramble, validate, referenceFor, cornerClockwise,
   };
 });

@@ -2,6 +2,7 @@
 const assert = require('assert');
 const Cube = require('../js/cube.js');
 const Solver = require('../js/solver.js');
+const NCube = require('../js/ncube.js');
 
 let passed = 0;
 function test(name, fn) {
@@ -333,6 +334,90 @@ test('a corner is never asked for more than three Righties or two twists, and th
     }
   }
   assert(corners > 200 && twists > 100 && backwards > 50, 'too few sampled: ' + [corners, twists, backwards]);
+});
+
+test('the N x N model agrees with the 3x3 model sticker for sticker', () => {
+  const M = NCube.make(3);
+  assert.strictEqual(M.COUNT, 54);
+  for (let i = 0; i < 54; i++) {
+    assert.deepStrictEqual(M.GEO[i].pos, Cube.GEO[i].pos, 'position of sticker ' + i);
+    assert.deepStrictEqual(M.GEO[i].n, Cube.GEO[i].n, 'normal of sticker ' + i);
+  }
+  assert(eq(M.solved(), S));
+  for (const m of ['U', "U'", 'U2', 'D', 'L', 'R', 'F', 'B', "B'", 'x', 'y', "z'", 'M', 'E', 'S', 'u', "r'", 'f']) {
+    assert.deepStrictEqual(M.movePerm(m), Cube.movePerm(m), 'move ' + m);
+  }
+  const alg = "R U R' U' F2 D L' B x y' M";
+  assert(eq(M.applyAlg(S, alg), Cube.applyAlg(S, alg)));
+});
+test('every size from 2 to 6: moves have order 4, invert, and scrambles stay legal', () => {
+  const r = rng(66);
+  for (const N of NCube.SIZES) {
+    const M = NCube.make(N);
+    const s0 = M.solved();
+    assert.strictEqual(M.COUNT, 6 * N * N);
+    const tokens = M.padRows().flatMap((row) => row.moves).concat(N % 2 ? ['M', 'E', 'S'] : []);
+    for (const t of tokens) {
+      let s = s0;
+      for (let i = 0; i < 4; i++) s = M.applyMove(s, t);
+      assert(eq(s, s0), N + 'x' + N + ' ' + t + ' x4');
+      assert(eq(M.applyMove(M.applyMove(s0, t), M.invertMove(t)), s0), N + 'x' + N + ' inverse of ' + t);
+      assert(!eq(M.applyMove(s0, t), s0), N + 'x' + N + ' ' + t + ' must do something');
+    }
+    // a scramble keeps N*N stickers of each colour, and undoing it returns to solved
+    const scr = M.scramble(30, r);
+    const s = M.applyAlg(s0, scr);
+    const counts = {};
+    for (const c of s) counts[c] = (counts[c] || 0) + 1;
+    for (const c of 'WYGBRO') assert.strictEqual(counts[c], N * N, N + 'x' + N + ' count of ' + c);
+    assert(!M.isSolved(s) && M.isSolved(M.applyAlg(s, M.invertAlg(scr))));
+    // a wide turn is the outer turn plus the inner slices; on a 4x4, Rw equals R + 2R
+    if (N >= 4) assert(eq(M.applyMove(s0, 'Rw'), M.applyAlg(s0, 'R 2R')), 'Rw = R 2R on ' + N);
+    // x is every layer turning like R
+    // x is every layer turning like R: the R side layers, the middle if there is one, the L side layers
+    const inner = []; for (let d = 2; d <= M.maxDepth; d++) inner.push(d);
+    const xAlg = ['R'].concat(inner.map((d) => d + 'R')).concat(N % 2 ? ["M'"] : []).concat(inner.slice().reverse().map((d) => d + "L'")).concat(["L'"]);
+    assert(eq(M.applyMove(s0, 'x'), M.applyAlg(s0, xAlg)), 'x on ' + N + ' = ' + xAlg.join(' '));
+    // an inner layer that does not exist is refused
+    assert.throws(() => M.parseMove(N + 'U'), N + 'x' + N + ' layer ' + N);
+    // every pad token has words a child can act on
+    for (const t of tokens) assert(/^Turn|^Roll|^Tilt/.test(M.describe(t)), 'no words for ' + t);
+  }
+});
+
+test('a 2x2 solves with the corner tricks only, from any scramble', () => {
+  const M2 = NCube.make(2);
+  const r = rng(222);
+  let moves = 0, steps = 0, n = 0, maxSteps = 0;
+  for (let i = 0; i < 300; i++) {
+    const scr = M2.scramble(20, r);
+    const s2 = M2.applyAlg(M2.solved(), scr);
+    let res;
+    try { res = Solver.solve2x2(s2); } catch (e) { throw new Error('2x2 scramble ' + scr.join(' ') + ': ' + e.message); }
+    assert(M2.isSolved(res.state), 'not solved: ' + scr.join(' '));
+    let replay = s2;
+    for (const st of res.steps) {
+      assert(['orient', 'corners', 'ycorners', 'ytwist', 'finish'].includes(st.stage), 'a 2x2 has no ' + st.stage + ' stage');
+      assert(!/centre/.test(st.text), 'a 2x2 has no centres: ' + st.text);
+      for (const h of st.highlight) assert(h >= 0 && h < 24, 'highlight off the 2x2: ' + h);
+      replay = M2.applyAlg(replay, st.moves);
+      moves += st.moves.length;
+    }
+    assert(M2.isSolved(replay), 'replaying the steps on a 2x2 did not solve it: ' + scr.join(' '));
+    steps += res.steps.length; maxSteps = Math.max(maxSteps, res.steps.length); n++;
+  }
+  console.log('     2x2: average moves ' + (moves / n).toFixed(1) + ', steps ' + (steps / n).toFixed(1) + ', max steps ' + maxSteps);
+  assert.strictEqual(Solver.solve2x2(M2.solved()).steps.length, 0);
+  const bad = M2.solved(); const t = bad[0]; bad[0] = bad[8]; bad[8] = t;
+  assert.throws(() => Solver.solve2x2(bad), /corner|stickers/);
+});
+test('the 3x3 solver is unchanged by the corners-only option', () => {
+  const r = rng(2026);
+  for (let i = 0; i < 50; i++) {
+    const s = Cube.applyAlg(S, Cube.scramble(25, r));
+    const a = Solver.solve(s), b = Solver.solve(s, {});
+    assert.strictEqual(a.steps.map((x) => x.moves.join(' ')).join('|'), b.steps.map((x) => x.moves.join(' ')).join('|'));
+  }
 });
 
 console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));

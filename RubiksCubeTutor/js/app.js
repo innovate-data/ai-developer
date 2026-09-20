@@ -6,7 +6,9 @@
  */
 (function (root) {
   'use strict';
-  const { Cube, Solver, CubeView, NetView, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
+  const { Cube, Solver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
+  // The biggest cube knows every move token the app can show, so it does the describing.
+  const ANY = NCube.make(NCube.SIZES[NCube.SIZES.length - 1]);
 
   const $ = (sel, el) => (el || document).querySelector(sel);
   const el = (tag, cls, html) => {
@@ -79,7 +81,7 @@
     }
     return null;
   }
-  const words = (m) => MOVE_WORDS[m] || m;
+  const words = (m) => { if (MOVE_WORDS[m]) return MOVE_WORDS[m]; try { return ANY.describe(m); } catch { return m; } };
   const movesInWords = (moves) => {
     const rep = repeatedAlg(moves);
     if (rep) return rep.setup.map(words).join(' ') + ' Then the trick: ' + rep.alg + '. Do it ' + rep.times + ' times.';
@@ -126,7 +128,7 @@
   // Every move chip is a button: tap it to hear what the move means and watch the cube
   // do it and undo it. A hover tooltip is invisible on an iPad, and to a child who
   // cannot read yet, so the chip has to speak for itself.
-  const moveChips = (moves) => Cube.parseAlg(moves).map((m) => '<button type="button" class="chip' + (Cube.parseMove(m).isRotation ? ' rot' : '') + '" data-move="' + m + '" aria-label="' + m + ': ' + (MOVE_WORDS[m] || m) + '">' + m + '</button>').join('');
+  const moveChips = (moves) => Cube.parseAlg(moves).map((m) => '<button type="button" class="chip' + (ANY.parseMove(m).isRotation ? ' rot' : '') + '" data-move="' + m + '" aria-label="' + m + ': ' + words(m) + '">' + m + '</button>').join('');
   const plain = (html) => html.replace(/<[^>]+>/g, '');
 
   // Wire up chip taps for one screen: show the words, say them, and wiggle the cube.
@@ -135,7 +137,7 @@
       const chip = e.target.closest('.chip[data-move]');
       if (!chip) return;
       const m = chip.dataset.move;
-      const words = MOVE_WORDS[m] || m;
+      const meaning = words(m);
       const box = chip.parentElement;
       let cap = box.nextElementSibling;
       if (!cap || !cap.classList.contains('chip-words')) {
@@ -143,8 +145,8 @@
         cap.setAttribute('aria-live', 'polite');
         box.after(cap);
       }
-      cap.innerHTML = '<b>' + m + '</b> ' + words;
-      speak(m + '. ' + words);
+      cap.innerHTML = '<b>' + m + '</b> ' + meaning;
+      speak(m + '. ' + meaning);
       station.demo(m);
     });
   }
@@ -175,21 +177,25 @@
   const starString = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
 
   // ------------------------------------------------------------- MovePad
-  const PAD_ROWS = [
-    ['U', "U'", 'L', "L'", 'F', "F'"],
-    ['R', "R'", 'B', "B'", 'D', "D'"],
-    ['y', "y'", 'x', "x'"],
-  ];
-  function MovePad(container, onMove) {
+  // The move buttons for one cube: the outer sides, then a row per inner layer on a
+  // bigger cube ("2U" is the second layer from the top), then the whole-cube turns.
+  const ORDINAL = ['', '', '2nd', '3rd', '4th', '5th'];
+  function MovePad(container, onMove, model) {
+    const M = model || NCube.make(3);
     container.classList.add('move-pad');
     container.innerHTML = '';
-    for (const row of PAD_ROWS) {
+    let lastDepth = 1;
+    for (const row of M.padRows()) {
+      if (row.depth > 1 && row.depth !== lastDepth) container.appendChild(el('div', 'pad-label', ORDINAL[row.depth] + ' layer in from each side'));
+      if (row.depth === 0 && lastDepth !== 0) container.appendChild(el('div', 'pad-label', 'whole cube'));
+      lastDepth = row.depth;
       const r = el('div', 'pad-row');
-      for (const m of row) {
-        const b = el('button', 'pad-btn' + (Cube.parseMove(m).isRotation ? ' rot' : ''), m.replace("'", '<sup>′</sup>'));
+      for (const m of row.moves) {
+        const mv = M.parseMove(m);
+        const b = el('button', 'pad-btn' + (mv.isRotation ? ' rot' : '') + (mv.depth > 1 ? ' inner' : ''), m.replace("'", '<sup>′</sup>'));
         b.type = 'button';
-        b.title = MOVE_WORDS[m];
-        b.setAttribute('aria-label', MOVE_WORDS[m]);
+        b.title = words(m);
+        b.setAttribute('aria-label', words(m));
         b.addEventListener('click', () => onMove(m));
         r.appendChild(b);
       }
@@ -203,11 +209,13 @@
   }
 
   // A cube "station": a 3D view plus the state that the app trusts.
-  function Station(container, options) {
-    const view = new CubeView(container, options);
+  function Station(container, options, model) {
+    let M = model || NCube.make(3);
+    const view = new CubeView(container, Object.assign({ model: M }, options || {}));
     const st = {
       view,
-      state: Cube.solved(),
+      get model() { return M; },
+      state: M.solved(),
       history: [],
       listeners: [],
       onChange(fn) { st.listeners.push(fn); },
@@ -221,15 +229,23 @@
         view.setHighlights([]);
         st.emit();
       },
+      // Change the cube's size: a fresh, solved cube of the new model.
+      setModel(m) {
+        M = m;
+        view.setModel(m);
+        st.state = m.solved();
+        st.history = [];
+        st.emit();
+      },
       move(token, duration) {
-        st.state = Cube.applyMove(st.state, token);
+        st.state = M.applyMove(st.state, token);
         st.history.push(token);
         st.emit();
         return view.play([token], duration);
       },
       play(moves, duration, onMove) {
-        const tokens = Cube.parseAlg(moves);
-        st.state = Cube.applyAlg(st.state, tokens);
+        const tokens = M.parseAlg(moves);
+        st.state = M.applyAlg(st.state, tokens);
         st.history.push(...tokens);
         st.emit();
         return view.play(tokens, duration, onMove);
@@ -238,7 +254,7 @@
       // untouched, so a hint, the guide and the practice goal all stay exactly as they
       // were. If the cube is replaced mid-wiggle, set() repaints it, so nothing is lost.
       demo(token) {
-        return view.play([token, Cube.invertMove(token)], 450);
+        return view.play([token, M.invertMove(token)], 450);
       },
       // st.state updates the moment a move is applied, while the cube is still
       // turning on screen. Celebrations wait for the picture to catch up. emit()
@@ -249,8 +265,8 @@
       undo() {
         const last = st.history.pop();
         if (!last) return Promise.resolve();
-        const inv = Cube.invertMove(last);
-        st.state = Cube.applyMove(st.state, inv);
+        const inv = M.invertMove(last);
+        st.state = M.applyMove(st.state, inv);
         st.emit();
         return view.play([inv]);
       },
@@ -291,7 +307,7 @@
     function start(state) {
       let res;
       try {
-        res = Solver.solve(state);
+        res = (opts.solve || Solver.solve)(state);
       } catch (e) {
         const why = e && e.internal
           ? 'Something went wrong on my side. Press Mix it up and try again.'
@@ -329,7 +345,7 @@
           const again = el('button', 'btn primary', '◀ Start from the first step');
           again.addEventListener('click', () => {
             let s = station.state;
-            for (let k = steps.length - 1; k >= 0; k--) s = Cube.applyAlg(s, Cube.invertAlg(steps[k].moves));
+            for (let k = steps.length - 1; k >= 0; k--) s = station.model.applyAlg(s, station.model.invertAlg(steps[k].moves));
             station.set(s);
             i = 0; shown = false; watchedAll = false;
             render();
@@ -371,7 +387,7 @@
         if (shown) {
           // rewind this step first, then play it again
           busy = true;
-          station.set(Cube.applyAlg(station.state, Cube.invertAlg(step.moves)));
+          station.set(station.model.applyAlg(station.state, station.model.invertAlg(step.moves)));
           busy = false;
         }
         busy = true;
@@ -386,16 +402,16 @@
       });
       nextBtn.addEventListener('click', () => {
         if (busy) return;
-        if (!shown) station.set(Cube.applyAlg(station.state, step.moves));
+        if (!shown) station.set(station.model.applyAlg(station.state, step.moves));
         i++;
         shown = false;
         render();
       });
       backBtn.addEventListener('click', () => {
         if (busy || i === 0) return;
-        if (shown) station.set(Cube.applyAlg(station.state, Cube.invertAlg(step.moves)));
+        if (shown) station.set(station.model.applyAlg(station.state, station.model.invertAlg(step.moves)));
         i--;
-        station.set(Cube.applyAlg(station.state, Cube.invertAlg(steps[i].moves)));
+        station.set(station.model.applyAlg(station.state, station.model.invertAlg(steps[i].moves)));
         shown = false;
         render();
       });
@@ -728,14 +744,26 @@
   }
 
   // ================================================================= PLAY
+  const SIZE_KEY = 'cubeclubhouse.size';
   function buildPlay() {
     const section = $('#screen-play');
-    const station = Station($('#play-cube', section), { size: 60 });
+    let size = 3;
+    try { size = parseInt(localStorage.getItem(SIZE_KEY), 10) || 3; } catch { /* no storage */ }
+    if (!NCube.SIZES.includes(size)) size = 3;
+    const station = Station($('#play-cube', section), { size: 60 }, NCube.make(size));
+    const padBox = $('#play-controls', section);
+    const sizeBox = $('#play-size', section);
+    const sizeNote = $('#play-size-note', section);
     const timerEl = $('#play-timer', section);
     const statusEl = $('#play-status', section);
     const guideBox = $('#play-guide', section);
     let timerStart = null, timerId = null, scrambled = false, moveCount = 0;
-    const guide = Guide(guideBox, station, { onFinish: () => { stopTimer(); } });
+    const guide = Guide(guideBox, station, {
+      onFinish: () => { stopTimer(); },
+      // the guide knows the 2x2 and the 3x3; bigger cubes are free play
+      solve: (s) => (station.model.N === 2 ? Solver.solve2x2(s) : Solver.solve(s)),
+    });
+    const canGuide = () => station.model.N <= 3;
 
     function fmt(ms) {
       const s = Math.floor(ms / 1000);
@@ -751,7 +779,7 @@
       timerId = null;
     }
     station.onChange((state) => {
-      if (Cube.isSolved(state) && scrambled && timerStart) {
+      if (station.model.isSolved(state) && scrambled && timerStart) {
         const took = Date.now() - timerStart;      // the solve ended on this move
         const moves = moveCount;
         stopTimer();
@@ -773,7 +801,36 @@
       moveCount++;
       station.move(m);
     }
-    MovePad($('#play-controls', section), userMove);
+    function applySize(n, first) {
+      size = n;
+      try { localStorage.setItem(SIZE_KEY, String(n)); } catch { /* no storage */ }
+      if (!first) station.setModel(NCube.make(n));
+      MovePad(padBox, userMove, station.model);
+      sizeBox.querySelectorAll('.size-btn').forEach((b) => {
+        b.classList.toggle('active', +b.dataset.size === n);
+        b.setAttribute('aria-pressed', String(+b.dataset.size === n));
+      });
+      guideBox.innerHTML = '';
+      stopTimer();
+      timerEl.textContent = '00:00';
+      timerStart = null;
+      scrambled = false;
+      moveCount = 0;
+      $('#play-help').disabled = !canGuide();
+      sizeNote.textContent = canGuide()
+        ? 'Cube Clubhouse can guide you through this one.'
+        : 'Free play. The guide knows the 2×2 and the 3×3; the lessons and My real cube use the 3×3.';
+      statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
+    }
+    for (const n of NCube.SIZES) {
+      const b = el('button', 'size-btn', n + '×' + n);
+      b.type = 'button';
+      b.dataset.size = n;
+      b.setAttribute('aria-label', n + ' by ' + n + ' cube');
+      b.addEventListener('click', () => { if (n !== size) applySize(n, false); });
+      sizeBox.appendChild(b);
+    }
+    applySize(size, true);
     explainChipsIn(section, station);
     $('#play-scramble').addEventListener('click', async () => {
       guideBox.innerHTML = '';
@@ -782,8 +839,8 @@
       timerStart = null;
       moveCount = 0;
       statusEl.textContent = 'Mixing it up…';
-      station.set(Cube.solved());
-      await station.play(Cube.scramble(20), 90);
+      station.set(station.model.solved());
+      await station.play(station.model.scramble(20), 90);
       scrambled = true;
       statusEl.textContent = 'Go! The clock starts on your first move. Stuck? Press "Help me solve it".';
     });
@@ -793,7 +850,7 @@
       timerEl.textContent = '00:00';
       scrambled = false;
       moveCount = 0;
-      station.set(Cube.solved());
+      station.set(station.model.solved());
       statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
     });
     $('#play-undo').addEventListener('click', () => {
@@ -801,6 +858,7 @@
       station.undo();
     });
     $('#play-help').addEventListener('click', () => {
+      if (!canGuide()) { statusEl.textContent = 'The guide knows the 2×2 and the 3×3. Pick one of those to get help.'; return; }
       stopTimer();
       scrambled = false;
       guide.start(station.state);
@@ -863,7 +921,14 @@
     });
     $('#solve-clear').addEventListener('click', () => setPainted(Cube.solved()));
     $('#solve-random').addEventListener('click', () => setPainted(Cube.applyAlg(Cube.solved(), Cube.scramble(20))));
-    $('#solve-from-play').addEventListener('click', () => setPainted(screens.play.station.state));
+    $('#solve-from-play').addEventListener('click', () => {
+      if (screens.play.station.model.N !== 3) {
+        msg.textContent = 'Play is showing a ' + screens.play.station.model.N + '×' + screens.play.station.model.N + '. My real cube works with the 3×3.';
+        msg.className = 'msg bad';
+        return;
+      }
+      setPainted(screens.play.station.state);
+    });
     explainChipsIn(section, station);
     screens.solve = { section, station };
   }
