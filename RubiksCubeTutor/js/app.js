@@ -101,6 +101,50 @@
     const count = rep ? '<li>Do the trick <b>' + rep.times + ' times</b>.</li>' : '';
     return '<ul class="guide-words">' + items + count + more + '</ul>';
   };
+  // How fast the app shows a move. One step on its own is slower than the same move
+  // inside a whole solve: watching one trick is for copying, watching a whole solve is
+  // for seeing where it goes. "Steady" is what the app did before there was a choice.
+  const SPEED_KEY = 'cubeclubhouse.speed';
+  const SPEEDS = [
+    { key: 'slow', label: '🐢 Slow', step: 800, run: 450 },
+    { key: 'steady', label: '🚶 Steady', step: 380, run: 150 },
+    { key: 'fast', label: '🐇 Fast', step: 170, run: 60 },
+  ];
+  let speedKey = 'steady';
+  try { if (SPEEDS.some((x) => x.key === localStorage.getItem(SPEED_KEY))) speedKey = localStorage.getItem(SPEED_KEY); } catch { /* no storage */ }
+  const speed = () => SPEEDS.find((x) => x.key === speedKey) || SPEEDS[1];
+  function setSpeed(key) {
+    speedKey = key;
+    try { localStorage.setItem(SPEED_KEY, key); } catch { /* no storage */ }
+  }
+  // A row of speed buttons. It sets the speed for every guide at once, and a solve
+  // already running picks the new speed up on its next move.
+  function speedPicker() {
+    const row = el('div', 'speed-row');
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'How fast to show the moves');
+    // The word is hidden on a phone to keep the three buttons on one line, so each
+    // button says what it does on its own.
+    row.appendChild(el('span', 'speed-label', 'Speed'));
+    for (const s of SPEEDS) {
+      const b = el('button', 'speed-btn' + (s.key === speedKey ? ' active' : ''), s.label);
+      b.type = 'button';
+      b.setAttribute('aria-label', 'Show the moves ' + s.key.replace('steady', 'at a steady speed').replace('slow', 'slowly').replace('fast', 'fast'));
+      b.setAttribute('aria-pressed', String(s.key === speedKey));
+      b.addEventListener('click', () => {
+        setSpeed(s.key);
+        row.querySelectorAll('.speed-btn').forEach((other, k) => {
+          const on = SPEEDS[k].key === speedKey;
+          other.classList.toggle('active', on);
+          other.setAttribute('aria-pressed', String(on));
+        });
+      });
+      row.appendChild(b);
+    }
+    return row;
+  }
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
   // A Read button reads aloud, and says "Stop" while it is reading, so a child can
   // press the same button again to stop it. An empty label makes an icon-only button.
   const readButton = (getText, label, cls) => {
@@ -307,6 +351,8 @@
     let i = 0;
     let shown = false;   // has the current step been animated already?
     let busy = false;
+    let paused = false;      // the child pressed Pause during a whole-solve run
+    let stopping = false;    // ...or Stop, so settle on the next step and hand back
     let watchedAll = false;   // the app did the solve, so do not praise the child for it
 
     // The big cubes answer a little later, a slice of work at a time, so a solver may
@@ -411,7 +457,7 @@
         }
         busy = true;
         station.view.setHighlights(step.highlight);
-        await station.play(step.moves, 380);
+        await station.play(step.moves, speed().step);
         station.view.setHighlights([]);
         shown = true;
         busy = false;
@@ -434,36 +480,77 @@
         shown = false;
         render();
       });
+      // While the whole solve plays, these two replace the ordinary buttons.
+      const runBtns = el('div', 'guide-btns');
+      const pauseBtn = el('button', 'btn primary', '⏸️ Pause');
+      const stopBtn = el('button', 'btn', '⏹️ Stop here');
+      runBtns.append(pauseBtn, stopBtn);
+      runBtns.hidden = true;
+      pauseBtn.addEventListener('click', () => {
+        paused = !paused;
+        pauseBtn.textContent = paused ? '▶️ Carry on' : '⏸️ Pause';
+      });
+      stopBtn.addEventListener('click', () => { stopping = true; paused = false; });
+
       autoBtn.addEventListener('click', async () => {
         if (busy) return;
         busy = true;
+        paused = false;
+        stopping = false;
+        btns.hidden = true;
+        runBtns.hidden = false;
+        pauseBtn.textContent = '⏸️ Pause';
         const myGen = station.view.gen;
+        // The guide panel can be torn down mid-run (a manual move, a new cube), and
+        // the cube can be replaced under us. Either way, stop quietly.
+        const gone = () => !$('.guide-text', container) || !$('.guide-moves', container) || station.view.gen !== myGen;
+        let moved = false;
         try {
           if (shown) { i++; shown = false; }
           for (; i < steps.length; i++) {
-            // The guide panel can be torn down mid-run (a manual move, a new cube),
-            // and the cube can be replaced under us. Either way, stop quietly.
-            const textEl = $('.guide-text', container);
-            const movesEl = $('.guide-moves', container);
-            if (!textEl || !movesEl || station.view.gen !== myGen) return;
+            if (gone()) return;
             const st = steps[i];
             const same = steps.filter((s) => s.stage === st.stage);
             count.textContent = STAGE_TITLES[st.stage] + ' · step ' + (same.indexOf(st) + 1) + ' of ' + same.length;
-            textEl.textContent = st.text;
-            movesEl.innerHTML = stepChips(st.moves);
-            station.view.setHighlights(steps[i].highlight);
-            await station.play(steps[i].moves, 140);
+            $('.guide-text', container).textContent = st.text;
+            $('.guide-moves', container).innerHTML = stepChips(st.moves);
+            station.view.setHighlights(st.highlight);
+            // Move by move, so Pause and Stop answer straight away even in the middle
+            // of a long trick, and a new speed is used from the very next move.
+            for (let k = 0; k < st.moves.length; k++) {
+              while (paused && !stopping) {
+                await wait(100);
+                if (gone()) return;
+              }
+              if (gone()) return;
+              if (stopping) {
+                // Land on the end of this step, so the guide can hand back a cube that
+                // matches a card rather than one stuck halfway through a trick.
+                await station.play(st.moves.slice(k), 70);
+                moved = true;
+                break;
+              }
+              await station.play([st.moves[k]], speed().run);
+              moved = true;
+            }
+            if (stopping) { i++; shown = false; break; }
           }
         } finally {
           busy = false;
+          runBtns.hidden = true;
+          btns.hidden = false;
         }
-        if (station.view.gen !== myGen) return;   // the cube changed under the last step
-        watchedAll = true;
+        if (gone()) return;
+        watchedAll = moved && i >= steps.length;
         render();
       });
       btns.append(showBtn, nextBtn, backBtn, sayBtn);
       if (!opts.compact) btns.append(autoBtn);
       container.appendChild(btns);
+      if (!opts.compact) {
+        container.appendChild(runBtns);
+        container.appendChild(speedPicker());
+      }
       station.view.setHighlights(step.highlight);
     }
 

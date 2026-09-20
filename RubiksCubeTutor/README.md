@@ -113,6 +113,13 @@ inner layer ("2U" is the second layer from the top). *Help me solve it* opens th
 walkthrough on every size; making a manual move clears the (now stale) guide. The
 chosen size is remembered on the device.
 
+The walkthrough plays at a speed the child picks — 🐢 Slow, 🚶 Steady or 🐇 Fast, also
+remembered — and while *Watch the whole solve* is running, the step buttons give way to
+**Pause** (which becomes *Carry on*) and **Stop here**. The run plays one move at a
+time, so those answer immediately even in the middle of a long trick, and a new speed
+is used from the very next move. Stopping finishes the trick it is in and hands back a
+cube that matches the card on screen, so the child can carry on by hand from there.
+
 **Solve my cube** – a net editor: pick a colour, tap stickers to copy a real cube
 (centres are fixed to yellow on top, green in front). *Check my cube* runs the validity
 check and either explains what is wrong in plain words ("one corner looks twisted") or
@@ -286,7 +293,7 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 82 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 92 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -308,6 +315,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R17 | Tearing down the guide or changing size left the narrator reading steps for a cube that was gone, with no Stop button to press. |
 | R18 | The 5×5 guide asked for middle-layer turns that the move pad could not make; the pad now has a row for them. |
 | R19 | A 6×6 guide opens from a real scramble, with "Thinking…" while it works, and its stage bar no longer fills a phone screen with thirteen chips. |
+| R20 | The whole-solve run can be paused, resumed, stopped and re-speeded; stopping lands on a whole step, and the steps left still solve the cube. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
 produces, by touch, on an iPhone and an iPad profile: 43 checks, including a whole

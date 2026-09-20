@@ -481,6 +481,62 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('making your own move stops the narration', (await cancels()) > before);
     await p.close(); }
 
+  console.log('R20 the child controls how the whole solve is shown');
+  { const p = await newPage();
+    const cubeState = () => p.evaluate(() => [...document.querySelectorAll('#play-cube .face:not(.inner)')].map((f) => f.className.match(/c-\w/)[0]).join(''));
+    const solvedNow = () => p.evaluate(() => {
+      const by = {};
+      const faces = document.querySelectorAll('#play-cube .face:not(.inner)');
+      const N = Math.round(Math.sqrt(faces.length / 6));
+      faces.forEach((f) => { const i = +f.dataset.index; (by[(i / (N * N)) | 0] = by[(i / (N * N)) | 0] || new Set()).add(f.className.match(/c-\w/)[0]); });
+      return Object.values(by).every((s) => s.size === 1);
+    });
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 30000 });
+    ck('three speeds are offered', await p.locator('#play-guide .speed-btn').count() === 3);
+    ck('pause and stop stay out of the way until they are needed', await p.locator('#play-guide .btn', { hasText: 'Pause' }).isHidden());
+
+    await p.locator('#play-guide .speed-btn', { hasText: 'Slow' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.waitForTimeout(700);
+    ck('pause and stop appear while the solve plays', await p.locator('#play-guide .btn', { hasText: 'Pause' }).isVisible());
+    ck('the step buttons are hidden while it plays', await p.locator('#play-guide .btn', { hasText: 'I did it' }).isHidden());
+
+    await p.locator('#play-guide .btn', { hasText: 'Pause' }).click();
+    await p.waitForTimeout(900);
+    const frozen = await cubeState();
+    await p.waitForTimeout(1100);
+    ck('pause holds the cube still', frozen === (await cubeState()));
+    // a new speed while paused, then carry on
+    await p.locator('#play-guide .speed-btn', { hasText: 'Fast' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Carry on' }).click();
+    await p.waitForTimeout(1200);
+    ck('carrying on starts the cube turning again', frozen !== (await cubeState()));
+
+    await p.locator('#play-guide .btn', { hasText: 'Stop here' }).click();
+    await p.waitForTimeout(1500);
+    ck('stopping brings the step buttons back', await p.locator('#play-guide .btn', { hasText: 'I did it' }).isVisible());
+    const card = await p.locator('#play-guide .guide-count').textContent();
+    ck('stopping lands on a whole step', /step \d+ of \d+/.test(card), card);
+    // The cube it hands back has to match the card: the rest of the steps must finish it.
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 180000 });
+    ck('the steps left after a stop still solve the cube', await solvedNow());
+
+    await p.reload();
+    await p.waitForTimeout(300);
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 30000 });
+    ck('the chosen speed is remembered', (await p.locator('#play-guide .speed-btn.active').textContent()).includes('Fast'));
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();
