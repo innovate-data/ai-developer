@@ -282,10 +282,13 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   card says the purchase is made in the iOS app rather than offering a button that
   cannot work. A browser cannot enforce an entitlement without a server, and the app
   does not pretend otherwise.
-* **A grown-up check** (a two-digit multiplication) stands in front of the buy button,
-  which is what Apple asks for in the Kids Category and what stops a child buying
-  anything by pressing the bright button. *Restore* is next to it, as Apple requires
-  for a non-consumable.
+* **A grown-up check** stands in front of the buy button: two digits times one, past
+  what a child of this app's age can do in their head, with a fresh sum after every
+  wrong answer so guessing gets nowhere. That is what Apple asks for in the Kids
+  Category, and what stops a child buying anything by pressing the bright button.
+* **Restoring** a non-consumable is something Apple requires a way back to, but it does
+  not belong on a card a child is reading: it lives on the *For parents* page, beside
+  the price, and only shows when there is a shop to ask and nothing unlocked yet.
 * `ios/Products.storekit` lets the whole flow run in the Simulator, with no App Store
   Connect account, because the shared scheme points at it.
 
@@ -354,7 +357,7 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 126 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 134 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -379,7 +382,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R20 | The whole-solve run can be paused, resumed, stopped and re-speeded; stopping lands on a whole step, and the steps left still solve the cube. |
 | R21 | The view repaints only what changed, so every sticker on screen is checked against the state it is meant to show. |
 | R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress takes two presses. |
-| R23 | The 2×2 guide is free; a 3×3 shows the paywall and no steps; the grown-up check has to be answered before the shop is asked; after buying, the steps follow and survive a reload; a refund locks it again. |
+| R23 | The 2×2 guide is free; a 3×3 shows the paywall and no steps; the grown-up check has to be answered (and changes after a wrong answer) before the shop is asked; after buying, the steps follow and survive a reload; a refund locks it again and the grown-ups page can bring it back. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
 produces, by touch, on an iPhone and an iPad profile: 58 checks, including a whole

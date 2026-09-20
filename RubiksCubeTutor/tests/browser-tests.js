@@ -669,7 +669,12 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('it says what it costs and that the 2x2 is free', /\$0\.99/.test(pitch) && /2×2/.test(pitch), pitch.slice(0, 80));
     ck('the status line says so too', /one-off purchase/.test(await p.locator('#play-status').textContent()));
 
-    // the grown-up check has to be answered
+    ck('the buy card does not offer a restore', (await p.locator('#play-guide .btn', { hasText: 'already bought' }).count()) === 0);
+
+    // the grown-up check has to be answered, and it is not a sum a small child can do
+    const firstSum = await p.locator('#play-guide .gate-q').textContent();
+    const [fx, fy] = firstSum.match(/(\d+) × (\d+)/).slice(1).map(Number);
+    ck('the sum is two digits times one', fx >= 13 && fx <= 42 && fy >= 4 && fy <= 9, firstSum);
     await p.locator('#play-guide .btn', { hasText: 'Unlock for' }).click();
     await p.waitForTimeout(200);
     ck('a blank answer buys nothing', (await p.evaluate(() => window.__shop.asked.length)) === 0);
@@ -678,9 +683,10 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.waitForTimeout(200);
     ck('a wrong answer buys nothing', (await p.evaluate(() => window.__shop.asked.length)) === 0);
     ck('and says the bit is for a grown-up', /grown-up/.test(await p.locator('#play-guide .msg').textContent()));
-
-    // answer it properly and the purchase goes through
+    // ...and a fresh sum, so the same guess cannot be tried twice
     const sum = await p.locator('#play-guide .gate-q').textContent();
+    ck('a wrong answer brings a new sum', sum !== firstSum, firstSum + ' -> ' + sum);
+    ck('and clears what was typed', (await p.locator('#play-guide .gate-input').inputValue()) === '');
     const [x, y] = sum.match(/(\d+) × (\d+)/).slice(1).map(Number);
     await p.locator('#play-guide .gate-input').fill(String(x * y));
     await p.locator('#play-guide .btn', { hasText: 'Unlock for' }).click();
@@ -701,11 +707,20 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.waitForTimeout(300);
     ck('the grown-ups page shows it as unlocked', /Unlocked on this device/.test(await p.locator('#solver-state').textContent()));
     ck('and stops offering to sell it', await p.locator('#solver-unlock').isHidden());
+    ck('and stops offering to restore it', await p.locator('#solver-restore').isHidden());
 
     // a refund takes it away again
     await p.evaluate(() => window.RC.Store.applyNative({ unlocked: false }));
     await p.waitForTimeout(150);
     ck('losing the purchase locks it again', /Not unlocked/.test(await p.locator('#solver-state').textContent()));
+    // Apple wants a way back for a non-consumable; it lives here rather than on the
+    // card a child is looking at.
+    ck('the grown-ups page can bring a purchase back', await p.locator('#solver-restore').isVisible());
+    await p.evaluate(() => { window.__shop.unlocked = true; });
+    await p.locator('#solver-restore').click();
+    await p.waitForTimeout(400);
+    ck('restoring asks the shop', (await p.evaluate(() => window.__shop.asked)).includes('restore'));
+    ck('and gives the guide back', /Unlocked on this device/.test(await p.locator('#solver-state').textContent()));
     await p.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');

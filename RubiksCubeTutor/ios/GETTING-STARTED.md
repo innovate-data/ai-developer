@@ -81,9 +81,11 @@ Connect:
    Connect if you want one purchase to cover a family.
 
 **In the review notes**, say where the purchase lives (Play → a 3×3 or bigger → *Help me
-solve it*), that a grown-up check stands in front of it, and that *I already bought it*
-restores it. Reviewers look for a restore button on a non-consumable and for the
-parental gate in a children's app.
+solve it*), that a grown-up check stands in front of it, and where the restore button is:
+**For parents → Bring back a purchase**, reached from the *For parents* link in the
+footer. Reviewers look for both — a restore control on a non-consumable, and a parental
+gate in a children's app — and the restore one is deliberately not on the card a child
+sees, so point them at it.
 
 To change the price, change it in App Store Connect — nothing in the code needs
 touching. To change what is free, `FREE_SIZE` in `js/store.js` is the only line.

@@ -380,28 +380,37 @@
 
     // Apple asks for a grown-up check before a purchase in a children's app, and it
     // stops a child buying anything by pressing the bright button.
+    // Two digits times one, which a child at the age this app is written for cannot do
+    // in their head, and a new sum after every wrong answer so guessing gets nowhere.
     const gate = el('div', 'gate');
-    const a = 3 + Math.floor(Math.random() * 7);
-    const b = 6 + Math.floor(Math.random() * 4);
-    const label = el('label', 'gate-q', 'Grown-up check: what is ' + a + ' × ' + b + '?');
+    let a = 0, b = 0;
+    const label = el('label', 'gate-q', '');
     const input = document.createElement('input');
     input.type = 'number';
     input.inputMode = 'numeric';
     input.className = 'gate-input';
     input.id = 'gate-answer';
+    input.setAttribute('autocomplete', 'off');
     label.setAttribute('for', input.id);
+    function newSum() {
+      a = 13 + Math.floor(Math.random() * 27);        // 13 to 39
+      if (a % 10 === 0) a += 3;                        // nothing that ends in a nought
+      b = 4 + Math.floor(Math.random() * 6);           // 4 to 9
+      label.textContent = 'Grown-up check: what is ' + a + ' × ' + b + '?';
+      input.value = '';
+    }
+    newSum();
     const go = el('button', 'btn primary', 'Unlock for ' + Store.price());
     gate.append(label, input, go);
     card.appendChild(gate);
 
-    const restore = el('button', 'btn ghost', 'I already bought it');
     const later = el('button', 'btn ghost', 'Not now');
-    buttons.append(restore, later);
+    buttons.append(later);
     card.append(buttons, out);
     container.appendChild(card);
 
     const working = (on, what) => {
-      go.disabled = on; restore.disabled = on;
+      go.disabled = on;
       out.textContent = on ? what : '';
     };
     const settled = (res) => {
@@ -418,21 +427,15 @@
             : res.message || 'That did not go through. Nothing has been charged.';
     };
     go.addEventListener('click', async () => {
-      if (Number(input.value) !== a * b) {
+      if (input.value.trim() === '' || Number(input.value) !== a * b) {
         out.className = 'msg bad';
-        out.textContent = 'That is not it. This bit is for a grown-up.';
-        input.value = '';
+        out.textContent = 'That is not it. This bit is for a grown-up — here is another sum.';
+        newSum();
         input.focus();
         return;
       }
       working(true, 'Opening the shop…');
       const res = await Store.buy();
-      working(false);
-      settled(res);
-    });
-    restore.addEventListener('click', async () => {
-      working(true, 'Looking for your purchase…');
-      const res = await Store.restore();
       working(false);
       settled(res);
     });
@@ -1150,6 +1153,7 @@
     // child pressing Help first. The paywall card brings its own grown-up check.
     const state = $('#solver-state', section);
     const unlockBtn = $('#solver-unlock', section);
+    const restoreBtn = $('#solver-restore', section);
     const shop = $('#solver-shop', section);
     function showState() {
       $('#solver-price', section).textContent = Store.price();
@@ -1159,9 +1163,21 @@
           : 'Not unlocked. This copy cannot take payments; the purchase is made in the Cube Clubhouse app for iPhone and iPad.';
       state.className = 'msg' + (has ? ' good' : '');
       unlockBtn.hidden = has;
+      restoreBtn.hidden = has || !Store.canBuy();
       if (has) shop.innerHTML = '';
     }
     unlockBtn.addEventListener('click', () => paywall(shop, 3, showState));
+    restoreBtn.addEventListener('click', async () => {
+      restoreBtn.disabled = true;
+      state.textContent = 'Asking the App Store…';
+      const res = await Store.restore();
+      restoreBtn.disabled = false;
+      if (res.ok && Store.isUnlocked()) { showState(); return; }
+      state.className = 'msg';
+      state.textContent = res.reason === 'nothing-to-restore'
+        ? 'There is no earlier purchase on this account to bring back.'
+        : 'The App Store did not answer just now. Please try again in a moment.';
+    });
     Store.onChange(showState);
     showState();
     screens.grownups = { section };
