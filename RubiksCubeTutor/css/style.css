@@ -229,6 +229,10 @@ main {
 .chip:active { transform: scale(0.94); }
 .chip.rot { background: var(--rot-bg); border-color: var(--rot-line); }
 .chip.rot::before { content: '🔄'; font-size: 0.75em; margin-right: 4px; }
+/* A Read button that is currently reading, so a child can see what pressing it again does. */
+.btn.reading { border-color: var(--accent); color: var(--accent); animation: reading 1.4s ease-in-out infinite; }
+@keyframes reading { 50% { box-shadow: 0 0 0 4px var(--glow); } }
+@media (prefers-reduced-motion: reduce) { .btn.reading { animation: none; } }
 .then { align-self: center; color: var(--muted); font-weight: 600; padding: 0 2px; }
 .times { display: inline-grid; place-items: center; height: 40px; padding: 0 12px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 1.1rem; }
 .brain { font-size: 1rem; letter-spacing: 0; }

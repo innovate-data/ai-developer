@@ -198,6 +198,77 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('friendly message', /9 white stickers/.test(m), m.trim());
     await p.close(); }
 
+  console.log('R14 the Read button stops the narration when pressed again');
+  { // Headless Chromium has no voices, so stand a controllable engine in its place.
+    // It records what was spoken and lets the test end an utterance on cue.
+    const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.addInitScript(() => {
+      const log = { spoken: [], cancels: 0 };
+      let current = null;
+      window.__speech = log;
+      window.__endSpeech = () => { const u = current; current = null; if (u && u.onend) u.onend(); };
+      Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+        configurable: true,
+        value: function (text) { this.text = text; this.onend = null; this.onerror = null; },
+      });
+      Object.defineProperty(window, 'speechSynthesis', {
+        configurable: true,
+        value: {
+          speak(u) { current = u; log.spoken.push(u.text); },
+          // real engines fire the end event late, after cancel() has returned
+          cancel() { log.cancels++; const u = current; current = null; if (u && u.onend) setTimeout(() => u.onend(), 0); },
+          getVoices: () => [],
+        },
+      });
+    });
+    await p.goto(URL);
+    await p.locator('.lesson-card').nth(4).click();
+    await p.waitForTimeout(300);
+
+    const read = p.locator('#lesson-story .btn').first();
+    const label = () => read.textContent();
+    const pressed = () => read.getAttribute('aria-pressed');
+    const spoken = () => p.evaluate(() => window.__speech.spoken.length);
+    const cancels = () => p.evaluate(() => window.__speech.cancels);
+
+    ck('it starts out offering to read', /Read to me/.test(await label()) && (await pressed()) === 'false');
+
+    await read.click(); await p.waitForTimeout(80);
+    const saidFirst = await spoken();
+    ck('one press starts reading', saidFirst === 1 && /Stop/.test(await label()) && (await pressed()) === 'true');
+
+    const before = await cancels();
+    await read.click(); await p.waitForTimeout(80);
+    ck('a second press stops it', (await cancels()) > before, 'cancel called');
+    ck('and the button offers to read again', /Read to me/.test(await label()) && (await pressed()) === 'false');
+    ck('stopping does not start a new narration', (await spoken()) === saidFirst);
+
+    // a third press starts again, and finishing on its own also resets the button
+    await read.click(); await p.waitForTimeout(80);
+    ck('it can be started again', (await spoken()) === saidFirst + 1 && /Stop/.test(await label()));
+    await p.evaluate(() => window.__endSpeech());
+    await p.waitForTimeout(80);
+    ck('finishing on its own resets the button', /Read to me/.test(await label()) && (await pressed()) === 'false');
+
+    // only one thing reads at a time: another Read button takes over and resets this one
+    await read.click(); await p.waitForTimeout(80);
+    const alg = p.locator('#lesson-algs .btn[aria-pressed]').first();
+    await alg.click(); await p.waitForTimeout(80);
+    ck('another Read button takes over', /Read to me/.test(await label()) && (await pressed()) === 'false');
+    ck('and that one is now reading', (await alg.getAttribute('aria-pressed')) === 'true');
+
+    // a late end event from the cancelled utterance must not reset the new reader
+    await p.waitForTimeout(120);
+    ck('a late end event does not disturb the new reader', (await alg.getAttribute('aria-pressed')) === 'true');
+
+    // leaving the lesson stops the voice
+    await p.locator('#lesson-back').click();
+    await p.waitForTimeout(150);
+    ck('leaving the lesson stops the narration', (await cancels()) > 0);
+    await p.close();
+  }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

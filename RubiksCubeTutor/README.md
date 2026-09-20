@@ -59,7 +59,11 @@ npm run test:all       # all three
    explained the first time they are used. Move meanings are things a hand can do
    ("rolls up and away from you"), not "clockwise".
 9. **Nothing needs reading to be understood.** Every lesson has a Read to me button; every
-   hint and every guide step has one too, and it speaks the moves in words, not letters.
+   hint, guide step and trick card has one too, and it speaks the moves in words, not
+   letters. A Read button is a toggle: while it is reading it says Stop, so pressing it
+   again stops the narration. Only one thing speaks at a time, so starting another one,
+   moving to the next step, leaving the lesson or switching away from the app all stop
+   the voice and put the button that started it back.
    Every move chip is a button: tap it to hear what it means and watch the cube do it
    and undo it. Whole-cube turns carry a 🔄 picture. Repeated tricks show once with a
    "× 2" badge to count against.
@@ -219,6 +223,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R11 | Undo on Play left stale guide steps on screen. |
 | R12 | A practice cube could open already solved, handing out an unearned win. |
 | R13 | An impossible painted cube has to be explained in words a child understands. |
+| R14 | The Read button had no way to stop; a second press now stops the narration. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
 produces, by touch, on an iPhone and an iPad profile: 27 checks.

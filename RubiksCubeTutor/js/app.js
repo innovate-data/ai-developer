@@ -16,16 +16,47 @@
     return e;
   };
   const speakable = (text) => text.replace(/\b([UDLRFBxyz])'/g, '$1 prime').replace(/\b([UDLRFBxyz])2\b/g, '$1 two');
-  function speak(text) {
-    if (!('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(speakable(text));
-    u.rate = 0.9;                     // a touch slower for young listeners
-    speechSynthesis.speak(u);
-  }
-  function hush() {
-    if ('speechSynthesis' in window) speechSynthesis.cancel();
-  }
+  // One voice at a time, and one place that knows who is speaking. A Read button asks
+  // the narrator to speak on its behalf; pressing it again stops it. Whenever the
+  // narration ends, is stopped, or is replaced by another one, the button that started
+  // it is told, so it can put its own label back.
+  const narrator = (function () {
+    const ANON = {};                  // speech nobody owns, such as a chip tap
+    let owner = null;
+    let onStop = null;
+
+    function release() {
+      const tell = onStop;
+      owner = null;
+      onStop = null;
+      if (tell) tell();
+    }
+    function stop() {
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+      release();
+    }
+    function speak(text, who, whenStopped) {
+      const holder = who || ANON;
+      stop();                         // never two voices at once
+      if (!('speechSynthesis' in window)) {
+        if (whenStopped) whenStopped();
+        return;
+      }
+      const u = new SpeechSynthesisUtterance(speakable(text));
+      u.rate = 0.9;                   // a touch slower for young listeners
+      // A cancelled utterance can still fire its end event late, by which time someone
+      // else may be speaking, so only the current owner is allowed to release.
+      const ended = () => { if (owner === holder) release(); };
+      u.onend = ended;
+      u.onerror = ended;
+      owner = holder;
+      onStop = whenStopped || null;
+      speechSynthesis.speak(u);
+    }
+    return { speak, stop, isReading: (who) => owner === who };
+  })();
+  const speak = (text) => narrator.speak(text);
+  const hush = () => narrator.stop();
   // If a step is one trick repeated, say so once ("the Twist trick, 2 times") instead
   // of reading sixteen letters; otherwise say each move in words.
   // A merged guide card is "set-up turns, then one trick N times". Find that shape:
@@ -68,9 +99,28 @@
     const count = rep ? '<li>Do the trick <b>' + rep.times + ' times</b>.</li>' : '';
     return '<ul class="guide-words">' + items + count + more + '</ul>';
   };
-  const readButton = (getText, label) => {
-    const b = el('button', 'btn small ghost', '🔊 ' + (label || 'Read to me'));
-    b.addEventListener('click', () => speak(getText()));
+  // A Read button reads aloud, and says "Stop" while it is reading, so a child can
+  // press the same button again to stop it. An empty label makes an icon-only button.
+  const readButton = (getText, label, cls) => {
+    const icon = label === '';
+    const idle = icon ? '🔊' : '🔊 ' + (label || 'Read to me');
+    const busy = icon ? '⏹' : '⏹ Stop';
+    const b = el('button', cls || 'btn small ghost', idle);
+    b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('aria-label', icon ? 'Read aloud' : idle.slice(2).trim());
+    const reset = () => {
+      b.textContent = idle;
+      b.setAttribute('aria-pressed', 'false');
+      b.classList.remove('reading');
+    };
+    b.addEventListener('click', () => {
+      if (narrator.isReading(b)) { narrator.stop(); return; }   // a second press stops it
+      narrator.speak(getText(), b, reset);
+      if (!narrator.isReading(b)) return;    // no voice on this device, or it failed at once
+      b.textContent = busy;
+      b.setAttribute('aria-pressed', 'true');
+      b.classList.add('reading');
+    });
     return b;
   };
   // Every move chip is a button: tap it to hear what the move means and watch the cube
@@ -265,6 +315,7 @@
     }
 
     function render() {
+      hush();                       // moving on stops whatever was being read
       container.innerHTML = '';
       container.classList.add('guide');
       if (steps.length === 0) {
@@ -312,7 +363,7 @@
       const showBtn = el('button', 'btn primary', shown ? '▶ Watch again' : '▶ Watch');
       const nextBtn = el('button', 'btn', 'I did it ▶');
       const backBtn = el('button', 'btn ghost', '◀ Last step');
-      const sayBtn = el('button', 'btn ghost', '🔊 Read');
+      const sayBtn = readButton(() => step.text + ' ' + movesInWords(step.moves), 'Read', 'btn ghost');
       const autoBtn = el('button', 'btn ghost', '⏩ Watch the whole solve');
       backBtn.disabled = i === 0;
       showBtn.addEventListener('click', async () => {
@@ -348,7 +399,6 @@
         shown = false;
         render();
       });
-      sayBtn.addEventListener('click', () => speak(step.text + ' ' + movesInWords(step.moves)));
       autoBtn.addEventListener('click', async () => {
         if (busy) return;
         busy = true;
@@ -455,10 +505,9 @@
         const btns = el('div', 'alg-btns');
         const watch = el('button', 'btn small primary', '▶ Watch');
         const undo = el('button', 'btn small ghost', '↩ Undo');
-        const say = el('button', 'btn small ghost', '🔊');
+        const say = readButton(() => a.name + '. ' + movesInWords(Cube.parseAlg(a.moves)), '', 'btn small ghost');
         watch.addEventListener('click', () => station.play(a.moves, 380));
         undo.addEventListener('click', () => station.play(Cube.invertAlg(a.moves), 200));
-        say.addEventListener('click', () => speak(a.name + ': ' + a.moves.split(' ').join(', ')));
         btns.append(watch, undo, say);
         card.appendChild(btns);
         box.appendChild(card);
@@ -599,6 +648,7 @@
         // any move of the child's own retires the hint on screen
         if (hintFor && Cube.toString(state) !== hintFor) {
           hintFor = null;
+          hush();
           hintBox.hidden = true;
           station.view.setHighlights([]);
         }
@@ -620,6 +670,7 @@
       station.onChange(check);
 
       hintBtn.addEventListener('click', () => {
+        hush();
         hintsUsed++;
         hintBox.hidden = false;
         const one = nextStep();
@@ -831,6 +882,11 @@
     setTimeout(() => box.remove(), 3500);
   }
 
+  // Switching app or tab should not leave a voice talking to an empty room.
+  function stopSpeakingWhenHidden() {
+    document.addEventListener('visibilitychange', () => { if (document.hidden) hush(); });
+  }
+
   function keyboard() {
     document.addEventListener('keydown', (e) => {
       if (e.target.matches('input, textarea, select, [contenteditable]')) return;
@@ -852,6 +908,7 @@
     buildPlay();
     buildSolve();
     keyboard();
+    stopSpeakingWhenHidden();
     document.querySelectorAll('nav button[data-screen]').forEach((b) => b.addEventListener('click', () => showScreen(b.dataset.screen)));
     window.addEventListener('hashchange', () => {
       const n = location.hash.replace('#', '');
