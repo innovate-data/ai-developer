@@ -32,7 +32,11 @@
   const FACE_AXIS = { U: ['y', 1, 1], D: ['y', -1, -1], R: ['x', 1, 1], L: ['x', -1, -1], F: ['z', 1, 1], B: ['z', -1, -1] };
   const SLICE = { M: ['x', -1], E: ['y', -1], S: ['z', 1] };
   const SIDE_NAME = { U: 'top', D: 'bottom', R: 'right', L: 'left', F: 'front', B: 'back' };
-  const ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th'];
+  const ordinal = (n) => {
+    const tens = n % 100;
+    if (tens >= 11 && tens <= 13) return n + 'th';
+    return n + (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  };
 
   function rot(v, axis, k) {
     k = ((k % 4) + 4) % 4;
@@ -99,18 +103,19 @@
         const mult = m[2] === "'" ? -1 : m[2] === '2' ? 2 : 1;
         return { token, letter: m[1], axis, layers: [0], k: dir * mult, isRotation: false, depth: 0, wide: false, suffix: m[2] };
       }
+      const typed = token;                     // lowercase moves are rewritten below
       if ((m = /^([udlrfb])(['2]?)$/.exec(token))) token = '2' + m[1].toUpperCase() + 'w' + m[2];
       m = MOVE_RE.exec(token);
-      if (!m) throw new Error('Unknown move: ' + token);
+      if (!m) throw new Error('Unknown move: ' + typed);
       const wide = m[3] === 'w';
       const depth = m[1] ? parseInt(m[1], 10) : wide ? 2 : 1;   // a plain "Rw" is two layers
-      if (depth < 1 || depth >= N) throw new Error(token + ': a ' + N + 'x' + N + ' has no layer ' + depth + ' from that side');
+      if (depth < 1 || depth >= N) throw new Error(typed + ': a ' + N + 'x' + N + ' has no layer ' + depth + ' from that side');
       const [axis, end, dir] = FACE_AXIS[m[2]];
       const mult = m[4] === "'" ? -1 : m[4] === '2' ? 2 : 1;
       const layers = [];
       if (wide) for (let d = 1; d <= depth; d++) layers.push(layerAt(end, d));
       else layers.push(layerAt(end, depth));
-      return { token, letter: m[2], axis, layers, k: dir * mult, isRotation: false, depth, wide, suffix: m[4] };
+      return { token: typed, letter: m[2], axis, layers, k: dir * mult, isRotation: false, depth, wide, suffix: m[4] };
     }
 
     const permCache = new Map();
@@ -159,15 +164,23 @@
       return rows;
     }
     const scrambleMoves = (() => { const out = []; for (let d = 1; d <= maxDepth; d++) for (const f of FACES) out.push((d === 1 ? '' : d) + f); return out; })();
+    // Which layer a move turns. Two moves commute exactly when they share an axis, so
+    // turning the same layer again with only same-axis moves in between wastes both.
+    const layerSig = (m) => { const mv = parseMove(m); return mv.axis + ':' + mv.layers[0]; };
     function scramble(n, rng) {
       rng = rng || Math.random;
       const suffixes = ['', "'", '2'];
       const out = [];
       let last = null;
+      let prev = null;
       for (let i = 0; i < n; i++) {
-        let m;
-        do { m = scrambleMoves[Math.floor(rng() * scrambleMoves.length)]; } while (m === last);
-        last = m;
+        let m, sig;
+        do {
+          m = scrambleMoves[Math.floor(rng() * scrambleMoves.length)];
+          sig = layerSig(m);
+        } while (sig === last || (prev && sig === prev && last && last.split(':')[0] === sig.split(':')[0]));
+        prev = last;
+        last = sig;
         out.push(m + suffixes[Math.floor(rng() * 3)]);
       }
       return out;
@@ -184,11 +197,17 @@
                     z: ['Tilt the WHOLE cube to the right, like a steering wheel.', 'Tilt the WHOLE cube to the left, like a steering wheel.'] }[mv.axis];
         return twice ? w[0].replace('.', ', twice.') : w[prime ? 1 : 0];
       }
-      if (mv.depth === 0) return 'Turn the middle layer' + (twice ? ' twice.' : prime ? ' the other way.' : '.');
+      if (mv.depth === 0) {
+        const slice = { M: ['between the LEFT and RIGHT sides, the same way as the left side', 'x'],
+                        E: ['between the TOP and BOTTOM, the same way as the bottom', 'y'],
+                        S: ['between the FRONT and BACK, the same way as the front', 'z'] }[mv.letter];
+        if (twice) return 'Turn the middle slice ' + slice[0] + ', twice.';
+        return 'Turn the middle slice ' + slice[0] + (prime ? ', the other way.' : '.');
+      }
       const side = SIDE_NAME[mv.letter];
       const which = mv.wide ? 'the ' + mv.depth + ' layers nearest the ' + side
         : mv.depth === 1 ? 'the ' + side.toUpperCase() + (mv.letter === 'U' || mv.letter === 'D' ? ' layer' : ' side')
-        : 'ONLY the ' + ORDINAL[mv.depth] + ' layer from the ' + side;
+        : 'ONLY the ' + ordinal(mv.depth) + ' layer from the ' + side;
       const how = {
         U: ['to the left. The part nearest you goes left', 'to the right. The part nearest you goes right'],
         D: ['to the right. The part nearest you goes right', 'to the left. The part nearest you goes left'],

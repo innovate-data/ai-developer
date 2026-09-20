@@ -582,6 +582,31 @@
     THREE_TO_TWO.set(i3, TWO_TO_THREE.length - 1);
   }
 
+  // A 2x2 has no centres, so all 24 ways of holding a solved one are solved.
+  function isSolved2x2(s) {
+    for (let f = 0; f < 6; f++) {
+      const c = s[f * 4];
+      for (let k = 1; k < 4; k++) if (s[f * 4 + k] !== c) return false;
+    }
+    return true;
+  }
+
+  // The 24 ways to hold a 2x2, as permutations of its 24 stickers. Turning the whole
+  // cube is only a relabelling on a 2x2, so the solver may pick whichever way of
+  // holding it needs the least work, and tell the child to turn the cube once.
+  const ROTATIONS_2 = (function () {
+    const out = [];
+    for (const tilt of ['', 'x', "x'", 'x2', 'z', "z'"]) {
+      for (const spin of ['', 'y', 'y2', "y'"]) {
+        const alg = (tilt + ' ' + spin).trim();
+        const labels = Cube.solved().map((_, i) => i);
+        const moved = alg ? Cube.applyAlg(labels, alg) : labels;   // moved[dest] = source
+        out.push({ alg, perm: TWO_TO_THREE.map((i3) => THREE_TO_TWO.get(moved[i3])) });
+      }
+    }
+    return out;
+  })();
+
   function validate2x2(state2) {
     if (!state2 || state2.length !== 24) return { ok: false, reason: 'A 2x2 has exactly 24 stickers.' };
     const counts = {};
@@ -591,7 +616,7 @@
     }
     const ref = Cube.solved();
     const s3 = ref.slice();
-    state2.forEach((col, i2) => { s3[TWO_TO_THREE[i2]] = col; });
+    for (let i2 = 0; i2 < 24; i2++) s3[TWO_TO_THREE[i2]] = state2[i2];
     const used = new Set();
     let twist = 0;
     for (const corner of Cube.CORNERS) {
@@ -611,10 +636,26 @@
     return { ok: true, embedded: s3 };
   }
 
-  function solve2x2(state2) {
+  function solve2x2(input) {
+    const state2 = Array.prototype.slice.call(input);
     const v = validate2x2(state2);
     if (!v.ok) throw new Error(v.reason);
-    const res = solve(v.embedded, { cornersOnly: true });
+    // Already done, however the child happens to be holding it.
+    if (isSolved2x2(state2)) return { steps: [], state: state2 };
+
+    // Pick the way of holding it that starts with the most corners already home.
+    const homeCount = (s3) => Cube.CORNERS.filter((c) => c.idx.every((i, k) => s3[i] === Cube.center(s3, c.faces[k]))).length;
+    let best = { alg: '', state2, embedded: v.embedded, home: homeCount(v.embedded) };
+    for (const r of ROTATIONS_2) {
+      if (!r.alg) continue;
+      const turned = r.perm.map((src) => state2[src]);
+      const s3 = Cube.solved();
+      for (let i2 = 0; i2 < 24; i2++) s3[TWO_TO_THREE[i2]] = turned[i2];
+      const home = homeCount(s3);
+      if (home > best.home) best = { alg: r.alg, state2: turned, embedded: s3, home };
+    }
+
+    const res = solve(best.embedded, { cornersOnly: true });
     const steps = res.steps.map((st) => ({
       stage: st.stage,
       // a 2x2 has no centres; its "sides" are wherever the corners say they are
@@ -622,7 +663,15 @@
       moves: st.moves,
       highlight: st.highlight.map((i) => THREE_TO_TWO.get(i)).filter((i) => i !== undefined),
     }));
-    const state = state2.slice();
+    if (best.alg) {
+      steps.unshift({
+        stage: 'orient',
+        text: 'First, turn the WHOLE cube to hold it the easy way. A 2x2 has no middle squares, so any way up is fine.',
+        moves: Cube.parseAlg(best.alg),
+        highlight: [],
+      });
+    }
+    const state = new Array(24);
     for (let i2 = 0; i2 < 24; i2++) state[i2] = res.state[TWO_TO_THREE[i2]];
     return { steps, state };
   }
@@ -662,5 +711,5 @@
     return out.state;
   }
 
-  return { ALGS, STAGES, goals, cornerGoals, solve, solve2x2, validate2x2, search, planAlg, stateForStage, midTwistPhase, fixedCorner: FIXED_CORNER };
+  return { ALGS, STAGES, goals, cornerGoals, solve, solve2x2, validate2x2, isSolved2x2, search, planAlg, stateForStage, midTwistPhase, fixedCorner: FIXED_CORNER };
 });

@@ -128,7 +128,9 @@
   // Every move chip is a button: tap it to hear what the move means and watch the cube
   // do it and undo it. A hover tooltip is invisible on an iPad, and to a child who
   // cannot read yet, so the chip has to speak for itself.
-  const moveChips = (moves) => Cube.parseAlg(moves).map((m) => '<button type="button" class="chip' + (ANY.parseMove(m).isRotation ? ' rot' : '') + '" data-move="' + m + '" aria-label="' + m + ': ' + words(m) + '">' + m + '</button>').join('');
+  // ANY is the biggest cube, which has no middle slice, so M/E/S would throw here.
+  const isRotation = (m) => { try { return ANY.parseMove(m).isRotation; } catch { return false; } };
+  const moveChips = (moves) => Cube.parseAlg(moves).map((m) => '<button type="button" class="chip' + (isRotation(m) ? ' rot' : '') + '" data-move="' + m + '" aria-label="' + m + ': ' + words(m) + '">' + m + '</button>').join('');
   const plain = (html) => html.replace(/<[^>]+>/g, '');
 
   // Wire up chip taps for one screen: show the words, say them, and wiggle the cube.
@@ -192,7 +194,7 @@
       const r = el('div', 'pad-row');
       for (const m of row.moves) {
         const mv = M.parseMove(m);
-        const b = el('button', 'pad-btn' + (mv.isRotation ? ' rot' : '') + (mv.depth > 1 ? ' inner' : ''), m.replace("'", '<sup>′</sup>'));
+        const b = el('button', 'pad-btn' + (mv.isRotation ? ' rot' : '') + (mv.depth > 1 && !mv.isRotation ? ' inner' : ''), m.replace("'", '<sup>′</sup>'));
         b.type = 'button';
         b.title = words(m);
         b.setAttribute('aria-label', words(m));
@@ -232,6 +234,8 @@
       // Change the cube's size: a fresh, solved cube of the new model.
       setModel(m) {
         M = m;
+        view.cancel();
+        view.queue = Promise.resolve();      // drop anything still queued for the old cube
         view.setModel(m);
         st.state = m.solved();
         st.history = [];
@@ -305,6 +309,10 @@
     let watchedAll = false;   // the app did the solve, so do not praise the child for it
 
     function start(state) {
+      steps = [];
+      i = 0;
+      shown = false;
+      watchedAll = false;
       let res;
       try {
         res = (opts.solve || Solver.solve)(state);
@@ -418,9 +426,9 @@
       autoBtn.addEventListener('click', async () => {
         if (busy) return;
         busy = true;
+        const myGen = station.view.gen;
         try {
           if (shown) { i++; shown = false; }
-          const myGen = station.view.gen;
           for (; i < steps.length; i++) {
             // The guide panel can be torn down mid-run (a manual move, a new cube),
             // and the cube can be replaced under us. Either way, stop quietly.
@@ -438,6 +446,7 @@
         } finally {
           busy = false;
         }
+        if (station.view.gen !== myGen) return;   // the cube changed under the last step
         watchedAll = true;
         render();
       });
@@ -792,6 +801,7 @@
     });
     function staleGuide() {
       if (!guideBox.childElementCount) return;
+      hush();                       // the Read button being removed cannot stop itself
       guideBox.innerHTML = '';
       statusEl.textContent = 'You made your own move, so the steps changed. Press "Help me solve it" for new steps.';
     }
@@ -802,6 +812,7 @@
       station.move(m);
     }
     function applySize(n, first) {
+      hush();                       // stop any step being read for the old cube
       size = n;
       try { localStorage.setItem(SIZE_KEY, String(n)); } catch { /* no storage */ }
       if (!first) station.setModel(NCube.make(n));
@@ -833,6 +844,7 @@
     applySize(size, true);
     explainChipsIn(section, station);
     $('#play-scramble').addEventListener('click', async () => {
+      hush();
       guideBox.innerHTML = '';
       stopTimer();
       timerEl.textContent = '00:00';
@@ -840,11 +852,17 @@
       moveCount = 0;
       statusEl.textContent = 'Mixing it up…';
       station.set(station.model.solved());
+      const myGen = station.view.gen;
       await station.play(station.model.scramble(20), 90);
+      // A size change (or a Reset) during the mixing replaces the cube. Without this
+      // the solved new cube would be marked as scrambled, and the next move plus an
+      // undo would be celebrated as a solve.
+      if (station.view.gen !== myGen) return;
       scrambled = true;
       statusEl.textContent = 'Go! The clock starts on your first move. Stuck? Press "Help me solve it".';
     });
     $('#play-reset').addEventListener('click', () => {
+      hush();
       guideBox.innerHTML = '';
       stopTimer();
       timerEl.textContent = '00:00';

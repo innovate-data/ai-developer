@@ -28,7 +28,16 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const EXE = process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const EXE = process.env.CHROME || [
+  '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+].find((f) => { try { return require('fs').existsSync(f); } catch { return false; } });
+if (!EXE) {
+  console.log('skipped: no Chromium found. Set CHROME=/path/to/chrome and re-run.');
+  process.exit(0);
+}
 const IOS = path.resolve(__dirname, '..', 'ios');
 const PBXPROJ = path.join(IOS, 'CubeClubhouse.xcodeproj', 'project.pbxproj');
 // mirrors BundleSchemeHandler.mimeTypes

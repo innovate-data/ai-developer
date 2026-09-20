@@ -141,6 +141,8 @@ main {
 @media (max-width: 860px) { .col-cube { position: static; } }
 .cube-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; position: relative; }
 .cube-card .tiny { position: absolute; right: 12px; top: 12px; }
+/* On a phone the full label is wide enough to sit over the cube, so show just the icon. */
+@media (max-width: 620px) { .cube-card .tiny .btn-words { display: none; } }
 .subtitle { color: var(--muted); font-size: 1.1rem; margin-top: 0; }
 .story p { font-size: 1.08rem; }
 .tips { background: var(--warm-bg); border-radius: var(--radius); padding: 6px 18px 12px; margin-top: 18px; }

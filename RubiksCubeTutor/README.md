@@ -184,12 +184,17 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   the top, `Uw` and lowercase `u` for wide turns, `M E S` on odd cubes, `x y z` for the
   whole cube. Each size's move pad shows depths down to the middle, since the exact
   middle of an odd cube never needs to turn.
+* **A 2×2 has no centres**, so all 24 ways of holding a solved one are solved. The
+  solver checks that first and says nothing when there is nothing to do, and otherwise
+  picks whichever of the 24 ways to hold it starts with the most corners already home,
+  prepending one "turn the whole cube" step. That is worth about 6 moves a solve.
 * **A 2×2 is solved by the 3×3 solver.** Its 24 stickers are the corner stickers of a
   3×3, so they are placed on a solved 3×3 and the solver runs in a corners-only mode:
   every edge stage is skipped, and the goals never look at an edge. One extra step
   covers the difference between the puzzles: on a 2×2 a single top turn changes the
   parity of the top corners, so the solver makes it even before the corner trick, which
-  is a 3-cycle, can finish. Average: 72 moves, 19 steps, over 300 scrambles.
+  is a 3-cycle, can finish. Average: 66 moves over 3,600 solves, counting every
+  scramble in all 24 orientations.
 * **4×4 and up are free play only.** Guiding those needs the reduction method (centres,
   edge pairing, parity algorithms), a different curriculum from the one this app
   teaches, so the guide says so rather than pretending.
@@ -248,6 +253,8 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R13 | An impossible painted cube has to be explained in words a child understands. |
 | R14 | The Read button had no way to stop; a second press now stops the narration. |
 | R15 | Every size from 2×2 to 6×6 draws, turns, undoes, mixes and resets; the guide solves a 2×2 and declines a 4×4; the size survives a reload. |
+| R16 | Changing size mid-animation ran a queued move against the new cube, and left it wrongly marked as mixed, so a move and an undo were celebrated as a solve. |
+| R17 | Tearing down the guide or changing size left the narrator reading steps for a cube that was gone, with no Stop button to press. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
 produces, by touch, on an iPhone and an iPad profile: 27 checks.

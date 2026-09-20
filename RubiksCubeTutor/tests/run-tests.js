@@ -420,4 +420,89 @@ test('the 3x3 solver is unchanged by the corners-only option', () => {
   }
 });
 
+test('a 2x2 is solved however you hold it, and the solver says so', () => {
+  const M2 = NCube.make(2);
+  const rots = [];
+  for (const t of ['', 'x', "x'", 'x2', 'z', "z'"]) for (const spin of ['', 'y', 'y2', "y'"]) rots.push((t + ' ' + spin).trim());
+  assert.strictEqual(rots.length, 24);
+  for (const rot of rots) {
+    const s = rot ? M2.applyAlg(M2.solved(), rot) : M2.solved();
+    assert(M2.isSolved(s), 'a turned solved 2x2 is still solved: ' + rot);
+    assert(Solver.isSolved2x2(s), 'isSolved2x2 must agree: ' + rot);
+    assert.strictEqual(Solver.solve2x2(s).steps.length, 0, 'no help is needed for a solved 2x2 held ' + (rot || 'normally'));
+  }
+});
+test('a 2x2 solves from every scramble in every one of the 24 ways of holding it', () => {
+  const M2 = NCube.make(2);
+  const r = rng(31337);
+  const rots = [];
+  for (const t of ['', 'x', "x'", 'x2', 'z', "z'"]) for (const spin of ['', 'y', 'y2', "y'"]) rots.push((t + ' ' + spin).trim());
+  let n = 0, moves = 0;
+  for (let i = 0; i < 25; i++) {
+    const base = M2.applyAlg(M2.solved(), M2.scramble(20, r));
+    for (const rot of rots) {
+      const s = rot ? M2.applyAlg(base, rot) : base;
+      const res = Solver.solve2x2(s);
+      let replay = s;
+      for (const st of res.steps) {
+        for (const t of st.moves) M2.parseMove(t);          // every token must be legal on a 2x2
+        assert(!/centre/i.test(st.text), 'a 2x2 has no centres: ' + st.text);
+        replay = M2.applyAlg(replay, st.moves);
+      }
+      assert(M2.isSolved(replay), 'replaying the steps must solve it (held ' + (rot || 'normally') + ')');
+      assert(M2.isSolved(res.state), 'the returned state must be solved');
+      moves += res.steps.reduce((a, b) => a + b.moves.length, 0);
+      n++;
+    }
+  }
+  console.log('     2x2 over all 24 orientations: ' + n + ' solves, average ' + (moves / n).toFixed(1) + ' moves');
+});
+test('validate2x2 takes a string, like the 3x3 validator does', () => {
+  const M2 = NCube.make(2);
+  assert(Solver.validate2x2(M2.solved().join('')).ok);
+  assert(Solver.validate2x2(M2.solved()).ok);
+  assert(!Solver.validate2x2('YYY').ok);
+  assert(!Solver.validate2x2(null).ok);
+  assert(Solver.solve2x2(M2.applyAlg(M2.solved(), M2.scramble(10, rng(5))).join('')).steps.length > 0);
+});
+test('every move token describes itself distinctly, at any depth', () => {
+  const M3 = NCube.make(3);
+  const said = ['M', 'E', 'S'].map((t) => M3.describe(t));
+  assert.strictEqual(new Set(said).size, 3, 'the three slice moves must not share one sentence: ' + said.join(' | '));
+  for (const t of ['M', 'E', 'S']) assert(!/^Turn the middle layer\.$/.test(M3.describe(t)));
+  // an ordinal exists for any depth, not just the first few
+  const M16 = NCube.make(16);
+  for (let d = 2; d <= M16.maxDepth; d++) {
+    const words = M16.describe(d + 'R');
+    assert(!/undefined/.test(words), 'no ordinal for depth ' + d + ': ' + words);
+  }
+  assert(/11th/.test(M16.describe('11R')), M16.describe('11R'));
+  assert(/12th/.test(M16.describe('12R')), M16.describe('12R'));
+});
+test('a rejected move names the token that was typed, not an internal rewrite', () => {
+  assert.strictEqual(NCube.make(3).parseMove('u').token, 'u');
+  assert.throws(() => NCube.make(2).parseMove('u'), /^Error: u:/);
+  assert.throws(() => NCube.make(4).parseMove('7U'), /^Error: 7U:/);
+  assert.throws(() => NCube.make(4).parseMove('M'), /middle layer/);
+  assert.throws(() => NCube.make(3).parseMove('Z'), /Unknown move: Z/);
+});
+test('a scramble never turns a layer back through moves that commute with it', () => {
+  for (const N of NCube.SIZES) {
+    const M = NCube.make(N);
+    const r = rng(4242 + N);
+    let wasted = 0, accidentallySolved = 0;
+    for (let i = 0; i < 400; i++) {
+      const scr = M.scramble(20, r);
+      if (M.isSolved(M.applyAlg(M.solved(), scr))) accidentallySolved++;
+      const sig = scr.map((t) => { const mv = M.parseMove(t); return mv.axis + ':' + mv.layers[0]; });
+      for (let k = 1; k < sig.length; k++) {
+        if (sig[k] === sig[k - 1]) wasted++;
+        else if (k >= 2 && sig[k] === sig[k - 2] && sig[k - 1].split(':')[0] === sig[k].split(':')[0]) wasted++;
+      }
+    }
+    assert.strictEqual(wasted, 0, N + 'x' + N + ' wasted ' + wasted + ' move pairs');
+    assert.strictEqual(accidentallySolved, 0, N + 'x' + N + ' produced a solved cube');
+  }
+});
+
 console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));

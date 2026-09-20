@@ -177,8 +177,11 @@
     // Queue a sequence of moves; resolves when all are done. onMove(token, i) fires as each finishes.
     play(moves, duration, onMove) {
       const tokens = this.model.parseAlg(moves);
+      // Captured here, not inside run(): a play queued behind a running animation
+      // would otherwise read the generation AFTER a size change and animate its
+      // old-size moves against the new cube.
+      const myGen = this.gen;
       const run = async () => {
-        const myGen = this.gen;
         for (let i = 0; i < tokens.length; i++) {
           if (this.gen !== myGen) break;       // the cube was replaced under us
           await this.animateMove(tokens[i], duration);

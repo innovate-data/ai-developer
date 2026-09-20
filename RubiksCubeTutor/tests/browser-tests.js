@@ -9,7 +9,7 @@
  * Needs a Chromium and playwright-core, neither of which is a dependency of the app:
  *     npm i --no-save playwright-core
  *     node tests/browser-tests.js
- * Set CHROME to point at a browser binary if the default path is wrong.
+ * Set CHROME to point at a browser binary if none of the usual ones is found.
  */
 let chromium;
 try {
@@ -19,7 +19,16 @@ try {
   process.exit(0);
 }
 const path = require('path');
-const EXE = process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const EXE = process.env.CHROME || [
+  '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+].find((f) => { try { return require('fs').existsSync(f); } catch { return false; } });
+if (!EXE) {
+  console.log('skipped: no Chromium found. Set CHROME=/path/to/chrome and re-run.');
+  process.exit(0);
+}
 const URL = 'file://' + path.resolve(__dirname, '..', 'index.html');
 const view = (sel) => `(() => { const st=new Array(54);
   document.querySelectorAll('${sel} .face:not(.inner)').forEach(f=>{st[+f.dataset.index]=f.className.match(/c-(\\w)/)[1];});
@@ -340,6 +349,93 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('nav button[data-screen="play"]').click();
     await p.locator('#play-size .size-btn', { hasText: '3×3' }).click();
     await p.waitForTimeout(200);
+    await p.close(); }
+
+  console.log('R16 changing cube size mid-flight leaves nothing stale behind');
+  { const p = await newPage();
+    const pick = async (n) => { await p.locator('#play-size .size-btn', { hasText: n + '×' + n }).click(); await p.waitForTimeout(220); };
+    const solvedOnScreen = (n) => p.evaluate((N) => {
+      const by = {};
+      document.querySelectorAll('#play-cube .face:not(.inner)').forEach((f) => {
+        const i = +f.dataset.index;
+        (by[Math.floor(i / (N * N))] = by[Math.floor(i / (N * N))] || new Set()).add(f.className.match(/c-\w/)[0]);
+      });
+      return Object.values(by).every((set) => set.size === 1);
+    }, n);
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+
+    // a move queued behind a running animation must not run against the next cube
+    await pick(6);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(400);
+    await p.locator('#play-controls .pad-btn.inner:not(.rot)').last().click();   // e.g. 3D', which a 2x2 has not got
+    await p.waitForTimeout(150);
+    await pick(2);
+    await p.waitForTimeout(2200);
+    ck('a queued deep move does not follow the cube to a smaller size', await solvedOnScreen(2));
+
+    // mixing up, then switching size, must not leave the new cube marked as scrambled
+    await pick(3);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(500);
+    await pick(4);
+    await p.waitForTimeout(2200);
+    ck('the swapped-in cube is not announced as mixed', !/Go!/.test(await p.locator('#play-status').textContent()));
+    await p.locator('#play-controls .pad-btn').first().click();
+    await p.waitForTimeout(600);
+    await p.locator('#play-undo').click();
+    await p.waitForTimeout(800);
+    ck('and a move plus an undo is not celebrated as a solve', !/Solved in/.test(await p.locator('#play-status').textContent()),
+       (await p.locator('#play-status').textContent()).trim());
+
+    // rotation buttons turn every layer, so they are not inner-layer buttons
+    await pick(6);
+    ck('rotations are not styled as inner layers', (await p.locator('#play-controls .pad-btn.rot.inner').count()) === 0);
+
+    ck('no page errors', errs.length === 0, errs.join(' | ') || 'none');
+    await p.close(); }
+
+  console.log('R17 the narrator stops when the cube it was describing goes away');
+  { const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.addInitScript(() => {
+      const log = { spoken: [], cancels: 0 };
+      let cur = null;
+      window.__speech = log;
+      Object.defineProperty(window, 'SpeechSynthesisUtterance', { configurable: true, value: function (t) { this.text = t; this.onend = null; this.onerror = null; } });
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+        speak(u) { cur = u; log.spoken.push(u.text); }, cancel() { log.cancels++; cur = null; }, getVoices: () => [] } });
+    });
+    await p.goto(URL);
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForTimeout(300);
+    const cancels = () => p.evaluate(() => window.__speech.cancels);
+
+    await p.locator('#play-guide .btn', { hasText: 'Read' }).click();
+    await p.waitForTimeout(120);
+    let before = await cancels();
+    await p.locator('#play-size .size-btn', { hasText: '5×5' }).click();
+    await p.waitForTimeout(250);
+    ck('changing size stops the narration', (await cancels()) > before);
+
+    // and a manual move, which also tears the guide down
+    await p.locator('#play-size .size-btn', { hasText: '3×3' }).click();
+    await p.waitForTimeout(250);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForTimeout(300);
+    await p.locator('#play-guide .btn', { hasText: 'Read' }).click();
+    await p.waitForTimeout(120);
+    before = await cancels();
+    await p.locator('#play-controls .pad-btn').first().click();
+    await p.waitForTimeout(400);
+    ck('making your own move stops the narration', (await cancels()) > before);
     await p.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
