@@ -64,7 +64,7 @@ function runCopyPhase() {
 (async () => {
   console.log('the Xcode copy phase');
   const root = runCopyPhase();
-  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/view.js', 'js/lessons.js', 'js/app.js']) {
+  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));
   }
 

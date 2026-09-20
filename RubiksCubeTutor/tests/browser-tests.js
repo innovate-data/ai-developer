@@ -332,11 +332,22 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 120000 });
     ck('2x2: the guide solves it', await solvedOnScreen());
-    // and refuses politely on a 4x4
+    // and on a 4x4, where it builds centres and pairs edges before the 3x3 part
     await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
     await p.waitForTimeout(250);
-    ck('4x4: help is not offered', await p.locator('#play-help').isDisabled());
-    ck('4x4: the note says why', /2×2 and the 3×3/.test(await p.locator('#play-size-note').textContent()));
+    ck('4x4: help is offered', !(await p.locator('#play-help').isDisabled()));
+    ck('4x4: the note explains the plan', /centres first/.test(await p.locator('#play-size-note').textContent()));
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 30000 });
+    const chips = await p.locator('#play-guide .stage-chip').allTextContents();
+    ck('4x4: the stage bar starts with centres and edges', chips.indexOf('Centres') >= 0 && chips.indexOf('Pair the edges') > chips.indexOf('Centres') && chips.indexOf('White cross') > chips.indexOf('Pair the edges'), chips.join(','));
+    ck('4x4: the first card explains the big-cube idea', /middle squares|centre/i.test(await p.locator('#play-guide .guide-text').textContent()));
+    ck('4x4: the status says what to do', /Follow the steps/.test(await p.locator('#play-status').textContent()));
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 240000 });
+    ck('4x4: the guide solves it', await solvedOnScreen());
     // the choice is remembered, and My real cube knows Play is not a 3x3
     await p.reload();
     await p.waitForTimeout(300);

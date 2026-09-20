@@ -6,7 +6,7 @@
  */
 (function (root) {
   'use strict';
-  const { Cube, Solver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
+  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
   // The biggest cube knows every move token the app can show, so it does the describing.
   const ANY = NCube.make(NCube.SIZES[NCube.SIZES.length - 1]);
 
@@ -370,8 +370,8 @@
       const stages = stagesOf();
       const bar = el('div', 'stage-bar');
       for (const st of stages) {
-        const idx = Solver.STAGES.indexOf(st);
-        const curIdx = Solver.STAGES.indexOf(step.stage);
+        const idx = BigSolver.STAGES.indexOf(st);
+        const curIdx = BigSolver.STAGES.indexOf(step.stage);
         bar.appendChild(el('span', 'stage-chip' + (idx < curIdx ? ' done' : idx === curIdx ? ' current' : ''), STAGE_TITLES[st]));
       }
       container.appendChild(bar);
@@ -769,10 +769,8 @@
     let timerStart = null, timerId = null, scrambled = false, moveCount = 0;
     const guide = Guide(guideBox, station, {
       onFinish: () => { stopTimer(); },
-      // the guide knows the 2x2 and the 3x3; bigger cubes are free play
-      solve: (s) => (station.model.N === 2 ? Solver.solve2x2(s) : Solver.solve(s)),
+      solve: (s) => BigSolver.solveAny(station.model, s),
     });
-    const canGuide = () => station.model.N <= 3;
 
     function fmt(ms) {
       const s = Math.floor(ms / 1000);
@@ -827,10 +825,9 @@
       timerStart = null;
       scrambled = false;
       moveCount = 0;
-      $('#play-help').disabled = !canGuide();
-      sizeNote.textContent = canGuide()
+      sizeNote.textContent = n <= 3
         ? 'Cube Clubhouse can guide you through this one.'
-        : 'Free play. The guide knows the 2×2 and the 3×3; the lessons and My real cube use the 3×3.';
+        : 'Cube Clubhouse can guide you through this one too: centres first, then the edges, then it works like a 3×3. The lessons and My real cube use the 3×3.';
       statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
     }
     for (const n of NCube.SIZES) {
@@ -876,11 +873,17 @@
       station.undo();
     });
     $('#play-help').addEventListener('click', () => {
-      if (!canGuide()) { statusEl.textContent = 'The guide knows the 2×2 and the 3×3. Pick one of those to get help.'; return; }
       stopTimer();
       scrambled = false;
-      guide.start(station.state);
-      guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // A 6x6 takes a second or two to work out; let "Thinking" paint first.
+      statusEl.textContent = 'Thinking…';
+      const myGen = station.view.gen;
+      setTimeout(() => {
+        if (station.view.gen !== myGen) return;      // the cube was replaced meanwhile
+        const ok = guide.start(station.state);
+        statusEl.textContent = ok ? 'Follow the steps below. Press Watch to see each one.' : 'Hmm, something went wrong. Press Mix it up and try again.';
+        guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 30);
     });
     $('#play-reset-view').addEventListener('click', () => station.view.resetView());
     screens.play = { section, station, userMove };

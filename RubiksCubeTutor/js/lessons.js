@@ -225,6 +225,9 @@
 
   const STAGE_TITLES = {
     orient: 'Hold it correctly',
+    centres: 'Centres',
+    edges: 'Pair the edges',
+    parity: 'Big-cube fix',
     daisy: 'Daisy',
     cross: 'White cross',
     corners: 'White corners',

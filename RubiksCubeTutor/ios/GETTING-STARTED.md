@@ -68,6 +68,7 @@ but be aware of that one outbound request, or bundle the font to remove it.
 
 ## Known scope
 
-The 2×2 and 3×3 have a full guided solve. The 4×4, 5×5 and 6×6 are free play: you can
-turn, mix and reset them, but the app does not teach the reduction method those sizes
-need. The Learn lessons and "My real cube" are 3×3.
+Every size from 2×2 to 6×6 has a guided solve on the Play screen. The 4×4, 5×5 and
+6×6 use the reduction method (centres, then edge pairing, then the 3×3 method), so a
+6×6 solve is long, around 95 cards, and takes the app a second or two to work out.
+The Learn lessons and "My real cube" are 3×3.

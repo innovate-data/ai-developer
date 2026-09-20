@@ -12,6 +12,7 @@ RubiksCubeTutor/
 ├── js/cube.js            3x3 model: facelets, moves, pieces, validity check
 ├── js/ncube.js           N x N model for 2x2 to 6x6, sticker-identical to cube.js at N=3
 ├── js/solver.js          beginner-method solver that explains every step
+├── js/bigsolver.js       reduction solver for the 4x4, 5x5 and 6x6 (centres, edges, parity, then 3x3)
 ├── js/view.js            3D cube (CSS transforms) and 2D net view
 ├── js/lessons.js         the course content (plain data, easy to edit or translate)
 ├── js/app.js             screens, move pad, guided walkthrough, practice, quiz
@@ -109,8 +110,8 @@ tips on the right.
 **Play** – free play on a 2×2, 3×3, 4×4, 5×5 or 6×6, with a mix-up button, undo, a timer
 that starts on the first move and a move counter. Bigger cubes get a row of buttons per
 inner layer ("2U" is the second layer from the top). *Help me solve it* opens the guided
-walkthrough on the 2×2 and the 3×3; making a manual move clears the (now stale) guide.
-The chosen size is remembered on the device.
+walkthrough on every size; making a manual move clears the (now stale) guide. The
+chosen size is remembered on the device.
 
 **Solve my cube** – a net editor: pick a colour, tap stickers to copy a real cube
 (centres are fixed to yellow on top, green in front). *Check my cube* runs the validity
@@ -195,9 +196,32 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   parity of the top corners, so the solver makes it even before the corner trick, which
   is a 3-cycle, can finish. Average: 66 moves over 3,600 solves, counting every
   scramble in all 24 orientations.
-* **4×4 and up are free play only.** Guiding those needs the reduction method (centres,
-  edge pairing, parity algorithms), a different curriculum from the one this app
-  teaches, so the guide says so rather than pretending.
+
+### Big cubes (`js/bigsolver.js`)
+* The 4×4, 5×5 and 6×6 are solved by **reduction**: build the six centres, pair up the
+  edge pieces so every edge is one colour on each side, fix the one or two things an
+  even cube can do that a 3×3 cannot, and then hand a 54-sticker "reduced" cube to the
+  3×3 solver, whose steps are replayed on the big cube (outer turns and rotations are
+  the same moves on any size).
+* There is no case table. Each centre and edge step is found by **template search**:
+  a few hundred short algorithm shapes (`s`, `A s B s'`, the two-slice commutator
+  `s1 B s2 B' s1' B s2' B` that moves exactly three centre squares, and `P s X s'`
+  with `X` a conjugate or the edge-flip trick) are expanded into a few thousand
+  permutations per size, and the shortest one that makes progress without undoing
+  finished work is taken. When nothing helps, each single face turn is tried as a
+  set-up first. Every candidate is scored on the model, and the whole solve is replayed
+  before it is returned, so a wrong step cannot reach the guide: a failed search throws
+  and the app says it got stuck.
+* Parity on the even cubes is two fixed algorithms checked on the model: a pure one-pair
+  flip (`2R2 B2 U2 2L U2 2R' U2 2R U2 F2 2R F2 2L' B2 2R2`, written with single inner
+  layers so it also keeps the centres of a 5×5 and 6×6) for an edge that looks flipped,
+  and an edge swap for two edges that look swapped. On a 6×6 the flip is applied per
+  wing orbit, and the pairing stage uses it when an edge's outer and inner pairs
+  disagree. An odd cube can never need either.
+* Cost: about 56 cards / 220 moves on a 4×4, 71 / 340 on a 5×5 and 95 / 510 on a 6×6
+  (200, 100 and 60 random scrambles, no failures). Tables build in about half a second
+  on first use and a 6×6 solve takes about 0.7 s in Node, so the Play screen shows
+  "Thinking…" first.
 
 ### 3D view (`js/view.js`)
 * N³ cubie `<div>`s with six faces each, positioned with CSS 3D transforms. The view
@@ -234,6 +258,11 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
 * that the algorithms printed in the lessons are the ones the solver runs, so the
   teaching and the code cannot drift apart;
 * that a practice cube always still needs the stage it was built for.
+* the big cubes: the parity tricks move only the edges they claim to and keep every
+  centre on the 4×4, 5×5 and 6×6; seeded scrambles of each size solve, with the stages
+  in order and the replayed steps ending solved; a rotated solved cube needs no steps;
+  a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
+  disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
 `npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium.
 Every case is a bug that was found and fixed, kept so it cannot come back:
@@ -252,12 +281,12 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R12 | A practice cube could open already solved, handing out an unearned win. |
 | R13 | An impossible painted cube has to be explained in words a child understands. |
 | R14 | The Read button had no way to stop; a second press now stops the narration. |
-| R15 | Every size from 2×2 to 6×6 draws, turns, undoes, mixes and resets; the guide solves a 2×2 and declines a 4×4; the size survives a reload. |
+| R15 | Every size from 2×2 to 6×6 draws, turns, undoes, mixes and resets; the guide solves a 2×2 and a 4×4 (centres, edges, then the 3×3 stages); the size survives a reload. |
 | R16 | Changing size mid-animation ran a queued move against the new cube, and left it wrongly marked as mixed, so a move and an undo were celebrated as a solve. |
 | R17 | Tearing down the guide or changing size left the narrator reading steps for a cube that was gone, with no Stop button to press. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
-produces, by touch, on an iPhone and an iPad profile: 27 checks.
+produces, by touch, on an iPhone and an iPad profile: 29 checks.
 
 A note on testing animations: a layer turn is a CSS transform, so the sticker colours
 do not change until the move lands. Tests that wait for colours to stop changing pass

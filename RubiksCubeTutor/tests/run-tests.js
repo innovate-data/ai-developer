@@ -3,6 +3,7 @@ const assert = require('assert');
 const Cube = require('../js/cube.js');
 const Solver = require('../js/solver.js');
 const NCube = require('../js/ncube.js');
+const BigSolver = require('../js/bigsolver.js');
 
 let passed = 0;
 function test(name, fn) {
@@ -503,6 +504,125 @@ test('a scramble never turns a layer back through moves that commute with it', (
     assert.strictEqual(wasted, 0, N + 'x' + N + ' wasted ' + wasted + ' move pairs');
     assert.strictEqual(accidentallySolved, 0, N + 'x' + N + ' produced a solved cube');
   }
+});
+
+// ------------------------------------------------------------ big cubes
+const bigStageIndex = (st) => BigSolver.STAGES.indexOf(st);
+function checkBigSolve(M, start, res) {
+  let s = start;
+  let last = -1;
+  for (const st of res.steps) {
+    assert(bigStageIndex(st.stage) >= 0, 'unknown stage ' + st.stage);
+    assert(bigStageIndex(st.stage) >= last, 'stages out of order at ' + st.stage);
+    last = bigStageIndex(st.stage);
+    assert(st.moves.length > 0 && typeof st.text === 'string' && st.text.length > 10, 'empty step');
+    for (const m of st.moves) M.parseMove(m);                       // throws on a bad token
+    for (const i of st.highlight) assert(i >= 0 && i < M.COUNT, 'highlight out of range');
+    s = M.applyAlg(s, st.moves);
+  }
+  assert(M.isSolved(s), 'replaying the steps does not solve the cube');
+  assert.strictEqual(M.toString(res.state), M.toString(s));
+}
+
+test('the parity tricks touch nothing but the edges they are meant to', () => {
+  const wingsMoved = (M, alg) => {
+    const labels = M.solved().map((_, i) => i);
+    const moved = M.applyAlg(labels, alg);
+    const isEnd = (v) => v === 0 || v === M.N - 1;
+    const out = [];
+    for (let i = 0; i < M.COUNT; i++) {
+      const g = M.GEO[i];
+      const centre = !isEnd(g.r) && !isEnd(g.c);
+      if (centre) assert.strictEqual(M.solved()[moved[i]], M.solved()[i], alg + ' changes a centre colour on the ' + M.N + 'x' + M.N);
+      if (moved[i] !== i && (isEnd(g.r) !== isEnd(g.c))) out.push(g.face);
+    }
+    return out;
+  };
+  for (const N of [4, 5, 6]) {
+    const M = NCube.make(N);
+    for (let d = 2; d <= Math.floor(N / 2); d++) {
+      const faces = wingsMoved(M, BigSolver.pureFlip(d));
+      assert.deepStrictEqual([...new Set(faces)].sort(), ['F', 'U'], 'pure flip ' + d + ' on ' + N);
+      assert.strictEqual(faces.length, 4, 'pure flip moves one pair');
+    }
+    if (BigSolver.SWAP[N]) {
+      const faces = wingsMoved(M, BigSolver.SWAP[N]);
+      assert.deepStrictEqual([...new Set(faces)].sort(), ['B', 'F', 'U'], 'swap on ' + N);
+      assert.strictEqual(faces.length, 4 * (N - 2), 'swap moves the whole top-front and top-back edges');
+    }
+  }
+});
+
+test('4x4, 5x5 and 6x6 scrambles are solved by the reduction solver', () => {
+  const r = rng(2024);
+  for (const N of [4, 5, 6]) {
+    const M = NCube.make(N);
+    const runs = N === 6 ? 3 : 6;
+    for (let k = 0; k < runs; k++) {
+      const start = M.applyAlg(M.solved(), M.scramble(30 + k * 5, r));
+      const res = BigSolver.solve(M, start);
+      checkBigSolve(M, start, res);
+      const stages = res.steps.map((st) => st.stage);
+      assert(stages.includes('centres') && stages.includes('edges'), 'a scramble needs centres and edges');
+      if (N % 2) assert(!stages.includes('parity'), 'an odd cube never needs a parity fix');
+      assert(!stages.includes('orient') || stages[0] === 'orient', 'orient comes first');
+    }
+  }
+});
+
+test('a rotated solved big cube needs no steps, and a parity-only cube gets just the fix', () => {
+  for (const N of [4, 5, 6]) {
+    const M = NCube.make(N);
+    for (const rot of ['', 'x', "y'", 'z2 y']) {
+      const res = BigSolver.solve(M, rot ? M.applyAlg(M.solved(), rot) : M.solved());
+      assert.strictEqual(res.steps.length, 0, N + 'x' + N + ' rotated by ' + rot);
+    }
+  }
+  for (const N of [4, 6]) {
+    const M = NCube.make(N);
+    const flipAlg = [];
+    for (let d = 2; d <= N / 2; d++) flipAlg.push(BigSolver.pureFlip(d));
+    for (const alg of [flipAlg.join(' '), BigSolver.SWAP[N]]) {
+      const start = M.applyAlg(M.solved(), alg);
+      const res = BigSolver.solve(M, start);
+      checkBigSolve(M, start, res);
+      assert(res.steps.some((st) => st.stage === 'parity'), 'parity step expected on ' + N);
+      assert(!res.steps.some((st) => st.stage === 'centres' || st.stage === 'edges'), 'centres and edges were already done');
+    }
+  }
+});
+
+test('the 6x6 is fixed when only one wing orbit of an edge is turned round', () => {
+  const M = NCube.make(6);
+  const start = M.applyAlg(M.solved(), BigSolver.pureFlip(2));   // outer wings of UF turned, inner not
+  const res = BigSolver.solve(M, start);
+  checkBigSolve(M, start, res);
+  assert(res.steps.some((st) => st.stage === 'edges'), 'the mismatched edge is paired again');
+});
+
+test('a big cube solve is checked as it goes: every text names a real colour or side', () => {
+  const M = NCube.make(4);
+  const start = M.applyAlg(M.solved(), M.scramble(30, rng(7)));
+  const res = BigSolver.solve(M, start);
+  const colours = /white|yellow|green|blue|red|orange/;
+  for (const st of res.steps) {
+    if (st.stage === 'centres') { assert(colours.test(st.text)); assert(/TOP|BOTTOM|FRONT|BACK|LEFT|RIGHT/.test(st.text)); assert(st.highlight.length >= 1); }
+    if (st.stage === 'edges') { assert(colours.test(st.text)); assert(st.highlight.length >= 2 && st.highlight.length % 2 === 0); }
+    assert(!/undefined|NaN|\[object/.test(st.text), st.text);
+  }
+  assert(/big cube/.test(res.steps.find((st) => st.stage === 'centres').text), 'the first centre step explains the idea');
+  assert(/like a 3x3/.test(res.steps.find((st) => bigStageIndex(st.stage) > bigStageIndex('parity')).text), 'the 3x3 part is announced');
+});
+
+test('solveAny hands the 2x2 and 3x3 to their own solvers', () => {
+  const two = NCube.make(2), three = NCube.make(3);
+  const s2 = two.applyAlg(two.solved(), 'R U F');
+  const r2 = BigSolver.solveAny(two, s2);
+  assert(two.isSolved(r2.state) && r2.steps.every((st) => Solver.STAGES.includes(st.stage)));
+  const s3 = three.applyAlg(three.solved(), "R U R' U' F2");
+  const r3 = BigSolver.solveAny(three, s3);
+  assert(three.isSolved(r3.state) && r3.steps.some((st) => st.stage === 'daisy' || st.stage === 'cross' || st.stage === 'corners'));
+  assert.throws(() => BigSolver.solve(three, s3), /4 layers/);
 });
 
 console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
