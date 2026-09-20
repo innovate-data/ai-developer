@@ -200,7 +200,8 @@ function runCopyPhase() {
     await p.waitForTimeout(400);
     ck('the footer reaches the grown-ups pages by touch', !(await p.locator('#screen-grownups').isHidden()));
     ck('privacy names what is stored on the device', /cube size|stars/.test(await p.locator('#privacy').textContent()));
-    ck('the licence travels with the app', /MIT License/.test(await p.locator('#licence').textContent()));
+    const lic = await p.locator('#licence').textContent();
+    ck('the licence travels with the app', /END USER LICENCE AGREEMENT/.test(lic) && /Ira Learning LLC/.test(lic));
     const infoSmall = await p.evaluate(() => [...document.querySelectorAll('#screen-grownups button, #screen-grownups a')]
       .filter((b) => b.offsetParent !== null)
       .filter((b) => b.getBoundingClientRect().height < 44).length);

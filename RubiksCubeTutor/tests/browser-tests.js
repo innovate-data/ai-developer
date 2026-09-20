@@ -578,8 +578,11 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     const privacy = await p.locator('#privacy').textContent();
     ck('privacy says what is stored and that nothing leaves', /collects nothing/.test(privacy) && /Google Fonts/.test(privacy), privacy.slice(0, 60));
     const licence = await p.locator('#licence').textContent();
-    ck('the licence is there in full, not just described', /MIT License/.test(licence) && /WITHOUT WARRANTY OF ANY KIND/.test(licence));
-    ck('the trademark is acknowledged', /trademark/.test(licence));
+    ck('the licence is there in full, not just described', /END USER LICENCE AGREEMENT/.test(licence) && /WITHOUT\s+WARRANTY OF ANY KIND/.test(licence));
+    ck('it says who owns the app, and that it is not open source', /Ira Learning LLC/.test(licence) && /not open source/.test(licence));
+    ck('the restrictions are spelled out', /RESTRICTIONS/.test(licence) && /RESERVATION OF RIGHTS/.test(licence));
+    ck('the trademarks are acknowledged', /trademark/.test(licence));
+    ck('every screen carries the copyright line', /2026 Ira Learning LLC/.test(await p.locator('.foot-copy').textContent()));
     ck('for parents covers what it teaches and how long', /lessons/.test(await p.locator('#parents').textContent()));
 
     // The in-page links jump between sections without losing the screen.

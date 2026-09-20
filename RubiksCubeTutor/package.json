@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "description": "A Rubik's Cube tutor for kids: interactive 3D lessons, practice puzzles and a guided solver.",
-  "license": "MIT",
+  "author": "Ira Learning LLC",
+  "license": "UNLICENSED",
   "scripts": {
     "test": "node tests/run-tests.js",
     "lint": "npx --yes eslint@9 --no-config-lookup -c eslint.config.mjs js tests build-artifact.js",

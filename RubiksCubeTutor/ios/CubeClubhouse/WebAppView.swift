@@ -1,3 +1,8 @@
+//
+//  Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+//  Proprietary software. See LICENSE, or the Licence page inside the app.
+//
+
 import SwiftUI
 import WebKit
 

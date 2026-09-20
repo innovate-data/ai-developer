@@ -66,6 +66,10 @@ Privacy is "Data Not Collected". One caveat: the page asks Google Fonts for its
 typeface and falls back to the system rounded font when offline, so declare no tracking
 but be aware of that one outbound request, or bundle the font to remove it.
 
+The **Copyright** field App Store Connect asks for is already set in the target's build
+settings as "Copyright © 2026 Ira Learning LLC. All rights reserved."; the app is
+proprietary, and `LICENSE` beside the app holds the terms shown on its Licence page.
+
 Two things to settle before you submit:
 
 * **A privacy policy URL.** App Store Connect wants one you host. The wording is already

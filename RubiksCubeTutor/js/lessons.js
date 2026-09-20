@@ -1,4 +1,8 @@
 /*
+ * Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+ * Proprietary software. See LICENSE, or the Licence page inside the app.
+ */
+/*
  * lessons.js - the course content for Cube Clubhouse.
  *
  * Every lesson is plain data so it is easy to translate or tweak. Lessons with

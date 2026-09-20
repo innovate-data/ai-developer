@@ -1,4 +1,8 @@
 /*
+ * Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+ * Proprietary software. See LICENSE, or the Licence page inside the app.
+ */
+/*
  * bigsolver.js - guided solving for the 4x4, 5x5 and 6x6 (the "reduction" method).
  *
  * A big cube is solved by turning it into a 3x3 and then using the beginner method

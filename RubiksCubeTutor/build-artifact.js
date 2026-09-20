@@ -1,4 +1,8 @@
 /*
+ * Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+ * Proprietary software. See LICENSE, or the Licence page inside the app.
+ */
+/*
  * build-artifact.js - generate the single-page version published as a Claude Artifact.
  *
  * The artifact host wraps the page in its own <!doctype>/<html>/<head>/<body>, so the

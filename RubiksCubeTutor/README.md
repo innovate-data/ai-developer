@@ -5,6 +5,11 @@ classic beginner "layer by layer" method. It is a single-page web app with **no 
 step and no dependencies**: open `index.html` in any modern browser and it works,
 including on a phone or tablet.
 
+> **Proprietary software.** Cube Clubhouse is the property of Ira Learning LLC. It is
+> not open source: see `LICENSE` for the terms, which are also shown to the reader on
+> the app's own Licence page. The repository's root `LICENSE` covers the other projects
+> beside this folder, not this one.
+
 ```
 RubiksCubeTutor/
 ├── index.html            the app shell (three screens: Learn, Play, Solve my cube)
@@ -110,8 +115,9 @@ tips on the right.
 **For grown-ups** – reached from the three footer links, never from the child's nav:
 what the app teaches and how to sit with a child through it; a privacy page naming the
 three things kept on the device and the single outbound request (the typeface), with a
-two-press button that erases the lot; and the MIT licence in full, with the typeface's
-licence and a trademark note. `#parents`, `#privacy` and `#licence` open it at the right
+two-press button that erases the lot; and the licence conditions in full - the app is
+proprietary, owned by Ira Learning LLC - with the typeface's own licence and the
+trademark notes. `#parents`, `#privacy` and `#licence` open it at the right
 section, and anything unrecognised in the hash lands on the lessons.
 
 **Play** – free play on a 2×2, 3×3, 4×4, 5×5 or 6×6, with a mix-up button, undo, a timer
@@ -321,7 +327,7 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 108 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 111 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |

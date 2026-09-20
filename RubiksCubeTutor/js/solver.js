@@ -1,4 +1,8 @@
 /*
+ * Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+ * Proprietary software. See LICENSE, or the Licence page inside the app.
+ */
+/*
  * solver.js - Beginner "layer by layer" solver for Cube Clubhouse.
  *
  * It solves the cube exactly the way the lessons teach it, so every step it

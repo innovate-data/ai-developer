@@ -1,3 +1,7 @@
+/*
+ * Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+ * Proprietary software. See LICENSE, or the Licence page inside the app.
+ */
 /* Cube Clubhouse styles: big, bright, rounded and readable for young learners. */
 :root {
   /* light palette - every colour is defined here first, then overridden per theme */
@@ -137,6 +141,7 @@ main {
 }
 .foot { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 .foot-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; margin-top: 10px; }
+.foot-copy { display: block; margin-top: 6px; font-size: 0.82rem; }
 /* a plain link, but a real button: the grown-ups pages are a screen, not a URL */
 .linkish {
   border: 0; background: none; padding: 6px 2px; color: var(--muted); font: inherit; font-weight: 600;

@@ -1,4 +1,8 @@
 /*
+ * Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+ * Proprietary software. See LICENSE, or the Licence page inside the app.
+ */
+/*
  * ncube.js - an N x N x N cube model, for N from 2 to 6 (and beyond).
  *
  * Built exactly like cube.js: every sticker knows its 3D position and outward normal,

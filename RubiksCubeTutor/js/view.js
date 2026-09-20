@@ -1,4 +1,8 @@
 /*
+ * Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+ * Proprietary software. See LICENSE, or the Licence page inside the app.
+ */
+/*
  * view.js - 3D cube drawn with CSS transforms (no WebGL, no libraries).
  *
  * The cube is N x N x N little cubies; each cubie has six faces. Faces that point
