@@ -134,7 +134,7 @@ function runCopyPhase() {
 
     // Every control has to be big enough for a child's finger. Apple's own floor is
     // 44pt, and the icon-only buttons used to come out at 41x32.
-    const tooSmall = await p.evaluate(() => [...document.querySelectorAll('nav button, #screen-play button')]
+    const tooSmall = await p.evaluate(() => [...document.querySelectorAll('nav button, #screen-play button, .foot-links button')]
       .filter((b) => b.offsetParent !== null)
       .map((b) => ({ t: (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 18), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) }))
       .filter((b) => b.w < 44 || b.h < 44));
@@ -194,6 +194,19 @@ function runCopyPhase() {
     await p.waitForTimeout(300);
     const msg = (await p.locator('#solve-msg').textContent()).trim();
     ck('painting a sticker by touch registers', /There should be 9 \w+ stickers/.test(msg), msg);
+
+    // The grown-ups pages are what a parent (and an app reviewer) looks for.
+    await p.locator('.foot-links [data-info="privacy"]').tap();
+    await p.waitForTimeout(400);
+    ck('the footer reaches the grown-ups pages by touch', !(await p.locator('#screen-grownups').isHidden()));
+    ck('privacy names what is stored on the device', /cube size|stars/.test(await p.locator('#privacy').textContent()));
+    ck('the licence travels with the app', /MIT License/.test(await p.locator('#licence').textContent()));
+    const infoSmall = await p.evaluate(() => [...document.querySelectorAll('#screen-grownups button, #screen-grownups a')]
+      .filter((b) => b.offsetParent !== null)
+      .filter((b) => b.getBoundingClientRect().height < 44).length);
+    ck('its controls are finger-sized too', infoSmall === 0, infoSmall);
+    await p.locator('#screen-grownups .back-to-app').first().tap();
+    await p.waitForTimeout(300);
 
     ck('no page errors', errs.length === 0, errs.join(' | ') || 'none');
     await ctx.close();

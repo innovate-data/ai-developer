@@ -107,6 +107,13 @@ Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" bu
 cube with a move pad on the left, text, tricks, interactive widgets, practice area and
 tips on the right.
 
+**For grown-ups** – reached from the three footer links, never from the child's nav:
+what the app teaches and how to sit with a child through it; a privacy page naming the
+three things kept on the device and the single outbound request (the typeface), with a
+two-press button that erases the lot; and the MIT licence in full, with the typeface's
+licence and a trademark note. `#parents`, `#privacy` and `#licence` open it at the right
+section, and anything unrecognised in the hash lands on the lessons.
+
 **Play** – free play on a 2×2, 3×3, 4×4, 5×5 or 6×6, with a mix-up button, undo, a timer
 that starts on the first move and a move counter. Bigger cubes get a row of buttons per
 inner layer ("2U" is the second layer from the top). *Help me solve it* opens the guided
@@ -314,7 +321,7 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 93 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 108 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -338,9 +345,10 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R19 | A 6×6 guide opens from a real scramble, with "Thinking…" while it works, and its stage bar no longer fills a phone screen with thirteen chips. |
 | R20 | The whole-solve run can be paused, resumed, stopped and re-speeded; stopping lands on a whole step, and the steps left still solve the cube. |
 | R21 | The view repaints only what changed, so every sticker on screen is checked against the state it is meant to show. |
+| R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress takes two presses. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
-produces, by touch, on an iPhone and an iPad profile: 43 checks, including a whole
+produces, by touch, on an iPhone and an iPad profile: 51 checks, including a whole
 4×4 solved by tapping, that the app keeps painting and holds its controls while it
 works a big cube out, and that no control is smaller than 44pt.
 

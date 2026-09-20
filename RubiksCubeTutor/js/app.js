@@ -200,6 +200,7 @@
   // ------------------------------------------------------------ progress
   const PROGRESS_KEY = 'cubeclubhouse.progress';
   const LEGACY_PROGRESS_KEY = 'cubebuddy.progress';   // the app's earlier name
+  const SIZE_KEY = 'cubeclubhouse.size';
   function loadProgress() {
     try {
       const raw = localStorage.getItem(PROGRESS_KEY) || localStorage.getItem(LEGACY_PROGRESS_KEY);
@@ -563,7 +564,10 @@
     hush();
     for (const k of Object.keys(screens)) {
       screens[k].section.hidden = k !== name;
-      $('nav button[data-screen="' + k + '"]').classList.toggle('active', k === name);
+      // The grown-ups screen has no button in the child's nav; it is reached from the
+      // footer, so there is nothing to mark as active.
+      const tab = $('nav button[data-screen="' + k + '"]');
+      if (tab) tab.classList.toggle('active', k === name);
     }
     location.hash = name;
   }
@@ -851,7 +855,6 @@
   }
 
   // ================================================================= PLAY
-  const SIZE_KEY = 'cubeclubhouse.size';
   function buildPlay() {
     const section = $('#screen-play');
     let size = 3;
@@ -1007,6 +1010,49 @@
     screens.play = { section, station, userMove };
   }
 
+  // ============================================================ GROWN-UPS
+  // Not in the child's nav: the footer links lead here, one per section.
+  function buildGrownUps() {
+    const section = $('#screen-grownups');
+    const msg = $('#clear-progress-msg', section);
+    const clearBtn = $('#clear-progress', section);
+    let armed = 0;
+    // Two taps rather than a pop-up dialog: a child cannot wipe a week of stars by
+    // brushing the button, and nobody has to read a modal to say no.
+    clearBtn.addEventListener('click', () => {
+      if (Date.now() > armed) {
+        armed = Date.now() + 6000;
+        clearBtn.textContent = 'Tap again to erase';
+        msg.textContent = 'This cannot be undone.';
+        setTimeout(() => {
+          if (Date.now() <= armed) return;
+          clearBtn.textContent = 'Clear saved progress';
+          msg.textContent = '';
+        }, 6200);
+        return;
+      }
+      armed = 0;
+      clearBtn.textContent = 'Clear saved progress';
+      try {
+        for (const key of [PROGRESS_KEY, LEGACY_PROGRESS_KEY, SIZE_KEY, SPEED_KEY]) localStorage.removeItem(key);
+        msg.textContent = 'Erased. The lessons start fresh next time.';
+      } catch {
+        msg.textContent = 'This browser will not let the app save or erase anything, so there was nothing stored.';
+      }
+    });
+    section.querySelectorAll('.back-to-app').forEach((b) => b.addEventListener('click', () => showScreen('learn')));
+    screens.grownups = { section };
+  }
+  const openGrownUps = (part) => {
+    showScreen('grownups');
+    const target = part && $('#' + part);
+    if (!target) { window.scrollTo(0, 0); return; }
+    // The top bar is sticky, so scroll to just above the heading rather than under it.
+    const bar = $('.topbar');
+    const top = target.getBoundingClientRect().top + window.scrollY - (bar ? bar.offsetHeight : 0) - 10;
+    window.scrollTo(0, Math.max(0, top));
+  };
+
   // ================================================================ SOLVE
   function buildSolve() {
     const section = $('#screen-solve');
@@ -1111,15 +1157,25 @@
     buildLearn();
     buildPlay();
     buildSolve();
+    buildGrownUps();
     keyboard();
     stopSpeakingWhenHidden();
     document.querySelectorAll('nav button[data-screen]').forEach((b) => b.addEventListener('click', () => showScreen(b.dataset.screen)));
-    window.addEventListener('hashchange', () => {
-      const n = location.hash.replace('#', '');
-      if (Object.prototype.hasOwnProperty.call(screens, n)) showScreen(n);
-    });
-    const start = location.hash.replace('#', '');
-    // hasOwnProperty, so that a hash like #toString cannot hide every screen at once
-    showScreen(Object.prototype.hasOwnProperty.call(screens, start) ? start : 'learn');
+    document.querySelectorAll('.foot-links [data-info]').forEach((b) => b.addEventListener('click', () => openGrownUps(b.dataset.info)));
+    document.querySelectorAll('.info-nav a').forEach((a) => a.addEventListener('click', (e) => {
+      e.preventDefault();                       // the hash belongs to the screens, not the sections
+      openGrownUps(a.getAttribute('href').slice(1));
+    }));
+    // A link straight to one of the grown-ups sections opens that screen at it.
+    const INFO_PARTS = ['parents', 'privacy', 'licence'];
+    const go = (raw) => {
+      if (INFO_PARTS.includes(raw)) { openGrownUps(raw); return true; }
+      if (Object.prototype.hasOwnProperty.call(screens, raw)) { showScreen(raw); return true; }
+      return false;
+    };
+    // hasOwnProperty inside go(), so that a hash like #toString cannot hide every
+    // screen at once; anything unknown lands on the lessons rather than nowhere.
+    window.addEventListener('hashchange', () => { if (!go(location.hash.replace('#', ''))) showScreen('learn'); });
+    if (!go(location.hash.replace('#', ''))) showScreen('learn');
   });
 })(window);

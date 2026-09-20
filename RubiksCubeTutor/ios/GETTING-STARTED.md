@@ -66,6 +66,18 @@ Privacy is "Data Not Collected". One caveat: the page asks Google Fonts for its
 typeface and falls back to the system rounded font when offline, so declare no tracking
 but be aware of that one outbound request, or bundle the font to remove it.
 
+Two things to settle before you submit:
+
+* **A privacy policy URL.** App Store Connect wants one you host. The wording is already
+  written — it is the Privacy section of the in-app **For grown-ups** page (the footer
+  links lead there) — so put the same text on a page of your own and link to that.
+* **Who to contact.** The in-app page deliberately gives no address, because there is
+  nothing to request or delete. If you want one shown, add it to the end of the Privacy
+  section in `index.html`.
+
+If you publish in the Kids category, note that the app has no external links, no
+purchases and no advertising, so no parental gate is needed.
+
 ## Known scope
 
 Every size from 2×2 to 6×6 has a guided solve on the Play screen. The 4×4, 5×5 and

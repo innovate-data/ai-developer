@@ -568,6 +568,51 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('every sticker drawn matches the state after a scramble', !/MISMATCH/.test(drift), drift);
     await p.close(); }
 
+  console.log('R22 the grown-ups pages are reachable, readable and honest');
+  { const p = await newPage();
+    ck('the footer offers all three pages', await p.locator('.foot-links .linkish').count() === 3);
+    await p.locator('.foot-links [data-info="privacy"]').click();
+    await p.waitForTimeout(300);
+    ck('a footer link opens the grown-ups screen', !(await p.locator('#screen-grownups').isHidden()));
+    ck('the child screens step aside', await p.locator('#screen-learn').isHidden() && await p.locator('#screen-play').isHidden());
+    const privacy = await p.locator('#privacy').textContent();
+    ck('privacy says what is stored and that nothing leaves', /collects nothing/.test(privacy) && /Google Fonts/.test(privacy), privacy.slice(0, 60));
+    const licence = await p.locator('#licence').textContent();
+    ck('the licence is there in full, not just described', /MIT License/.test(licence) && /WITHOUT WARRANTY OF ANY KIND/.test(licence));
+    ck('the trademark is acknowledged', /trademark/.test(licence));
+    ck('for parents covers what it teaches and how long', /lessons/.test(await p.locator('#parents').textContent()));
+
+    // The in-page links jump between sections without losing the screen.
+    await p.locator('.info-nav a[href="#licence"]').click();
+    await p.waitForTimeout(250);
+    ck('the section links stay on the screen', !(await p.locator('#screen-grownups').isHidden()));
+    ck('and land below the sticky header', await p.evaluate(() => {
+      const bar = document.querySelector('.topbar').getBoundingClientRect();
+      return document.querySelector('#licence h2').getBoundingClientRect().top >= bar.bottom - 1;
+    }));
+
+    // Clearing progress takes two taps, and really clears it.
+    await p.evaluate(() => { localStorage.setItem('cubeclubhouse.progress', '{"daisy":3}'); localStorage.setItem('cubeclubhouse.size', '5'); });
+    await p.locator('#clear-progress').click();
+    await p.waitForTimeout(120);
+    ck('one press only arms the erase', (await p.evaluate(() => localStorage.getItem('cubeclubhouse.progress'))) === '{"daisy":3}');
+    ck('and says what it is about to do', /Tap again/.test(await p.locator('#clear-progress').textContent()));
+    await p.locator('#clear-progress').click();
+    await p.waitForTimeout(120);
+    ck('the second press erases the lot', await p.evaluate(() => !localStorage.getItem('cubeclubhouse.progress') && !localStorage.getItem('cubeclubhouse.size') && !localStorage.getItem('cubeclubhouse.speed')));
+
+    await p.locator('#screen-grownups .back-to-app').first().click();
+    await p.waitForTimeout(250);
+    ck('Back returns to the lessons', !(await p.locator('#screen-learn').isHidden()));
+    // A deep link opens the right part, and a nonsense hash still shows a screen.
+    await p.goto(URL + '#licence');
+    await p.waitForTimeout(400);
+    ck('a link to #licence opens the grown-ups screen', !(await p.locator('#screen-grownups').isHidden()));
+    await p.goto(URL + '#toString');
+    await p.waitForTimeout(400);
+    ck('a nonsense hash still shows the lessons', !(await p.locator('#screen-learn').isHidden()));
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

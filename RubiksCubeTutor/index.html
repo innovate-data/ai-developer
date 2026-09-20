@@ -113,9 +113,185 @@
         </div>
       </div>
     </section>
+    <!-- ====================================================== GROWN-UPS -->
+    <section id="screen-grownups" class="screen">
+      <div class="info-page">
+        <button type="button" class="btn ghost back-to-app">◀ Back to the app</button>
+        <h1>For grown-ups</h1>
+        <p class="info-lede">Everything a parent, carer or teacher might want to know about Cube Clubhouse:
+          what it teaches, what it stores, and what you are allowed to do with it.</p>
+        <nav class="info-nav" aria-label="Sections for grown-ups">
+          <a href="#parents">For parents</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#licence">Licence</a>
+        </nav>
+
+        <article id="parents" class="info-card">
+          <h2>For parents</h2>
+
+          <h3>What this is</h3>
+          <p>Cube Clubhouse teaches a child to solve a Rubik's Cube on their own, using the
+            beginner "layer by layer" method that most people learn first. It is a teaching app, not
+            a game: there is no score to chase, no timer pressure, nothing to buy and nobody to talk to.</p>
+
+          <h3>What is in it</h3>
+          <ul>
+            <li><b>Learn</b> — ten lessons, in order, from "what the pieces are" to the last twist.
+              Each one has a cube the child can turn, the trick written in words they can say out loud,
+              and a practice cube that checks their work and awards up to three stars.</li>
+            <li><b>Play</b> — a free-play cube from 2×2 up to 6×6, with mix-up, undo and a timer.
+              <b>Help me solve it</b> walks any mixed cube back to solved, one card at a time, at a
+              speed you pick, with pause and stop.</li>
+            <li><b>My real cube</b> — the child paints in the colours of the cube in their hand and
+              the app works out the steps for that exact cube.</li>
+          </ul>
+
+          <h3>Who it suits</h3>
+          <p>The words are pitched at a confident reader of about seven and up. A younger child can
+            do it all with an adult reading along, or with the <b>Read</b> button, which speaks every
+            step aloud. Nothing in the app needs writing or spelling.</p>
+
+          <h3>How long it takes</h3>
+          <p>A lesson is five to ten minutes. A first full solve, with the app helping, usually takes
+            twenty to thirty minutes — the 3×3 walkthrough is about twenty-three cards. After a week
+            or two of practice most children can solve a 3×3 from memory in a few minutes.</p>
+
+          <h3>Doing it together</h3>
+          <ul>
+            <li>A real cube in their hands makes it click. Any standard 3×3 will do; the app assumes
+              white is opposite yellow, which is true of nearly all of them.</li>
+            <li>Press <b>Watch</b> to see a step, then do the same on the real cube, then press
+              <b>I did it</b>. Going one step at a time beats watching the whole solve.</li>
+            <li>Halfway through some tricks the bottom of the cube looks wrecked. That is normal and
+              the app says so. Finish the trick and it comes back.</li>
+            <li>The middle squares never move. If a child is stuck, it is almost always because the
+              cube is being held a different way round — check the centres first.</li>
+          </ul>
+
+          <h3>Stars and progress</h3>
+          <p>Stars mark lessons a child has practised: one for finishing, more for doing it without
+            hints. They are kept on this device only, and there is no account, no leaderboard and no
+            way for anyone else to see them. You can wipe them here:</p>
+          <p><button type="button" id="clear-progress" class="btn ghost">Clear saved progress</button>
+            <span id="clear-progress-msg" class="msg" aria-live="polite"></span></p>
+
+          <h3>Getting on with it</h3>
+          <ul>
+            <li><b>Read</b> speaks the current step; pressing it again stops it.</li>
+            <li>The guided solve plays at 🐢 Slow, 🚶 Steady or 🐇 Fast, and can be paused or stopped
+              at any point.</li>
+            <li>If your device is set to reduce motion, the cube changes without the spinning
+              animation.</li>
+            <li>Every colour is also named in words in every step, which helps a child who finds
+              red and green hard to tell apart.</li>
+            <li>Buttons are sized for a finger, and the app works with a keyboard as well: U, D, L,
+              R, F and B turn a side, with Shift for the other direction.</li>
+          </ul>
+        </article>
+
+        <article id="privacy" class="info-card">
+          <h2>Privacy</h2>
+          <p class="info-strong">Cube Clubhouse collects nothing about your child and sends nothing
+            anywhere. There are no accounts, no adverts, no analytics and no tracking of any kind.</p>
+
+          <h3>What is saved, and where</h3>
+          <p>Three small things are kept in this browser's own storage, on this device, so the app is
+            where the child left it:</p>
+          <ul>
+            <li>which lessons have been practised, and their stars;</li>
+            <li>the cube size last chosen on the Play screen;</li>
+            <li>the speed chosen for the guided solve.</li>
+          </ul>
+          <p>That is all of it. No names, no ages, no messages, no photos, no location, no identifiers.
+            Nothing is sent off the device, and nothing is shared between devices. Removing the app,
+            or pressing <b>Clear saved progress</b> above, erases it.</p>
+
+          <h3>What the app asks the internet for</h3>
+          <p>One thing: the page asks Google Fonts for the typeface it is drawn in. Like any web
+            request, that tells Google the request happened and the address it came from. It carries
+            nothing about your child and does not happen again once the font is cached. With no
+            connection, or if that request is blocked, the app falls back to the font already on your
+            device and works exactly the same. Nothing else — no lessons, no progress, no solving —
+            needs a connection at all.</p>
+
+          <h3>Reading aloud</h3>
+          <p>The <b>Read</b> button uses the voice built into your device or browser, and only ever
+            reads the app's own instructions. On iPhone and iPad that voice runs on the device. Some
+            desktop browsers offer voices that are produced online; if that matters to you, simply
+            leave the button alone.</p>
+
+          <h3>What the app never touches</h3>
+          <p>No camera, microphone, location, contacts, photos or notifications. No cookies. No
+            third-party code beyond the typeface above. Nothing your child does here can be seen by
+            anyone else.</p>
+
+          <h3>Children's privacy</h3>
+          <p>Because nothing is collected, there is nothing to consent to, nothing to request and
+            nothing for us to delete — it is all on your device, under your control.</p>
+        </article>
+
+        <article id="licence" class="info-card">
+          <h2>Licence conditions</h2>
+          <p>Cube Clubhouse is free and open-source software, released under the <b>MIT Licence</b>.</p>
+
+          <h3>In plain English</h3>
+          <ul>
+            <li>You may use it, copy it, change it, and pass it on — at home, in a classroom, or as
+              part of something you sell.</li>
+            <li>You must keep the copyright line and the licence text below with any copy you pass on.</li>
+            <li>It comes with no warranty. If it goes wrong, that is on you, not on the author.</li>
+          </ul>
+          <p class="info-note">That summary is a description, not the licence. The words that count
+            are these:</p>
+
+          <pre class="licence-text">MIT License
+
+Copyright (c) 2024 Chris McKee
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+
+          <h3>Other people's work</h3>
+          <ul>
+            <li><b>Fredoka</b>, the typeface, from Google Fonts, under the SIL Open Font Licence 1.1.</li>
+            <li>Nothing else. The cube, the lessons, the 3D drawing and the solver are all written
+              for this app, with no frameworks, libraries or trackers.</li>
+          </ul>
+
+          <h3>About the name</h3>
+          <p>Rubik's Cube® is a registered trademark of its owner. Cube Clubhouse is an independent
+            teaching app: it is not made by, affiliated with, or endorsed by the trademark owner, and
+            the puzzle itself is not included.</p>
+        </article>
+
+        <button type="button" class="btn ghost back-to-app">◀ Back to the app</button>
+      </div>
+    </section>
   </main>
 
-  <footer class="foot">Cube Clubhouse · a kid-friendly Rubik's Cube tutor · everything runs in your browser, and nothing is sent anywhere.</footer>
+  <footer class="foot">
+    <span>Cube Clubhouse · a kid-friendly Rubik's Cube tutor · everything runs in your browser, and nothing is sent anywhere.</span>
+    <span class="foot-links">
+      <button type="button" class="linkish" data-info="parents">For parents</button>
+      <button type="button" class="linkish" data-info="privacy">Privacy</button>
+      <button type="button" class="linkish" data-info="licence">Licence</button>
+    </span>
+  </footer>
 
   <script src="js/cube.js"></script>
   <script src="js/ncube.js"></script>

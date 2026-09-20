@@ -136,6 +136,41 @@ main {
   padding-inline: calc(16px + env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-right, 0px));
 }
 .foot { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+.foot-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; margin-top: 10px; }
+/* a plain link, but a real button: the grown-ups pages are a screen, not a URL */
+.linkish {
+  border: 0; background: none; padding: 6px 2px; color: var(--muted); font: inherit; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.linkish:hover { color: var(--accent); }
+@media (pointer: coarse) { .linkish { min-height: 44px; } }
+
+/* ---- the grown-ups pages: plain, quiet, and meant to be read */
+.info-page { max-width: 68ch; margin: 0 auto; padding: 4px 0 8px; }
+.info-page h1 { font-size: 1.7rem; margin: 14px 0 6px; }
+.info-lede { color: var(--muted); margin: 0 0 14px; }
+.info-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.info-nav a {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 0.95rem; text-decoration: none;
+}
+.info-card {
+  background: var(--card); border-radius: 16px; padding: 18px 20px; margin-bottom: 16px;
+  box-shadow: var(--shadow); scroll-margin-top: 12px;
+}
+.info-card h2 { font-size: 1.3rem; margin: 0 0 10px; }
+.info-card h3 { font-size: 1.02rem; margin: 18px 0 4px; color: var(--accent); }
+.info-card p, .info-card li { line-height: 1.6; }
+.info-card ul { margin: 6px 0; padding-left: 22px; }
+.info-card li { margin: 4px 0; }
+.info-strong { font-weight: 600; }
+.info-note { color: var(--muted); font-size: 0.92rem; }
+.licence-text {
+  white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem; line-height: 1.5; background: var(--accent-soft); color: var(--ink);
+  border-radius: 12px; padding: 14px; overflow-x: auto; max-height: 340px; overflow-y: auto;
+}
+.back-to-app { margin: 4px 0 10px; }
 
 /* ---- layout */
 .two-col { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 24px; align-items: start; }
