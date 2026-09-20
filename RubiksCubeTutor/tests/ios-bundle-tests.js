@@ -132,6 +132,54 @@ function runCopyPhase() {
       return Object.values(by).every((s) => s.size === 1);
     }));
 
+    // Every control has to be big enough for a child's finger. Apple's own floor is
+    // 44pt, and the icon-only buttons used to come out at 41x32.
+    const tooSmall = await p.evaluate(() => [...document.querySelectorAll('nav button, #screen-play button')]
+      .filter((b) => b.offsetParent !== null)
+      .map((b) => ({ t: (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 18), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) }))
+      .filter((b) => b.w < 44 || b.h < 44));
+    ck('every control is at least 44pt', tooSmall.length === 0, JSON.stringify(tooSmall).slice(0, 160));
+
+    // A big cube is real work: it must not freeze the app, and it must not let the
+    // child change the cube halfway through working it out.
+    await p.locator('#play-size .size-btn', { hasText: '4×4' }).tap();
+    await p.waitForTimeout(400);
+    await p.locator('#play-scramble').tap();
+    await p.waitForTimeout(3000);
+    // Watch rather than sample: on a fast machine a 4x4 is worked out between two
+    // polls, and the point is that the app said something, not that it was slow.
+    await p.evaluate(() => {
+      window.__frames = 0;
+      const t = () => { window.__frames++; requestAnimationFrame(t); };
+      requestAnimationFrame(t);
+      window.__said = [];
+      window.__held = false;
+      new MutationObserver(() => window.__said.push(document.querySelector('#play-status').textContent.trim()))
+        .observe(document.querySelector('#play-status'), { childList: true, characterData: true, subtree: true });
+      new MutationObserver(() => { if (document.querySelector('#play-scramble').disabled) window.__held = true; })
+        .observe(document.querySelector('#play-scramble'), { attributes: true, attributeFilter: ['disabled'] });
+    });
+    await p.locator('#play-help').tap();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 60000 });
+    const said = await p.evaluate(() => window.__said);
+    ck('4x4: the controls are held while it thinks', await p.evaluate(() => window.__held));
+    ck('4x4: it says what it is doing', said.some((t) => /Thinking/.test(t)), said.join(' / ').slice(0, 120));
+    ck('4x4: the page keeps painting while it thinks', await p.evaluate(() => window.__frames) > 3, await p.evaluate(() => window.__frames));
+    ck('4x4: the controls come back', !(await p.locator('#play-scramble').isDisabled()));
+    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).tap();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 300000 });
+    ck('4x4: a tap-only guided solve reaches a solved cube', await p.evaluate(() => {
+      const faces = document.querySelectorAll('#play-cube .face:not(.inner)');
+      const by = {};
+      faces.forEach((f) => { const i = +f.dataset.index; (by[(i / 16) | 0] = by[(i / 16) | 0] || new Set()).add(f.className.match(/c-\w/)[0]); });
+      return Object.values(by).every((s) => s.size === 1);
+    }));
+    // ...and the tables a big cube needs must not eat the device's memory
+    const heap = await p.evaluate(() => (performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0));
+    ck('4x4: the solver tables stay small', heap < 120, heap + 'MB');
+    await p.locator('#play-size .size-btn', { hasText: '3×3' }).tap();
+    await p.waitForTimeout(300);
+
     // the folded net must be tappable, and the stickers big enough to hit
     await p.locator('nav button[data-screen="solve"]').tap();
     await p.waitForTimeout(250);

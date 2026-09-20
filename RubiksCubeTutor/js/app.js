@@ -309,28 +309,36 @@
     let busy = false;
     let watchedAll = false;   // the app did the solve, so do not praise the child for it
 
+    // The big cubes answer a little later, a slice of work at a time, so a solver may
+    // hand back a promise. Either way this settles to true when there are steps to show.
     function start(state) {
       steps = [];
       i = 0;
       shown = false;
       watchedAll = false;
-      let res;
-      try {
-        res = (opts.solve || Solver.solve)(state);
-      } catch (e) {
+      const failed = (e) => {
         const why = e && e.internal
           ? 'Something went wrong on my side. Press Mix it up and try again.'
           : ((e && e.message) || 'One of the stickers does not look right.') + ' Let\'s check the stickers together.';
         container.innerHTML = '<div class="guide-error">Hmm, this does not look like a real cube yet. ' + why + '</div>';
         return false;
+      };
+      const ready = (res) => {
+        steps = mergeSteps(res.steps);
+        i = 0;
+        shown = false;
+        busy = false;
+        watchedAll = false;
+        render();
+        return true;
+      };
+      let res;
+      try {
+        res = (opts.solve || Solver.solve)(state);
+      } catch (e) {
+        return failed(e);
       }
-      steps = mergeSteps(res.steps);
-      i = 0;
-      shown = false;
-      busy = false;
-      watchedAll = false;
-      render();
-      return true;
+      return res && typeof res.then === 'function' ? res.then(ready, failed) : ready(res);
     }
 
     function stagesOf() {
@@ -769,10 +777,10 @@
     const timerEl = $('#play-timer', section);
     const statusEl = $('#play-status', section);
     const guideBox = $('#play-guide', section);
-    let timerStart = null, timerId = null, scrambled = false, moveCount = 0;
+    let timerStart = null, timerId = null, scrambled = false, moveCount = 0, thinking = false;
     const guide = Guide(guideBox, station, {
       onFinish: () => { stopTimer(); },
-      solve: (s) => BigSolver.solveAny(station.model, s),
+      solve: (s) => BigSolver.solveAnyAsync(station.model, s, (what) => { statusEl.textContent = 'Thinking… ' + what + '.'; }),
     });
 
     function fmt(ms) {
@@ -807,10 +815,12 @@
       statusEl.textContent = 'You made your own move, so the steps changed. Press "Help me solve it" for new steps.';
     }
     function userMove(m) {
+      if (thinking) return false;      // the solver is working on this very cube
       staleGuide();
       if (scrambled && !timerId) startTimer();
       moveCount++;
       station.move(m);
+      return true;
     }
     function applySize(n, first) {
       hush();                       // stop any step being read for the old cube
@@ -875,30 +885,36 @@
       staleGuide();
       station.undo();
     });
-    $('#play-help').addEventListener('click', () => {
-      const btn = $('#play-help');
-      if (btn.disabled) return;
+    // Working out a 6x6 is a second or two of real work. It runs a slice at a time so
+    // the page keeps painting and can say what it is doing, and the controls are held
+    // meanwhile: a size change or a stray turn under a running solve would leave the
+    // guide describing a cube that no longer exists.
+    const controls = ['#play-scramble', '#play-reset', '#play-undo', '#play-help'];
+    function setThinking(on) {
+      thinking = on;
+      for (const sel of controls) $(sel).disabled = on;
+      sizeBox.querySelectorAll('.size-btn').forEach((b) => { b.disabled = on; });
+      padBox.querySelectorAll('.pad-btn').forEach((b) => { b.disabled = on; });
+      section.classList.toggle('thinking', on);
+    }
+    $('#play-help').addEventListener('click', async () => {
+      if (thinking) return;
       stopTimer();
       scrambled = false;
-      // Working out a 6x6 takes a second or two, and the page cannot repaint while it
-      // does. Show "Thinking", let that paint, and hold the button so an impatient
-      // second tap does not queue a second solve behind the first.
-      statusEl.textContent = 'Thinking…';
-      btn.disabled = true;
+      statusEl.textContent = 'Thinking\u2026';
+      setThinking(true);
       const myGen = station.view.gen;
-      setTimeout(() => {
-        try {
-          if (station.view.gen !== myGen) return;    // the cube was replaced meanwhile
-          const solved = station.model.isSolved(station.state);
-          const ok = guide.start(station.state);
-          statusEl.textContent = !ok ? 'Hmm, I could not work that one out. Read the message below.'
-            : solved ? 'This cube is already solved! Press Mix it up for a new one.'
-              : 'Follow the steps below. Press Watch to see each one.';
-          guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } finally {
-          btn.disabled = false;
-        }
-      }, 30);
+      try {
+        const solved = station.model.isSolved(station.state);
+        const ok = await guide.start(station.state);
+        if (station.view.gen !== myGen) return;     // the cube was replaced meanwhile
+        statusEl.textContent = !ok ? 'Hmm, I could not work that one out. Read the message below.'
+          : solved ? 'This cube is already solved! Press Mix it up for a new one.'
+            : 'Follow the steps below. Press Watch to see each one.';
+        guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } finally {
+        setThinking(false);
+      }
     });
     $('#play-reset-view').addEventListener('click', () => station.view.resetView());
     screens.play = { section, station, userMove };
@@ -996,7 +1012,7 @@
       const active = Object.keys(screens).find((k) => !screens[k].section.hidden);
       if (!active) return;
       const token = letter + (e.shiftKey ? "'" : '');
-      if (active === 'play') screens.play.userMove(token);
+      if (active === 'play') { if (!screens.play.userMove(token)) return; }
       else if (active === 'learn' && !$('#lesson-view').hidden) screens.learn.station.move(token);
       else return;
       e.preventDefault();

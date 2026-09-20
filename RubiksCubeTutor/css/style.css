@@ -163,7 +163,15 @@ main {
 .btn.small { padding: 6px 14px; font-size: 0.95rem; }
 .btn.tiny { padding: 4px 10px; font-size: 0.85rem; }
 .btn:disabled { opacity: 0.45; cursor: default; transform: none; box-shadow: none; }
+/* A finger needs about 44px. The icon-only buttons shrink below that on a phone, so
+   give every button that much room where the pointer is a finger. */
+@media (pointer: coarse) {
+  .btn { min-height: 44px; min-width: 44px; }
+  .btn.tiny, .btn.small { min-height: 44px; }
+}
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+/* while the app works out a big cube, every control is held */
+.thinking { cursor: progress; }
 
 /* ---- 3D cube */
 /* Short screens (iPhone SE, any phone in landscape) must still show the whole cube. */

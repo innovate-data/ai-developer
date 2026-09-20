@@ -10,7 +10,8 @@ export default [
         console: 'readonly', module: 'writable', require: 'readonly', location: 'readonly',
         Event: 'readonly', SpeechSynthesisUtterance: 'readonly', speechSynthesis: 'readonly',
         Promise: 'readonly', Set: 'readonly', Map: 'readonly', process: 'readonly', __dirname: 'readonly',
-        getComputedStyle: 'readonly', PointerEvent: 'readonly',
+        getComputedStyle: 'readonly', PointerEvent: 'readonly', MessageChannel: 'readonly',
+        requestAnimationFrame: 'readonly', MutationObserver: 'readonly', performance: 'readonly',
         // the app's own global, reached from inside page.evaluate() in the browser tests
         RC: 'readonly',
       },

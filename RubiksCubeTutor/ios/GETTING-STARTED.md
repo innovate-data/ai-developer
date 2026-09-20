@@ -70,5 +70,18 @@ but be aware of that one outbound request, or bundle the font to remove it.
 
 Every size from 2×2 to 6×6 has a guided solve on the Play screen. The 4×4, 5×5 and
 6×6 use the reduction method (centres, then edge pairing, then the 3×3 method), so a
-6×6 solve is long, around 95 cards, and takes the app a second or two to work out.
-The Learn lessons and "My real cube" are 3×3.
+6×6 solve is long, around 95 cards. Working one out is real arithmetic: about a
+second on a recent iPad and up to six on an older iPhone, so the app does it a slice
+at a time, says what it is doing ("Thinking… joining the edges") and holds the Play
+controls until it is ready, rather than freezing. The tables it builds are kept for
+the size in play only, about 30 MB at the largest. The Learn lessons and "My real
+cube" are 3×3.
+
+## Tested on
+
+`npm run test:ios` drives the very bundle the build phase produces, on an iPhone 12
+and an iPad Pro 11 profile, by touch: 43 checks, including a whole 4×4 solved by
+tapping and a check that no control is smaller than 44pt. Layout was checked at
+iPhone SE, iPhone 15 Pro (portrait and landscape), iPad mini, iPad Pro 12.9, and the
+narrow iPad Split View and Slide Over widths, since the app allows multitasking.
+The one thing no test here can prove is WebKit itself: run it once in the Simulator.

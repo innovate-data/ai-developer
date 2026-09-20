@@ -226,6 +226,14 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   comes from) pairs — and only the size in play is cached. That is 14 MB for a 4×4,
   22 MB for a 5×5 and 30 MB for a 6×6, and the search got faster with it, because it
   touches far less memory.
+* The work is sliced, not blocking. `solveAsync` drives the solver as a generator,
+  running about 40 ms at a time and handing the thread back through a `MessageChannel`
+  (`setTimeout` is clamped to 4 ms, which over five hundred slices is seconds of
+  nothing). The page keeps painting at roughly 17 fps on a 4× throttled phone, the
+  status line says which part is running, and Play holds its controls meanwhile so the
+  cube cannot change under a running solve. Building the tables shares one permutation
+  per template family instead of one per variant, which took a 6×6 from 680 ms to
+  500 ms in Node.
 * Cost: about 56 cards / 220 moves on a 4×4, 71 / 340 on a 5×5 and 95 / 510 on a 6×6
   (200, 100 and 60 random scrambles, no failures, plus short scrambles of 1 to 34
   moves and solved cubes held every way). Tables build in 0.2–0.8 s on first use and a
@@ -302,7 +310,9 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R19 | A 6×6 guide opens from a real scramble, with "Thinking…" while it works, and its stage bar no longer fills a phone screen with thirteen chips. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
-produces, by touch, on an iPhone and an iPad profile: 29 checks.
+produces, by touch, on an iPhone and an iPad profile: 43 checks, including a whole
+4×4 solved by tapping, that the app keeps painting and holds its controls while it
+works a big cube out, and that no control is smaller than 44pt.
 
 A note on testing animations: a layer turn is a CSS transform, so the sticker colours
 do not change until the move lands. Tests that wait for colours to stop changing pass

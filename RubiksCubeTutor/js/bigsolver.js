@@ -58,15 +58,26 @@
   // Faces a slice runs through: every face but the two it is parallel to.
   const AXIS_FACES = { U: 'UD', D: 'UD', R: 'RL', L: 'RL', F: 'FB', B: 'FB' };
   const pathFaces = (f) => FACES.filter((g) => !AXIS_FACES[f].includes(g));
-  const onPath = (f, moves) => moves.filter((t) => pathFaces(f).includes(t[0]));
+  // Asked for thousands of times while the tables are built, always with the same
+  // handful of arguments.
+  const pathCache = new Map();
+  function onPath(f, moves) {
+    const key = f + ':' + moves.length;
+    let hit = pathCache.get(key);
+    if (!hit) { hit = moves.filter((t) => pathFaces(f).includes(t[0])); pathCache.set(key, hit); }
+    return hit;
+  }
 
   // ------------------------------------------------------------ per-size tables
   // Only the size in play is kept: the tables are tens of megabytes on a 6x6, and a
   // phone should not hold three sets of them because a child tried every size.
   const built = new Map();
-  function make(model) {
-    if (built.has(model.N)) return built.get(model.N);
+  // A generator, so a phone can build the tables a slice at a time instead of freezing
+  // for a second or more. Every `yield` is a chance for the page to breathe; `make`
+  // below just runs it to the end.
+  function* buildTables(model) {
     built.clear();
+    yield 'getting ready';
     const { N, H, COUNT, GEO } = model;
     const COL = model.SOLVED_FACE_COLORS;
     const isEnd = (v) => v === 0 || v === N - 1;
@@ -161,58 +172,71 @@
     //   A s1 B s2 B' s1' B s2' B  a commutator of two parallel slices: moves exactly
     //                            three centre squares, one of them onto the target
     // A and B turn faces the slice runs through.
+    // Most templates come in a family: one shared "core", tried after each of a dozen
+    // set-up turns. Each variant keeps the core and the name of its set-up turn rather
+    // than a permutation of its own, which saves tens of thousands of 216-element
+    // compositions - most of the time it took a phone to get ready.
     const centreCands = [];
+    const addFamily = (list, core, cp, prefixes) => {
+      for (const A of prefixes) list.push({ alg: (A ? [A] : []).concat(core), core: cp, pre: A ? model.movePerm(A) : null });
+    };
     for (const sl of singles.concat(wides)) {
-      const s = [sl.token], si = [model.invertMove(sl.token)];
-      centreCands.push({ alg: s, perm: model.movePerm(sl.token) });
+      yield 'working out the centre tricks';
+      const s = sl.token, si = model.invertMove(sl.token);
+      centreCands.push({ alg: [s], core: model.movePerm(s), pre: null });
       const inside = onPath(sl.faceOf, FACE_MOVES);
-      for (const A of [''].concat(inside)) {
-        const pre = A ? compose(model.movePerm(A), model.movePerm(sl.token)) : model.movePerm(sl.token);
-        for (const B of inside) {
-          const alg = (A ? [A] : []).concat(s, [B], si);
-          centreCands.push({ alg, perm: compose(compose(pre, model.movePerm(B)), model.movePerm(si[0])) });
-        }
+      for (const B of inside) {
+        const core = [s, B, si];
+        addFamily(centreCands, core, permOf(core), [''].concat(inside));
       }
     }
     for (const s1 of singles) {
+      yield 'working out the centre tricks';
       for (const s2 of singles) {
         if (s2.axis !== s1.axis) continue;
         for (const B of onPath(s1.faceOf, QUARTER)) {
           const Bi = model.invertMove(B);
           const core = [s1.token, B, s2.token, Bi, model.invertMove(s1.token), B, model.invertMove(s2.token), Bi];
-          const cp = permOf(core);
-          for (const A of [''].concat(onPath(s1.faceOf, FACE_MOVES))) {
-            centreCands.push({ alg: (A ? [A] : []).concat(core), perm: A ? compose(model.movePerm(A), cp) : cp });
-          }
+          addFamily(centreCands, core, permOf(core), [''].concat(onPath(s1.faceOf, FACE_MOVES)));
         }
       }
     }
     // An odd cube's middle squares never move: a step that carried one away would
     // count as progress and could never be undone.
     const fixed = N % 2 ? FACES.map((f) => centres[f][(inner - 1) / 2]) : [];
-    const keepsFixed = (p) => fixed.every((i) => p[i] === i);
+    // where sticker i comes from, under a core permutation and an optional set-up turn
+    const from = (c, i) => (c.pre ? c.pre[c.core[i]] : c.core[i]);
+    const keepsFixed = (c) => fixed.every((i) => from(c, i) === i);
     // Keeping a whole permutation per candidate would cost a phone tens of
     // megabytes, so each one keeps only the squares it actually moves, packed into
     // a single array: six face offsets, an end offset, then (square, where it comes
     // from) pairs grouped by the face the square sits on.
-    function packCentres(perm) {
-      const cells = [];
-      const off = [];
-      for (const f of FACES) {
-        off.push(cells.length / 2);
-        for (const i of centres[f]) if (perm[i] !== i) cells.push(i, perm[i]);
+    const centreScratch = new Uint16Array(7 + 2 * 6 * inner);
+    function packCentres(c) {
+      const pre = c.pre, core = c.core, out = centreScratch;
+      let n = 0;
+      for (let fi = 0; fi < 6; fi++) {
+        out[fi] = n;
+        const cs = centres[FACES[fi]];
+        for (let k = 0; k < cs.length; k++) {
+          const i = cs[k];
+          const src = pre ? pre[core[i]] : core[i];
+          if (src !== i) { out[7 + 2 * n] = i; out[7 + 2 * n + 1] = src; n++; }
+        }
       }
-      off.push(cells.length / 2);
-      return Uint16Array.from(off.concat(cells));
+      out[6] = n;
+      return out.slice(0, 7 + 2 * n);
     }
     // Scoring only looks at those squares, and only candidates that carry something
     // onto the target face can help it.
     const byTarget = {};
     for (const f of FACES) byTarget[f] = [];
     centreCands.sort((p, q) => p.alg.length - q.alg.length);
+    let packed4 = 0;
     for (const c of centreCands) {
-      if (!keepsFixed(c.perm)) continue;
-      const packed = { alg: c.alg.join(' '), cells: packCentres(c.perm) };
+      if ((packed4++ & 1023) === 0) yield 'working out the centre tricks';
+      if (!keepsFixed(c)) continue;
+      const packed = { alg: c.alg.join(' '), cells: packCentres(c) };
       for (let fi = 0; fi < 6; fi++) {
         let helps = false;
         for (let k = packed.cells[fi]; k < packed.cells[fi + 1] && !helps; k++) {
@@ -239,6 +263,7 @@
     GEO.forEach((g, i) => { if (type[i] === 2) wingIdx.push(i); });
     const edgeCands = [];
     for (const sl of edgeSlices) {
+      yield 'working out the edge tricks';
       const s = [sl.token], si = [model.invertMove(sl.token)];
       const sp = model.movePerm(sl.token);
       const sip = model.movePerm(si[0]);
@@ -254,35 +279,59 @@
       for (const X of cores) {
         if (!carried.some((i) => X.perm[i] !== i)) continue;
         const mid = compose(compose(sp, X.perm), sip);
+        // A set-up turn of a whole face never disturbs a centre, so checking the core
+        // once covers the whole family.
         if (!centreSafe(mid)) continue;
         for (const P of [''].concat(onPath(sl.faceOf, FACE_MOVES))) {
           const alg = (P ? [P] : []).concat(s, X.alg, si);
-          edgeCands.push({ alg, perm: P ? compose(model.movePerm(P), mid) : mid });
+          edgeCands.push({ alg, core: mid, pre: P ? model.movePerm(P) : null });
         }
       }
     }
     for (const d of depths) {
       const pure = toks(pureFlip(d));
+      const pp = permOf(pure);
+      if (!centreSafe(pp)) throw SolverBug('the flip trick moves centres on a ' + N + 'x' + N);
       for (const P1 of [''].concat(FACE_MOVES)) {
         for (const P2 of [''].concat(FACE_MOVES)) {
           if (!P1 && P2) continue;
           if (P1 && P2 && P1[0] === P2[0]) continue;
-          const alg = [P1, P2].filter(Boolean).concat(pure);
-          edgeCands.push({ alg, perm: permOf(alg) });
+          const setup = [P1, P2].filter(Boolean);
+          edgeCands.push({ alg: setup.concat(pure), core: pp, pre: setup.length ? permOf(setup) : null });
         }
       }
     }
-    for (const c of edgeCands) if (!centreSafe(c.perm)) throw SolverBug('edge template moves centres: ' + c.alg.join(' '));
     edgeCands.sort((p, q) => p.alg.length - q.alg.length);
     // Packed the same way: how many slots this candidate disturbs, which ones, and
     // then, for each of them, where every one of that slot's wing stickers comes from.
-    const packedEdges = edgeCands.map((c) => {
-      const touched = slots.filter((sl) => sl.wings.some((w) => c.perm[w.a] !== w.a || c.perm[w.b] !== w.b));
-      const data = [touched.length];
-      for (const sl of touched) data.push(sl.index);
-      for (const sl of touched) for (const w of sl.wings) data.push(c.perm[w.a], c.perm[w.b]);
-      return { alg: c.alg.join(' '), slots: Uint16Array.from(data) };
-    });
+    const packedEdges = [];
+    const edgeScratch = new Uint16Array(1 + slots.length + 2 * W * slots.length);
+    for (let k = 0; k < edgeCands.length; k++) {
+      if ((k & 1023) === 0) yield 'working out the edge tricks';
+      const c = edgeCands[k];
+      const pre = c.pre, core = c.core;
+      let n = 0;
+      for (let j = 0; j < slots.length; j++) {
+        const sl = slots[j];
+        let hit = false;
+        for (let w = 0; w < W && !hit; w++) {
+          const a = sl.aIdx[w], b = sl.bIdx[w];
+          hit = (pre ? pre[core[a]] : core[a]) !== a || (pre ? pre[core[b]] : core[b]) !== b;
+        }
+        if (hit) edgeScratch[1 + n++] = j;
+      }
+      edgeScratch[0] = n;
+      let at = 1 + n;
+      for (let j = 0; j < n; j++) {
+        const sl = slots[edgeScratch[1 + j]];
+        for (let w = 0; w < W; w++) {
+          const a = sl.aIdx[w], b = sl.bIdx[w];
+          edgeScratch[at++] = pre ? pre[core[a]] : core[a];
+          edgeScratch[at++] = pre ? pre[core[b]] : core[b];
+        }
+      }
+      packedEdges.push({ alg: c.alg.join(' '), slots: edgeScratch.slice(0, at) });
+    }
 
     // ---- the reduced 3x3: one sticker stands for each corner, edge slot and centre
     const rep = (v) => (v === 0 ? 0 : v === 2 ? N - 1 : N % 2 ? H : 1);
@@ -316,6 +365,14 @@
     };
     built.set(N, out);
     return out;
+  }
+
+  function make(model) {
+    if (built.has(model.N)) return built.get(model.N);
+    const it = buildTables(model);
+    let r = it.next();
+    while (!r.done) r = it.next();
+    return r.value;
   }
 
   // -------------------------------------------------------------- scoring
@@ -385,14 +442,19 @@
   // The best candidate by `score` (null means "does not help"). When nothing helps,
   // try again after each single face turn, which never undoes finished work; the
   // turn becomes part of the step.
-  function search(T, cands, state, score) {
+  // A generator, so the long scans (tens of thousands of candidates, and again for
+  // every set-up turn when none of them helps) can be spread over several frames.
+  function* search(T, cands, state, score, what) {
     let best = null;
-    for (const c of cands) {
+    for (let i = 0; i < cands.length; i++) {
+      if ((i & 8191) === 8191) yield what;
+      const c = cands[i];
       const v = score(state, c);
       if (v !== null && (!best || v > best.v)) best = { c, v, setup: [] };
     }
     if (best) return best;
     for (const m of FACE_MOVES) {
+      yield what;
       const pm = T.facePerms[m];
       const turned = state.map((_, i) => state[pm[i]]);
       for (const c of cands) {
@@ -404,9 +466,9 @@
   }
 
   // -------------------------------------------------------------- solver
-  function solve(model, input) {
+  function* solveGen(model, input) {
     if (model.N < 4) throw new Error('This solver is for cubes of 4 layers and more');
-    const T = make(model);
+    const T = built.has(model.N) ? built.get(model.N) : yield* buildTables(model);
     const N = model.N;
     let cur = Array.prototype.slice.call(input);
     const steps = [];
@@ -454,7 +516,7 @@
       const doneFi = done.map((g) => FACES.indexOf(g));
       let first = true;
       while (countFace(cur, f) < T.inner) {
-        const best = search(T, T.byTarget[f], cur, (state, c) => {
+        const best = yield* search(T, T.byTarget[f], cur, (state, c) => {
           const cells = c.cells;
           for (const gi of doneFi) {                       // never spoil a finished centre
             const cg = col(FACES[gi]);
@@ -465,7 +527,7 @@
             gain += (state[cells[7 + 2 * k + 1]] === want) - (state[cells[7 + 2 * k]] === want);
           }
           return gain > 0 ? gain : null;
-        });
+        }, 'building the centres');
         if (!best) throw SolverBug('Centre search stuck on ' + f);
         const moves = model.parseAlg(best.setup.concat(best.c.alg.split(' ')));
         const p = T.permOf(moves);
@@ -484,6 +546,7 @@
         moves, highlight);
         intro = '';
         first = false;
+        yield 'building the centres';
       }
       done.push(f);
     }
@@ -498,7 +561,7 @@
       while (was.length < 12) {
         const wasKeys = was.map((e) => e.ref);
         let base = null, baseState = null;
-        const best = search(T, T.edgeCands, state, (st, c) => {
+        const best = yield* search(T, T.edgeCands, state, (st, c) => {
           if (st !== baseState) {
             baseState = st;
             base = T.slots.map((s) => { const b = slotBest(st, s, W); return b * b; });
@@ -512,7 +575,7 @@
             gain += b * b - base[s.index];               // squared, so joining a third piece beats starting a new pair
           }
           return gain > 0 ? gain : null;
-        });
+        }, 'joining the edges');
         if (!best) throw SolverBug('Edge search stuck');
         const moves = model.parseAlg(best.setup.concat(best.c.alg.split(' ')));
         const p = T.permOf(moves);
@@ -551,6 +614,7 @@
         }
         emit('edges', intro + text + apology, moves, highlight);
         intro = '';
+        yield 'joining the edges';
         state = next;
         was = now;
       }
@@ -585,6 +649,7 @@
     }
 
     // ---- the 3x3 from here
+    yield 'finishing it like a 3\u00d73';
     const res = Solver.solve(T.reduce(cur));
     intro = 'Now the cube works just like a 3\u00d73! ';
     for (const st of res.steps) {
@@ -597,12 +662,69 @@
     return { steps, state: cur };
   }
 
+  // Run the generator straight through, for tests and for anything not on a deadline.
+  function solve(model, input) {
+    const it = solveGen(model, input);
+    let r = it.next();
+    while (!r.done) r = it.next();
+    return r.value;
+  }
+
+  // Hand the thread back between slices. setTimeout(0) is clamped to 4ms by every
+  // browser, which on a solve of five hundred slices is seconds of nothing; a message
+  // channel has no such floor, and still lets the page paint between slices.
+  const soon = (function () {
+    // Only in a page: an open MessageChannel keeps Node's event loop alive, so the
+    // test runner would never exit.
+    if (typeof window === 'undefined' || typeof MessageChannel !== 'function') {
+      return (fn) => setTimeout(fn, 0);
+    }
+    let ch = null;
+    const queue = [];
+    return (fn) => {
+      if (!ch) {
+        ch = new MessageChannel();
+        ch.port1.onmessage = () => { const next = queue.shift(); if (next) next(); };
+      }
+      queue.push(fn);
+      ch.port2.postMessage(0);
+    };
+  })();
+
+  // The work in slices of about 40ms, so a phone keeps painting and a child can see
+  // what the app is doing. onProgress gets a few words to show.
+  function solveAsync(model, input, onProgress) {
+    return new Promise((resolve, reject) => {
+      const it = solveGen(model, input);
+      const tick = () => {
+        const until = Date.now() + 40;
+        let last = null;
+        try {
+          for (;;) {
+            const r = it.next();
+            if (r.done) { resolve(r.value); return; }
+            last = r.value;
+            if (Date.now() >= until) break;
+          }
+        } catch (e) { reject(e); return; }
+        if (onProgress && last) onProgress(last);
+        soon(tick);
+      };
+      soon(tick);
+    });
+  }
+
   // Any size: the 2x2 and 3x3 solvers live in solver.js.
   function solveAny(model, state) {
     if (model.N === 2) return Solver.solve2x2(state);
     if (model.N === 3) return Solver.solve(state);
     return solve(model, state);
   }
+  // A 2x2 or 3x3 is worked out in a blink, so only the big cubes go round the houses.
+  function solveAnyAsync(model, state, onProgress) {
+    if (model.N <= 3) return Promise.resolve(solveAny(model, state));
+    return solveAsync(model, state, onProgress);
+  }
 
-  return { STAGES, solve, solveAny, make, pureFlip, SWAP };
+  return { STAGES, solve, solveGen, solveAsync, solveAny, solveAnyAsync, make, pureFlip, SWAP };
 });
