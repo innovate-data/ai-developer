@@ -160,10 +160,20 @@
         rows.push({ depth: d, moves: [p + 'U', p + "U'", p + 'L', p + "L'", p + 'F', p + "F'"] });
         rows.push({ depth: d, moves: [p + 'R', p + "R'", p + 'B', p + "B'", p + 'D', p + "D'"] });
       }
+      // On a 5x5 (or any odd cube above 3) the middle layer is the same layer counted
+      // from either side, so six buttons cover it; without them a child could not make
+      // the middle-slice turns the guide asks for. A 3x3 keeps its simple pad.
+      if (N % 2 === 1 && N >= 5) {
+        const p = String((N + 1) / 2);
+        rows.push({ depth: (N + 1) / 2, middle: true, moves: [p + 'U', p + "U'", p + 'F', p + "F'", p + 'R', p + "R'"] });
+      }
       rows.push({ depth: 0, moves: ['y', "y'", 'x', "x'"] });
       return rows;
     }
-    const scrambleMoves = (() => { const out = []; for (let d = 1; d <= maxDepth; d++) for (const f of FACES) out.push((d === 1 ? '' : d) + f); return out; })();
+    // Every layer a child can turn is a layer the mix-up can turn, the middle layer of
+    // an odd cube included.
+    const deepest = N % 2 === 1 && N >= 5 ? (N + 1) / 2 : maxDepth;
+    const scrambleMoves = (() => { const out = []; for (let d = 1; d <= deepest; d++) for (const f of FACES) out.push((d === 1 ? '' : d) + f); return out; })();
     // Which layer a move turns. Two moves commute exactly when they share an axis, so
     // turning the same layer again with only same-axis moves in between wastes both.
     const layerSig = (m) => { const mv = parseMove(m); return mv.axis + ':' + mv.layers[0]; };

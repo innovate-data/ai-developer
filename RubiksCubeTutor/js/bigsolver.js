@@ -61,9 +61,12 @@
   const onPath = (f, moves) => moves.filter((t) => pathFaces(f).includes(t[0]));
 
   // ------------------------------------------------------------ per-size tables
+  // Only the size in play is kept: the tables are tens of megabytes on a 6x6, and a
+  // phone should not hold three sets of them because a child tried every size.
   const built = new Map();
   function make(model) {
     if (built.has(model.N)) return built.get(model.N);
+    built.clear();
     const { N, H, COUNT, GEO } = model;
     const COL = model.SOLVED_FACE_COLORS;
     const isEnd = (v) => v === 0 || v === N - 1;
@@ -95,10 +98,16 @@
       slotMap.get(key).wings.push(wing);
     }
     const slots = [...slotMap.values()];
-    for (const s of slots) {
+    const W = N - 2;                       // wings per edge slot
+    slots.forEach((s, k) => {
+      s.index = k;
       s.wings.sort((p, q) => p.along - q.along);
-      s.middle = N % 2 ? s.wings.find((w) => w.along === 0) : null;
-    }
+      s.aIdx = Uint16Array.from(s.wings.map((w) => w.a));
+      s.bIdx = Uint16Array.from(s.wings.map((w) => w.b));
+      // On an odd cube the middle piece of an edge cannot move, so it says which
+      // colours the whole edge has to end up with.
+      s.middleIdx = N % 2 ? s.wings.findIndex((w) => w.along === 0) : -1;
+    });
 
     // ---- permutations: apply(state, p)[i] = state[p[i]]; "p then q" is p[q[i]]
     const Perm = COUNT <= 256 ? Uint8Array : Uint16Array;
@@ -182,16 +191,36 @@
     // count as progress and could never be undone.
     const fixed = N % 2 ? FACES.map((f) => centres[f][(inner - 1) / 2]) : [];
     const keepsFixed = (p) => fixed.every((i) => p[i] === i);
-    const centreCandsAll = centreCands.filter((c) => keepsFixed(c.perm));
-    centreCandsAll.sort((p, q) => p.alg.length - q.alg.length);
-    // Scoring only looks at the centre squares a candidate actually moves, face by
-    // face; and only candidates that carry something onto the target face can help.
-    const byTarget = {};
-    for (const c of centreCandsAll) {
-      c.moved = {};
-      for (const f of FACES) c.moved[f] = centres[f].filter((i) => c.perm[i] !== i);
+    // Keeping a whole permutation per candidate would cost a phone tens of
+    // megabytes, so each one keeps only the squares it actually moves, packed into
+    // a single array: six face offsets, an end offset, then (square, where it comes
+    // from) pairs grouped by the face the square sits on.
+    function packCentres(perm) {
+      const cells = [];
+      const off = [];
+      for (const f of FACES) {
+        off.push(cells.length / 2);
+        for (const i of centres[f]) if (perm[i] !== i) cells.push(i, perm[i]);
+      }
+      off.push(cells.length / 2);
+      return Uint16Array.from(off.concat(cells));
     }
-    for (const f of FACES) byTarget[f] = centreCandsAll.filter((c) => c.moved[f].some((i) => GEO[c.perm[i]].face !== f));
+    // Scoring only looks at those squares, and only candidates that carry something
+    // onto the target face can help it.
+    const byTarget = {};
+    for (const f of FACES) byTarget[f] = [];
+    centreCands.sort((p, q) => p.alg.length - q.alg.length);
+    for (const c of centreCands) {
+      if (!keepsFixed(c.perm)) continue;
+      const packed = { alg: c.alg.join(' '), cells: packCentres(c.perm) };
+      for (let fi = 0; fi < 6; fi++) {
+        let helps = false;
+        for (let k = packed.cells[fi]; k < packed.cells[fi + 1] && !helps; k++) {
+          helps = GEO[packed.cells[7 + 2 * k + 1]].face !== FACES[fi];    // comes from another face
+        }
+        if (helps) byTarget[FACES[fi]].push(packed);
+      }
+    }
 
     // ---- edge templates: P s X s'  where X is a conjugate A B A' (A on a face the
     // slice runs through, B on a face beside it) or the flip trick in any position.
@@ -245,11 +274,15 @@
     }
     for (const c of edgeCands) if (!centreSafe(c.perm)) throw SolverBug('edge template moves centres: ' + c.alg.join(' '));
     edgeCands.sort((p, q) => p.alg.length - q.alg.length);
-    // ...and only at the edge slots whose wings it moves.
-    for (const c of edgeCands) {
-      c.touched = [];
-      slots.forEach((sl, k) => { if (sl.wings.some((w) => c.perm[w.a] !== w.a || c.perm[w.b] !== w.b)) c.touched.push(k); });
-    }
+    // Packed the same way: how many slots this candidate disturbs, which ones, and
+    // then, for each of them, where every one of that slot's wing stickers comes from.
+    const packedEdges = edgeCands.map((c) => {
+      const touched = slots.filter((sl) => sl.wings.some((w) => c.perm[w.a] !== w.a || c.perm[w.b] !== w.b));
+      const data = [touched.length];
+      for (const sl of touched) data.push(sl.index);
+      for (const sl of touched) for (const w of sl.wings) data.push(c.perm[w.a], c.perm[w.b]);
+      return { alg: c.alg.join(' '), slots: Uint16Array.from(data) };
+    });
 
     // ---- the reduced 3x3: one sticker stands for each corner, edge slot and centre
     const rep = (v) => (v === 0 ? 0 : v === 2 ? N - 1 : N % 2 ? H : 1);
@@ -268,9 +301,9 @@
     }
     const reduce = (state) => REDUCE.map((i) => state[i]);
 
-    const parityAlgs = { flip: depths.map(pureFlip).join(' '), swap: SWAP[N] || '' };
+    const parityAlgs = { flipParts: depths.map(pureFlip), swap: SWAP[N] || '' };
     if (N % 2 === 0) {
-      for (const alg of [parityAlgs.flip, parityAlgs.swap]) {
+      for (const alg of parityAlgs.flipParts.concat(parityAlgs.swap)) {
         if (!alg || !centreSafe(permOf(toks(alg)))) throw SolverBug('parity trick moves centres on a ' + N + 'x' + N);
       }
     }
@@ -278,7 +311,7 @@
     const facePerms = {};
     for (const t of FACE_MOVES) facePerms[t] = model.movePerm(t);
     const out = {
-      N, H, type, centres, inner, depths, slots, byTarget, edgeCands, facePerms,
+      N, H, W, type, centres, inner, depths, slots, byTarget, edgeCands: packedEdges, facePerms,
       permOf, compose, centreSafe, reduce, GROUPS, parityAlgs, toks, COL,
     };
     built.set(N, out);
@@ -289,37 +322,65 @@
   // Colours are small numbers while solving, so a pair of wing stickers is one number.
   const CODE = { W: 0, Y: 1, G: 2, B: 3, R: 4, O: 5 };
   const LETTER = ['W', 'Y', 'G', 'B', 'R', 'O'];
-  const pairAt = (state, p, w) => state[p[w.a]] * 8 + state[p[w.b]];
+  // An edge is always named with its two colours in the same order, so the same edge
+  // is called the same thing every time the guide mentions it.
+  function pairName(key) {
+    const a = key >> 3, b = key & 7;
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    return cname(LETTER[lo]) + ' and ' + cname(LETTER[hi]);
+  }
 
   // How far one edge slot is: the most wings that already agree. On an odd cube the
-  // middle piece decides the pair; on an even cube the most common pair does.
-  function slotBest(state, p, s) {
-    const w = s.wings;
+  // middle piece cannot move, so it decides the pair; on an even cube the most common
+  // pair does. The pairs go through one shared scratch buffer, because this runs
+  // millions of times in a search.
+  const PAIRS = new Int32Array(8);
+  function bestOfPairs(w, middleIdx) {
     let best = 0;
-    if (s.middle) {
-      const ref = pairAt(state, p, s.middle);
-      for (let i = 0; i < w.length; i++) if (pairAt(state, p, w[i]) === ref) best++;
-    } else {
-      for (let i = 0; i < w.length; i++) {
-        const k = pairAt(state, p, w[i]);
-        let n = 0;
-        for (let j = 0; j < w.length; j++) if (pairAt(state, p, w[j]) === k) n++;
-        if (n > best) best = n;
-      }
+    if (middleIdx >= 0) {
+      const ref = PAIRS[middleIdx];
+      for (let i = 0; i < w; i++) if (PAIRS[i] === ref) best++;
+      return best;
+    }
+    for (let i = 0; i < w; i++) {
+      let n = 0;
+      for (let j = 0; j < w; j++) if (PAIRS[j] === PAIRS[i]) n++;
+      if (n > best) best = n;
     }
     return best;
   }
-  // Squared, so joining a third piece is worth more than starting another pair.
-  const slotValue = (state, p, s) => { const b = slotBest(state, p, s); return b * b; };
-  const allPaired = (T, state, p) => T.slots.every((s) => slotBest(state, p, s) === s.wings.length);
-  const pairedKeys = (T, state, p) => T.slots.filter((s) => { const ref = pairAt(state, p, s.wings[0]); return s.wings.every((w) => pairAt(state, p, w) === ref); }).map((s) => pairAt(state, p, s.wings[0]));
-  function slotInfo(T, state, p, s) {
-    const counts = new Map();
-    for (const w of s.wings) { const k = pairAt(state, p, w); counts.set(k, (counts.get(k) || 0) + 1); }
-    let ref = s.middle ? pairAt(state, p, s.middle) : null;
-    if (ref === null) for (const [k, n] of counts) if (ref === null || n > counts.get(ref)) ref = k;
-    return { ref, count: counts.get(ref) };
+  // ...as the slot stands now
+  function slotBest(state, s, w) {
+    for (let i = 0; i < w; i++) PAIRS[i] = state[s.aIdx[i]] * 8 + state[s.bIdx[i]];
+    return bestOfPairs(w, s.middleIdx);
   }
+  // ...and as it would stand after a candidate, whose packed data says where each of
+  // the slot's wing stickers would come from.
+  function slotBestAfter(state, data, base, s, w) {
+    for (let i = 0; i < w; i++) PAIRS[i] = state[data[base + 2 * i]] * 8 + state[data[base + 2 * i + 1]];
+    return bestOfPairs(w, s.middleIdx);
+  }
+  // The colour pair the slot is settling on, and how many of its wings have it.
+  function slotInfo(state, s, w) {
+    for (let i = 0; i < w; i++) PAIRS[i] = state[s.aIdx[i]] * 8 + state[s.bIdx[i]];
+    if (s.middleIdx >= 0) {
+      const ref = PAIRS[s.middleIdx];
+      let count = 0;
+      for (let i = 0; i < w; i++) if (PAIRS[i] === ref) count++;
+      return { ref, count };
+    }
+    let ref = PAIRS[0], count = 0;
+    for (let i = 0; i < w; i++) {
+      let n = 0;
+      for (let j = 0; j < w; j++) if (PAIRS[j] === PAIRS[i]) n++;
+      if (n > count) { count = n; ref = PAIRS[i]; }
+    }
+    return { ref, count };
+  }
+  // Every edge that is finished, named by its colour pair. Two finished edges can
+  // trade places in one step, so the colours, not the place, say which edge is which.
+  const pairedEdges = (T, state) => T.slots.filter((s) => slotBest(state, s, T.W) === T.W)
+    .map((s) => ({ slot: s, ref: slotInfo(state, s, T.W).ref }));
 
   // The best candidate by `score` (null means "does not help"). When nothing helps,
   // try again after each single face turn, which never undoes finished work; the
@@ -358,7 +419,6 @@
       steps.push({ stage, text, moves, highlight: highlight || [] });
     }
     const countFace = (state, f) => { let n = 0; for (const i of T.centres[f]) if (state[i] === col(f)) n++; return n; };
-    const identity = T.permOf([]);
 
     // ---- orient: odd cubes have fixed centres; on an even cube any way up works, so
     // pick the way that already has the most centre squares in place.
@@ -378,7 +438,7 @@
       if (best.alg) {
         emit('orient', N % 2
           ? 'First, hold the cube so the WHITE middle square is on the bottom and the GREEN one faces you.'
-          : 'First, turn the WHOLE cube like this. On a ' + N + 'x' + N + ' any way up is fine, and this way has the most centre squares already in place.', best.alg, []);
+          : 'First, turn the WHOLE cube like this. On a ' + N + '\u00d7' + N + ' any way up is fine, and this way has the most centre squares already in place.', best.alg, []);
       }
     }
 
@@ -387,90 +447,146 @@
     const done = [];
     let intro = 'On a big cube the middle squares can move about, so first we build the six centres, one colour each. ';
     for (const f of ORDER.slice(0, 5)) {
+      const want = col(f);
+      const colour = cname(want);
+      const side = SIDE[f].toUpperCase();
+      const fi = FACES.indexOf(f);
+      const doneFi = done.map((g) => FACES.indexOf(g));
+      let first = true;
       while (countFace(cur, f) < T.inner) {
-        const isDone = {};
-        for (const g of done) isDone[g] = true;
-        const want = col(f);
         const best = search(T, T.byTarget[f], cur, (state, c) => {
-          const p = c.perm;
-          for (const g of done) { const cg = col(g); for (const i of c.moved[g]) if (state[p[i]] !== cg) return null; }
+          const cells = c.cells;
+          for (const gi of doneFi) {                       // never spoil a finished centre
+            const cg = col(FACES[gi]);
+            for (let k = cells[gi]; k < cells[gi + 1]; k++) if (state[cells[7 + 2 * k + 1]] !== cg) return null;
+          }
           let gain = 0;
-          for (const i of c.moved[f]) gain += (state[p[i]] === want) - (state[i] === want);
+          for (let k = cells[fi]; k < cells[fi + 1]; k++) {
+            gain += (state[cells[7 + 2 * k + 1]] === want) - (state[cells[7 + 2 * k]] === want);
+          }
           return gain > 0 ? gain : null;
         });
         if (!best) throw SolverBug('Centre search stuck on ' + f);
-        const p = best.setup.length ? T.compose(T.facePerms[best.setup[0]], best.c.perm) : best.c.perm;
+        const moves = model.parseAlg(best.setup.concat(best.c.alg.split(' ')));
+        const p = T.permOf(moves);
         const highlight = [];
-        for (const i of T.centres[f]) if (cur[p[i]] === col(f) && model.GEO[p[i]].face !== f) highlight.push(p[i]);
-        const k = best.v;
-        const many = k === 1 ? 'one more ' + cname(col(f)) + ' square' : k + ' more ' + cname(col(f)) + ' squares';
-        emit('centres', intro + 'Make the middle of the ' + SIDE[f].toUpperCase() + ' side all ' + cname(col(f)).toUpperCase() + '. This trick brings ' + many + ' there.', best.setup.concat(best.c.alg), highlight);
+        for (const i of T.centres[f]) if (cur[p[i]] === want && model.GEO[p[i]].face !== f) highlight.push(p[i]);
+        const placed = countFace(model.applyAlg(cur, moves), f);
+        const gain = placed - countFace(cur, f);
+        if (gain < 1) throw SolverBug('Centre step made no progress on ' + f);
+        const squares = gain === 1 ? 'one more ' + colour + ' square' : gain + ' more ' + colour + ' squares';
+        // The first card for a side explains the job; the rest count the progress, so
+        // a child can see the side filling up instead of reading the same words again.
+        const score = placed === T.inner ? ' That side is done!' : ' That makes ' + placed + ' out of ' + T.inner + '.';
+        emit('centres', first
+          ? intro + 'Make the middle of the ' + side + ' side all ' + colour.toUpperCase() + '. This trick brings ' + squares + ' there.' + (placed === T.inner ? ' That side is done!' : '')
+          : 'This trick brings ' + squares + ' to the ' + side + ' side.' + score,
+        moves, highlight);
         intro = '';
+        first = false;
       }
       done.push(f);
     }
     for (const f of FACES) if (countFace(cur, f) !== T.inner) throw SolverBug('Centres not finished on ' + f);
 
     // ---- edges
-    intro = 'Now we join the edge pieces, so each edge is one colour on each side, like a 3x3 edge. ';
+    intro = 'Now we join the edge pieces, so each edge is one colour on each side, like a 3\u00d73 edge. ';
     {
-      const codes = cur.map((c) => CODE[c]);
-      let state = codes;
-      while (!allPaired(T, state, identity)) {
+      const W = T.W;
+      let state = cur.map((c) => CODE[c]);
+      let was = pairedEdges(T, state);
+      while (was.length < 12) {
+        const wasKeys = was.map((e) => e.ref);
         let base = null, baseState = null;
         const best = search(T, T.edgeCands, state, (st, c) => {
-          if (st !== baseState) { baseState = st; base = T.slots.map((s) => slotValue(st, identity, s)); }
+          if (st !== baseState) {
+            baseState = st;
+            base = T.slots.map((s) => { const b = slotBest(st, s, W); return b * b; });
+          }
+          const data = c.slots;
+          const n = data[0];
           let gain = 0;
-          for (const k of c.touched) gain += slotValue(st, c.perm, T.slots[k]) - base[k];
+          for (let j = 0; j < n; j++) {
+            const s = T.slots[data[1 + j]];
+            const b = slotBestAfter(st, data, 1 + n + j * 2 * W, s, W);
+            gain += b * b - base[s.index];               // squared, so joining a third piece beats starting a new pair
+          }
           return gain > 0 ? gain : null;
         });
         if (!best) throw SolverBug('Edge search stuck');
-        const p = best.setup.length ? T.compose(T.facePerms[best.setup[0]], best.c.perm) : best.c.perm;
-        // Which edge did this step help? A newly finished pair, or the best partly-done slot.
-        const was = pairedKeys(T, state, identity);
-        const now = pairedKeys(T, state, p);
-        const fresh = now.find((k) => !was.includes(k));
-        let slot, ref, text;
+        const moves = model.parseAlg(best.setup.concat(best.c.alg.split(' ')));
+        const p = T.permOf(moves);
+        const next = new Array(state.length);
+        for (let i = 0; i < state.length; i++) next[i] = state[p[i]];
+        const now = pairedEdges(T, next);
+        const nowKeys = now.map((e) => e.ref);
+        // Which edge did this step help? One that is finished now, or the one closest to it.
+        const fresh = now.find((e) => !wasKeys.includes(e.ref));
+        // Sometimes the only way on is to take a finished edge apart again. Say so,
+        // so a child is not puzzled when that edge comes round a second time.
+        const broke = wasKeys.filter((k) => !nowKeys.includes(k)).length;
+        const apology = broke === 0 ? ''
+          : broke === 1 ? ' It pulls another edge apart for a moment, and we come back to that one later.'
+            : ' It pulls ' + broke + ' other edges apart for a moment, and we come back to those later.';
+        let slot, info, text;
         if (fresh !== undefined) {
-          slot = T.slots.find((s) => s.wings.every((w) => pairAt(state, p, w) === fresh));
-          ref = fresh;
-          text = 'Finish the ' + cname(LETTER[ref >> 3]) + ' and ' + cname(LETTER[ref & 7]) + ' edge: this brings its last piece' + (N > 4 ? 's' : '') + ' together.';
+          slot = fresh.slot;
+          info = { ref: fresh.ref, count: W };
+          const joined = W - slotInfo(state, slot, W).count;
+          text = 'Join the last ' + (joined === 1 ? 'piece' : joined + ' pieces') + ' of the ' + pairName(info.ref) + ' edge. That whole edge matches now.';
         } else {
           let top = null;
-          for (const s of T.slots) { const st = slotInfo(T, state, p, s); if (st.count < s.wings.length && (!top || st.count > top.count)) top = { s, ref: st.ref, count: st.count }; }
-          slot = top.s;
-          ref = top.ref;
-          text = 'Bring another ' + cname(LETTER[ref >> 3]) + ' and ' + cname(LETTER[ref & 7]) + ' edge piece next to its twin' + (top.count > 2 ? 's' : '') + '.';
+          for (const s of T.slots) {
+            const si = slotInfo(next, s, W);
+            if (si.count < W && (!top || si.count > top.count)) top = { slot: s, ref: si.ref, count: si.count };
+          }
+          if (!top) throw SolverBug('Edge step helped nothing');
+          slot = top.slot;
+          info = top;
+          text = 'Join another ' + pairName(info.ref) + ' piece. That edge now has ' + info.count + ' of ' + W + ' pieces matching.';
         }
         const highlight = [];
-        for (const w of slot.wings) if (pairAt(state, p, w) === ref) highlight.push(p[w.a], p[w.b]);
-        emit('edges', intro + text, best.setup.concat(best.c.alg), highlight);
+        for (let i = 0; i < W; i++) {
+          if (next[slot.aIdx[i]] * 8 + next[slot.bIdx[i]] === info.ref) highlight.push(p[slot.aIdx[i]], p[slot.bIdx[i]]);
+        }
+        emit('edges', intro + text + apology, moves, highlight);
         intro = '';
-        state = state.map((_, i) => state[p[i]]);
+        state = next;
+        was = now;
       }
       if (state.map((c) => LETTER[c]).join('') !== cur.join('')) throw SolverBug('Edge bookkeeping drifted');
     }
     if (FACES.some((f) => countFace(cur, f) !== T.inner)) throw SolverBug('Centres broken while pairing edges');
 
     // ---- parity: only an even cube can look like an impossible 3x3 here
+    const UF = T.GROUPS[7].concat(T.GROUPS[2 * 9 + 1]);
+    const UB = T.GROUPS[1].concat(T.GROUPS[5 * 9 + 1]);
     for (let round = 0; round < 3; round++) {
       const v = Cube.validate(T.reduce(cur));
       if (v.ok) break;
       if (round === 2) throw SolverBug('Reduced cube is not a real 3x3: ' + v.reason);
+      const bigCubeDoes = 'A big cube can do something a 3\u00d73 never does: ';
       if (/flipped/.test(v.reason)) {
-        emit('parity', 'A big cube can do something a 3x3 never does: one whole edge is turned round. Hold the cube still and do this long trick slowly, one move at a time. It turns the top-front edge round.', T.parityAlgs.flip, T.GROUPS[7].concat(T.GROUPS[2 * 9 + 1]));
+        // On a 6x6 each set of edge pieces needs the trick once. Two 15-move halves
+        // are friendlier on a card than one 30-move wall.
+        const parts = T.parityAlgs.flipParts;
+        parts.forEach((alg, k) => {
+          emit('parity', bigCubeDoes + 'one whole edge is turned round. ' + (parts.length === 1
+            ? 'Hold the cube still and do this long trick slowly, one move at a time. It turns the top-front edge round.'
+            : 'The fix comes in ' + parts.length + ' halves, one for each set of edge pieces. Hold the cube still and do half ' + (k + 1) + ' slowly, one move at a time.'), alg, UF);
+        });
       } else if (/swapped/.test(v.reason)) {
         if (!T.parityAlgs.swap) throw SolverBug('No swap parity algorithm for ' + N);
-        emit('parity', 'A big cube can do something a 3x3 never does: two edges are swapped. Hold the cube still and do this trick slowly, one move at a time. It swaps the top-front and top-back edges.', T.parityAlgs.swap, T.GROUPS[7].concat(T.GROUPS[1], T.GROUPS[2 * 9 + 1], T.GROUPS[5 * 9 + 1]));
+        emit('parity', bigCubeDoes + 'two edges are swapped. Hold the cube still and do this trick slowly, one move at a time. It swaps the top-front and top-back edges.', T.parityAlgs.swap, UF.concat(UB));
       } else {
         throw SolverBug('Reduced cube is not a real 3x3: ' + v.reason);
       }
-      if (!allPaired(T, cur.map((c) => CODE[c]), identity) || FACES.some((f) => countFace(cur, f) !== T.inner)) throw SolverBug('Parity trick broke the cube');
+      if (pairedEdges(T, cur.map((c) => CODE[c])).length !== 12 || FACES.some((f) => countFace(cur, f) !== T.inner)) throw SolverBug('Parity trick broke the cube');
     }
 
     // ---- the 3x3 from here
     const res = Solver.solve(T.reduce(cur));
-    intro = 'Now the cube works just like a 3x3! ';
+    intro = 'Now the cube works just like a 3\u00d73! ';
     for (const st of res.steps) {
       const highlight = [];
       for (const i of st.highlight) for (const j of T.GROUPS[i]) highlight.push(j);

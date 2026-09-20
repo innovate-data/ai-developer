@@ -60,7 +60,7 @@
       interactive: 'parts',
       story: [
         'A cube has 54 stickers. But it is really made of 26 little <b>pieces</b>. There are three kinds. Learn them and you are halfway there!',
-        '<b>Centres</b> are the middle square of each side. A centre has ONE colour. Centres <b>never move</b>. White is always across from yellow. Green is across from blue. Red is across from orange.',
+        'A <b>centre</b> is the middle square of a side. It has ONE colour. Centres <b>never move</b>. White is always across from yellow. Green is across from blue. Red is across from orange.',
         '<b>Edges</b> have TWO colours. There are 12 of them. An edge sits between two centres. Its two colours are the same as those two centres.',
         '<b>Corners</b> have THREE colours. There are 8 of them. A corner sits where its three colours meet.',
         'A cube is like a sandwich 🥪 with three <b>layers</b>: the top layer, the middle layer and the bottom layer. One layer can turn on its own.',

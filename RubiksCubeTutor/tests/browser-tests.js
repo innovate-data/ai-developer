@@ -336,7 +336,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
     await p.waitForTimeout(250);
     ck('4x4: help is offered', !(await p.locator('#play-help').isDisabled()));
-    ck('4x4: the note explains the plan', /centres first/.test(await p.locator('#play-size-note').textContent()));
+    ck('4x4: the note explains the plan', /centres, then edges/.test(await p.locator('#play-size-note').textContent()));
     await p.locator('#play-scramble').click();
     await p.waitForTimeout(2600);
     await p.locator('#play-help').click();
@@ -348,7 +348,36 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 240000 });
     ck('4x4: the guide solves it', await solvedOnScreen());
+    // a 5x5 can turn its middle layer, which its guide asks for
+    await p.locator('#play-size .size-btn', { hasText: '5×5' }).click();
+    await p.waitForTimeout(250);
+    const labels = await p.locator('#play-controls .pad-label').allTextContents();
+    ck('5x5: the pad has a middle-layer row', labels.includes('the middle layer'), labels.join(','));
+    const midBtn = p.locator('#play-controls .pad-row').nth(4).locator('.pad-btn').first();
+    ck('5x5: the middle-layer button is a real move', /^3U/.test((await midBtn.textContent()).trim()));
+    await midBtn.click();
+    await p.waitForTimeout(600);
+    ck('5x5: turning the middle layer changes the cube', !(await solvedOnScreen()));
+    await p.locator('#play-reset').click();
+    await p.waitForTimeout(300);
+
+    // a 6x6 gets a guide too, without waiting for the whole solve to play out
+    await p.locator('#play-size .size-btn', { hasText: '6×6' }).click();
+    await p.waitForTimeout(250);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    ck('6x6: the status says it is working', /Thinking/.test(await p.locator('#play-status').textContent()));
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 60000 });
+    const chips6 = await p.locator('#play-guide .stage-chip').allTextContents();
+    ck('6x6: the guide plans centres, edges and the 3x3 stages', chips6.includes('Centres') && chips6.includes('Pair the edges') && chips6.includes('Finish'), chips6.join(','));
+    await p.locator('#play-guide .btn', { hasText: 'Watch' }).first().click();
+    await p.waitForTimeout(2500);
+    ck('6x6: the first step plays without errors', (await p.locator('#play-guide .guide-count').textContent()).length > 0);
+
     // the choice is remembered, and My real cube knows Play is not a 3x3
+    await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
+    await p.waitForTimeout(250);
     await p.reload();
     await p.waitForTimeout(300);
     await p.locator('nav button[data-screen="play"]').click();
@@ -416,7 +445,10 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       window.__speech = log;
       Object.defineProperty(window, 'SpeechSynthesisUtterance', { configurable: true, value: function (t) { this.text = t; this.onend = null; this.onerror = null; } });
       Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
-        speak(u) { cur = u; log.spoken.push(u.text); }, cancel() { log.cancels++; cur = null; }, getVoices: () => [] } });
+        speak(u) { cur = u; log.spoken.push(u.text); },
+        // A real browser fires the utterance's end event when speech is cancelled.
+        cancel() { log.cancels++; const u = cur; cur = null; if (u && u.onend) u.onend(); },
+        getVoices: () => [] } });
     });
     await p.goto(URL);
     await p.locator('nav button[data-screen="play"]').click();

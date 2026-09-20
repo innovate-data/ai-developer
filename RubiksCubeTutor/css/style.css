@@ -259,7 +259,14 @@ main {
 .guide-done { font-size: 1.3rem; background: var(--good-bg); border-radius: 12px; padding: 14px; }
 .guide-error { background: var(--bad-bg); border-radius: 12px; padding: 14px; }
 .guide-warn { background: var(--bad-bg); border-radius: 12px; padding: 10px 14px; font-weight: 600; }
-.stage-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.stage-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.stage-bar::before { display: none; font-size: 0.8rem; font-weight: 700; color: var(--muted); content: 'Stage ' attr(data-at) ' of ' attr(data-of); }
+/* A big cube has thirteen stages, which wrap into five rows of chips and push the
+   step itself off a phone screen. There, name the stage the child is on instead. */
+@media (max-width: 620px) {
+  .stage-bar::before { display: inline; }
+  .stage-bar .stage-chip { display: none; }
+}
 .stage-chip { font-size: 0.8rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--muted); }
 .stage-chip.done { background: var(--good-bg); color: var(--good); }
 .stage-chip.current { background: var(--accent); color: #fff; }

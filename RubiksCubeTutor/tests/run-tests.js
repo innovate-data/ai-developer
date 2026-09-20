@@ -611,7 +611,7 @@ test('a big cube solve is checked as it goes: every text names a real colour or 
     assert(!/undefined|NaN|\[object/.test(st.text), st.text);
   }
   assert(/big cube/.test(res.steps.find((st) => st.stage === 'centres').text), 'the first centre step explains the idea');
-  assert(/like a 3x3/.test(res.steps.find((st) => bigStageIndex(st.stage) > bigStageIndex('parity')).text), 'the 3x3 part is announced');
+  assert(/like a 3×3/.test(res.steps.find((st) => bigStageIndex(st.stage) > bigStageIndex('parity')).text), 'the 3x3 part is announced');
 });
 
 test('solveAny hands the 2x2 and 3x3 to their own solvers', () => {

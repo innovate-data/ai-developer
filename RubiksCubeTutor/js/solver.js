@@ -282,7 +282,10 @@
     const uTurnsFor = (cycle, from, to) => (cycleIndex(cycle, to) - cycleIndex(cycle, from) + 4) % 4;
     // A highlighted piece may be round the back of the picture; say where it is in words.
     const SIDE_WORD = { U: 'on top', D: 'on the bottom', F: 'at the front', B: 'at the back', L: 'on the left', R: 'on the right' };
-    const whereIs = (piece) => 'It is ' + piece.faces.map((f) => SIDE_WORD[f]).join(' and ') + '.';
+    // "on top, at the front and on the left" - three "and"s in a row is a mouthful
+    // for a child reading it out, and worse for the Read button.
+    const listWords = (parts) => (parts.length < 3 ? parts.join(' and ') : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1]);
+    const whereIs = (piece) => 'It is ' + listWords(piece.faces.map((f) => SIDE_WORD[f])) + '.';
     const stickerFaces = (piece, color) => { const f = Cube.faceOfColor(cur, piece, color); return f ? ' Its ' + cname(color) + ' sticker faces ' + SIDE_WORD[f].replace(/^(on|at) (the )?/, 'the ') + '.' : ''; };
     // After "turn the whole cube", tell the child what they should now be looking at.
     const facesYou = (yTok) => ' Now the ' + cname(Cube.center(Cube.applyMove(cur, yTok), 'F')) + ' side faces you.';
@@ -541,7 +544,7 @@
         const moves = [];
         for (let k = 0; k < plan.count; k++) moves.push(...Cube.parseAlg(plan.alg));
         const times = plan.count === 1 ? 'once' : plan.count + ' times';
-        const messy = first ? ' The bottom layers will look messy. That is normal, they fix themselves at the end!' : '';
+        const messy = first ? ' The bottom will look messy. That is normal. It all comes back at the end!' : '';
         const text = plan.backwards
           ? 'This corner would take four twists. Do the TWIST TRICK BACKWARDS instead (D\' R\' D R), ' + times + '. Then the yellow sticker of the front-right corner faces up.' + messy
           : 'Do the TWIST TRICK (R\' D\' R D) ' + times + '. Then the yellow sticker of the front-right corner faces up.' + messy;
@@ -608,7 +611,7 @@
   })();
 
   function validate2x2(state2) {
-    if (!state2 || state2.length !== 24) return { ok: false, reason: 'A 2x2 has exactly 24 stickers.' };
+    if (!state2 || state2.length !== 24) return { ok: false, reason: 'A 2\u00d72 has exactly 24 stickers.' };
     const counts = {};
     for (const c of state2) counts[c] = (counts[c] || 0) + 1;
     for (const c of Object.keys(Cube.COLOR_NAMES)) {
@@ -666,7 +669,7 @@
     if (best.alg) {
       steps.unshift({
         stage: 'orient',
-        text: 'First, turn the WHOLE cube to hold it the easy way. A 2x2 has no middle squares, so any way up is fine.',
+        text: 'First, turn the WHOLE cube to hold it the easy way. A 2\u00d72 has no middle squares, so any way up is fine.',
         moves: Cube.parseAlg(best.alg),
         highlight: [],
       });

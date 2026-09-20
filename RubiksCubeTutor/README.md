@@ -183,8 +183,10 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   which a test asserts move by move, so a 3×3 state from either module works in both.
 * Move tokens follow the usual notation: outer faces, `2U` for the second layer in from
   the top, `Uw` and lowercase `u` for wide turns, `M E S` on odd cubes, `x y z` for the
-  whole cube. Each size's move pad shows depths down to the middle, since the exact
-  middle of an odd cube never needs to turn.
+  whole cube. Each size's move pad shows a row per layer down to the middle. An odd
+  cube above 3×3 gets one extra row for its middle layer, which is the same layer from
+  either side, so six buttons cover it: without them a child could not make the
+  middle-slice turns the 5×5 guide asks for.
 * **A 2×2 has no centres**, so all 24 ways of holding a solved one are solved. The
   solver checks that first and says nothing when there is nothing to do, and otherwise
   picks whichever of the 24 ways to hold it starts with the most corners already home,
@@ -218,10 +220,22 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   and an edge swap for two edges that look swapped. On a 6×6 the flip is applied per
   wing orbit, and the pairing stage uses it when an edge's outer and inner pairs
   disagree. An odd cube can never need either.
+* A whole permutation per candidate (216 stickers on a 6×6) cost 165 MB of tables,
+  enough for an iPad to kill the tab. Each candidate now keeps only the squares it
+  actually moves, packed into one typed array — face offsets, then (square, where it
+  comes from) pairs — and only the size in play is cached. That is 14 MB for a 4×4,
+  22 MB for a 5×5 and 30 MB for a 6×6, and the search got faster with it, because it
+  touches far less memory.
 * Cost: about 56 cards / 220 moves on a 4×4, 71 / 340 on a 5×5 and 95 / 510 on a 6×6
-  (200, 100 and 60 random scrambles, no failures). Tables build in about half a second
-  on first use and a 6×6 solve takes about 0.7 s in Node, so the Play screen shows
-  "Thinking…" first.
+  (200, 100 and 60 random scrambles, no failures, plus short scrambles of 1 to 34
+  moves and solved cubes held every way). Tables build in 0.2–0.8 s on first use and a
+  6×6 solve takes about 0.4 s in Node, so the Play screen shows "Thinking…" first and
+  holds the button until the answer is ready.
+* The cards a child reads are written as the solve is found: the first card for a
+  centre explains the job, the rest count it up ("This trick brings 2 more white
+  squares to the BOTTOM side. That makes 12 out of 16."), an edge is always named with
+  its two colours in the same order, and when a step has to take a finished edge apart
+  again the card says so instead of quietly showing that edge twice.
 
 ### 3D view (`js/view.js`)
 * N³ cubie `<div>`s with six faces each, positioned with CSS 3D transforms. The view
@@ -264,7 +278,7 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 82 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -284,6 +298,8 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R15 | Every size from 2×2 to 6×6 draws, turns, undoes, mixes and resets; the guide solves a 2×2 and a 4×4 (centres, edges, then the 3×3 stages); the size survives a reload. |
 | R16 | Changing size mid-animation ran a queued move against the new cube, and left it wrongly marked as mixed, so a move and an undo were celebrated as a solve. |
 | R17 | Tearing down the guide or changing size left the narrator reading steps for a cube that was gone, with no Stop button to press. |
+| R18 | The 5×5 guide asked for middle-layer turns that the move pad could not make; the pad now has a row for them. |
+| R19 | A 6×6 guide opens from a real scramble, with "Thinking…" while it works, and its stage bar no longer fills a phone screen with thirteen chips. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
 produces, by touch, on an iPhone and an iPad profile: 29 checks.

@@ -188,7 +188,8 @@
     container.innerHTML = '';
     let lastDepth = 1;
     for (const row of M.padRows()) {
-      if (row.depth > 1 && row.depth !== lastDepth) container.appendChild(el('div', 'pad-label', ORDINAL[row.depth] + ' layer in from each side'));
+      if (row.middle) container.appendChild(el('div', 'pad-label', 'the middle layer'));
+      else if (row.depth > 1 && row.depth !== lastDepth) container.appendChild(el('div', 'pad-label', ORDINAL[row.depth] + ' layer in from each side'));
       if (row.depth === 0 && lastDepth !== 0) container.appendChild(el('div', 'pad-label', 'whole cube'));
       lastDepth = row.depth;
       const r = el('div', 'pad-row');
@@ -369,6 +370,8 @@
       const step = steps[i];
       const stages = stagesOf();
       const bar = el('div', 'stage-bar');
+      bar.dataset.at = stages.indexOf(step.stage) + 1;
+      bar.dataset.of = stages.length;
       for (const st of stages) {
         const idx = BigSolver.STAGES.indexOf(st);
         const curIdx = BigSolver.STAGES.indexOf(step.stage);
@@ -827,7 +830,7 @@
       moveCount = 0;
       sizeNote.textContent = n <= 3
         ? 'Cube Clubhouse can guide you through this one.'
-        : 'Cube Clubhouse can guide you through this one too: centres first, then the edges, then it works like a 3×3. The lessons and My real cube use the 3×3.';
+        : 'Cube Clubhouse can guide this one too: centres, then edges, then it works like a 3×3. Lessons and My real cube use the 3×3.';
       statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
     }
     for (const n of NCube.SIZES) {
@@ -873,16 +876,28 @@
       station.undo();
     });
     $('#play-help').addEventListener('click', () => {
+      const btn = $('#play-help');
+      if (btn.disabled) return;
       stopTimer();
       scrambled = false;
-      // A 6x6 takes a second or two to work out; let "Thinking" paint first.
+      // Working out a 6x6 takes a second or two, and the page cannot repaint while it
+      // does. Show "Thinking", let that paint, and hold the button so an impatient
+      // second tap does not queue a second solve behind the first.
       statusEl.textContent = 'Thinking…';
+      btn.disabled = true;
       const myGen = station.view.gen;
       setTimeout(() => {
-        if (station.view.gen !== myGen) return;      // the cube was replaced meanwhile
-        const ok = guide.start(station.state);
-        statusEl.textContent = ok ? 'Follow the steps below. Press Watch to see each one.' : 'Hmm, something went wrong. Press Mix it up and try again.';
-        guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        try {
+          if (station.view.gen !== myGen) return;    // the cube was replaced meanwhile
+          const solved = station.model.isSolved(station.state);
+          const ok = guide.start(station.state);
+          statusEl.textContent = !ok ? 'Hmm, I could not work that one out. Read the message below.'
+            : solved ? 'This cube is already solved! Press Mix it up for a new one.'
+              : 'Follow the steps below. Press Watch to see each one.';
+          guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } finally {
+          btn.disabled = false;
+        }
       }, 30);
     });
     $('#play-reset-view').addEventListener('click', () => station.view.resetView());
