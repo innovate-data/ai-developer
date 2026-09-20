@@ -15,13 +15,12 @@
   const defaultModel = () => (root.RC.NCube ? root.RC.NCube.make(3) : Cube);
 
   const COLOR_CLASS = { W: 'c-W', Y: 'c-Y', G: 'c-G', B: 'c-B', R: 'c-R', O: 'c-O' };
-  const FACE_TRANSFORMS = {
-    '0,0,1': 'translateZ(H)',
-    '0,0,-1': 'rotateY(180deg) translateZ(H)',
-    '1,0,0': 'rotateY(90deg) translateZ(H)',
-    '-1,0,0': 'rotateY(-90deg) translateZ(H)',
-    '0,1,0': 'rotateX(90deg) translateZ(H)',
-    '0,-1,0': 'rotateX(-90deg) translateZ(H)',
+  // Which way each of a cubie's six faces points. The transform itself lives in CSS
+  // (class f-pz and friends, off a --fs custom property), so building a 6x6 does not
+  // mean writing six inline styles onto each of nine hundred elements.
+  const FACE_CLASS = {
+    '0,0,1': 'f-pz', '0,0,-1': 'f-nz', '1,0,0': 'f-px',
+    '-1,0,0': 'f-nx', '0,1,0': 'f-py', '0,-1,0': 'f-ny',
   };
   const NORMALS = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
   const AXIS_IDX = { x: 0, y: 1, z: 2 };
@@ -58,9 +57,14 @@
       const S = this.faceSize();
       const border = S >= 40 ? 3 : 2;
       const radius = Math.max(3, Math.round(S * 0.13));
+      this.step = S + this.gap();
+      this.painted = null;                      // nothing drawn yet: paint everything
       const lookup = new Map();
       for (const g of this.model.GEO) lookup.set(g.pos.join(',') + '|' + g.n.join(','), g.index);
       this.container.classList.add('cube-scene');
+      this.container.style.setProperty('--fs', S + 'px');
+      this.container.style.setProperty('--fb', border + 'px');
+      this.container.style.setProperty('--fr', radius + 'px');
       this.container.innerHTML = '';
       this.cubeEl = document.createElement('div');
       this.cubeEl.className = 'cube';
@@ -75,26 +79,22 @@
             el.className = 'cubie';
             for (const n of NORMALS) {
               const f = document.createElement('div');
-              f.className = 'face';
-              f.style.width = S + 'px';
-              f.style.height = S + 'px';
-              f.style.margin = -S / 2 + 'px 0 0 ' + -S / 2 + 'px';
-              f.style.borderWidth = border + 'px';
-              f.style.borderRadius = radius + 'px';
-              f.style.transform = FACE_TRANSFORMS[n.join(',')].replace('H', S / 2 + 'px');
+              const dir = FACE_CLASS[n.join(',')];
               const idx = lookup.get([x, y, z].join(',') + '|' + n.join(','));
               if (idx !== undefined) {
+                f.className = 'face ' + dir;
                 f.dataset.index = idx;
-                faces.push({ el: f, index: idx });
+                faces.push({ el: f, index: idx, base: 'face ' + dir + ' ' });
               } else {
-                f.classList.add('inner');
+                f.className = 'face inner ' + dir;
               }
               el.appendChild(f);
             }
             // a cubie buried inside a big cube can never be seen: leave it out
             if (faces.length === 0) continue;
             this.cubeEl.appendChild(el);
-            this.cubies.push({ el, pos: [x, y, z], faces });
+            // The resting transform of a cubie never changes, so work it out once.
+            this.cubies.push({ el, pos: [x, y, z], faces, base: this.translate([x, y, z]) });
           }
         }
       }
@@ -113,28 +113,40 @@
     }
 
     translate(pos) {
-      const step = this.faceSize() + this.gap();
+      const step = this.step || this.faceSize() + this.gap();
       return 'translate3d(' + pos[0] * step + 'px,' + -pos[1] * step + 'px,' + pos[2] * step + 'px)';
     }
 
-    resetTransforms() {
-      for (const c of this.cubies) {
+    // Put cubies back at rest without animating the way back. Only the cubies that
+    // actually turned need it, which on a 6x6 is a couple of dozen out of 152.
+    resetTransforms(only) {
+      const list = only || this.cubies;
+      for (const c of list) {
         c.el.style.transition = 'none';
-        c.el.style.transform = this.translate(c.pos);
+        c.el.style.transform = c.base;
       }
       // force style flush so the next transition starts from the reset transform
       void this.cubeEl.offsetWidth;
-      for (const c of this.cubies) c.el.style.transition = '';
+      for (const c of list) c.el.style.transition = '';
     }
 
     applyView() {
       this.cubeEl.style.transform = 'rotateX(' + this.rotX + 'deg) rotateY(' + this.rotY + 'deg)';
     }
 
+    // Repaint only the stickers whose colour or highlight actually changed: a move
+    // touches a fraction of them, and writing className costs a style recalculation
+    // whether or not the value is new.
     paint() {
+      const all = this.painted === null;
+      if (all) this.painted = new Map();
+      const hl = this.highlights;
       for (const c of this.cubies) {
         for (const f of c.faces) {
-          f.el.className = 'face ' + COLOR_CLASS[this.state[f.index]] + (this.highlights.has(f.index) ? ' hl' : '');
+          const want = COLOR_CLASS[this.state[f.index]] + (hl.has(f.index) ? ' hl' : '');
+          if (!all && this.painted.get(f.index) === want) continue;
+          f.el.className = f.base + want;
+          this.painted.set(f.index, want);
         }
       }
     }
@@ -158,19 +170,32 @@
       const gen = this.gen;
       const ai = AXIS_IDX[mv.axis];
       const angle = CSS_ANGLE[mv.axis] * mv.k;
-      const layer = this.cubies.filter((c) => mv.layers.includes(c.pos[ai]));
+      const layer = [];
+      for (const c of this.cubies) if (mv.layers.includes(c.pos[ai])) layer.push(c);
+      const spin = 'rotate' + mv.axis.toUpperCase() + '(' + angle + 'deg) ';
       return new Promise((resolve) => {
         for (const c of layer) {
           c.el.style.transition = 'transform ' + ms + 'ms cubic-bezier(.4,.1,.3,1)';
-          c.el.style.transform = 'rotate' + mv.axis.toUpperCase() + '(' + angle + 'deg) ' + this.translate(c.pos);
+          c.el.style.transform = spin + c.base;
         }
-        setTimeout(() => {
+        // Finish on the real transitionend rather than a timer with slack in it: the
+        // old fixed 20ms was a third of the run again at the fastest speed, and a
+        // reader who asked for less motion waited the full time for no animation.
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          if (layer.length) layer[0].el.removeEventListener('transitionend', onEnd);
           if (gen !== this.gen) { resolve(); return; }  // superseded: setState already repainted
           this.state = this.model.applyMove(this.state, token);
-          this.resetTransforms();
+          this.resetTransforms(layer);
           this.paint();
           resolve();
-        }, ms + 20);
+        };
+        const onEnd = (e) => { if (e.propertyName === 'transform') finish(); };
+        if (layer.length) layer[0].el.addEventListener('transitionend', onEnd);
+        const timer = setTimeout(finish, ms + 60);      // in case the event never comes
       });
     }
 
@@ -204,6 +229,7 @@
         dragging = true; moved = 0; lx = e.clientX; ly = e.clientY;
         el.setPointerCapture(e.pointerId);
       });
+      let pending = false;
       el.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         const dx = e.clientX - lx, dy = e.clientY - ly;
@@ -211,7 +237,11 @@
         lx = e.clientX; ly = e.clientY;
         this.rotY += dx * 0.5;
         this.rotX = Math.max(-80, Math.min(80, this.rotX - dy * 0.5));
-        this.applyView();
+        // A phone can send pointer events faster than it draws; turning the cube once
+        // per frame keeps the drag smooth instead of queueing style writes.
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(() => { pending = false; this.applyView(); });
       });
       const stop = () => { dragging = false; };
       el.addEventListener('pointerup', stop);

@@ -253,6 +253,27 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   again the card says so instead of quietly showing that edge twice.
 
 ### 3D view (`js/view.js`)
+* **What it costs to draw.** A 6×6 is 152 cubies of six faces each: 912 elements, of
+  which only 216 are stickers a child can see. The rest are the dark insides that stop
+  you seeing through the gaps, and they used to carry a CSS `filter`, a border and a
+  corner radius each — the browser gave every one its own filtered layer, and it was
+  most of the cost of drawing a big cube. They are now a plain pre-darkened colour with
+  no border: same picture, roughly twice the frame rate. (A single six-panel shell
+  instead of those faces is faster still, but a static shell swallows a turning layer,
+  so the faces stay.)
+* **Per move**, the view used to rewrite the transform of every cubie, force a layout,
+  repaint every sticker and then wait a fixed 20 ms of slack. Now only the layer that
+  turned is reset, each cubie's resting transform is worked out once at build time,
+  only stickers whose colour or highlight changed are repainted, and the move finishes
+  on the real `transitionend` (with a timer as a backstop). A 3×3 move at the fastest
+  speed went from 84 ms to 59 ms — the speed actually asked for — with no long tasks
+  left. On a 6×6 with the CPU throttled 4× the frame rate went from 16 fps to 36-40.
+* Dragging the cube turns it once per animation frame rather than once per pointer
+  event, because a phone reports pointers faster than it draws.
+* Face geometry (size, border, radius) is set once per cube as CSS custom properties,
+  and which way a face points is a class, so building a 6×6 no longer writes six inline
+  styles onto each of nine hundred elements.
+
 * N³ cubie `<div>`s with six faces each, positioned with CSS 3D transforms. The view
   takes a model and sizes stickers so every cube is about the same size on screen;
   cubies buried inside a big cube are never created. A layer turn
@@ -293,7 +314,7 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 92 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 93 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -316,6 +337,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R18 | The 5×5 guide asked for middle-layer turns that the move pad could not make; the pad now has a row for them. |
 | R19 | A 6×6 guide opens from a real scramble, with "Thinking…" while it works, and its stage bar no longer fills a phone screen with thirteen chips. |
 | R20 | The whole-solve run can be paused, resumed, stopped and re-speeded; stopping lands on a whole step, and the steps left still solve the cube. |
+| R21 | The view repaints only what changed, so every sticker on screen is checked against the state it is meant to show. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
 produces, by touch, on an iPhone and an iPad profile: 43 checks, including a whole

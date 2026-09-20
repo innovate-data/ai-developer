@@ -537,6 +537,37 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the chosen speed is remembered', (await p.locator('#play-guide .speed-btn.active').textContent()).includes('Fast'));
     await p.close(); }
 
+  console.log('R21 the drawn cube keeps up with the state it is meant to show');
+  { const p = await newPage();
+    // The view repaints only the stickers that changed, so a drifting diff would show
+    // a cube that no longer matches the model. Drive it hard and compare every sticker.
+    const drift = await p.evaluate(async () => {
+      const host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:0;top:0;width:420px;height:420px';
+      document.body.appendChild(host);
+      const out = [];
+      for (const N of [3, 5]) {
+        const model = RC.NCube.make(N);
+        const view = new RC.CubeView(host, { model, size: 40 });
+        let state = model.solved();
+        const moves = model.scramble(14, (() => { let x = 7; return () => { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648; }; })());
+        for (const m of moves) state = model.applyMove(state, m);
+        await view.play(moves, 20);
+        view.setHighlights([0, 1, 2]);
+        view.setHighlights([]);
+        const drawn = [...host.querySelectorAll('.face:not(.inner)')]
+          .map((f) => [+f.dataset.index, f.className.match(/c-(\w)/)[1]]);
+        const wrong = drawn.filter(([i, c]) => c !== state[i]).length;
+        out.push(N + 'x' + N + ':' + wrong + ' of ' + drawn.length);
+        if (wrong) out.push('MISMATCH');
+        host.innerHTML = '';
+      }
+      host.remove();
+      return out.join(' ');
+    });
+    ck('every sticker drawn matches the state after a scramble', !/MISMATCH/.test(drift), drift);
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

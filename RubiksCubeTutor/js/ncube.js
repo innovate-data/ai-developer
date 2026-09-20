@@ -91,7 +91,17 @@
     const layerAt = (end, d) => end * (H - (d - 1));
 
     const MOVE_RE = /^(\d*)([UDLRFB])(w?)(['2]?)$/;
+    // Every animated move, every button label and every word of advice parses a token,
+    // and there are only a few dozen of them, so keep the answers.
+    const parsed = new Map();
     function parseMove(token) {
+      const hit = parsed.get(token);
+      if (hit) return hit;
+      const mv = parseMoveRaw(token);
+      parsed.set(token, mv);
+      return mv;
+    }
+    function parseMoveRaw(token) {
       let m;
       if ((m = /^([xyz])(['2]?)$/.exec(token))) {
         const mult = m[2] === "'" ? -1 : m[2] === '2' ? 2 : 1;

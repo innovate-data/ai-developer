@@ -22,6 +22,7 @@
   --scene-1: #fdfdff;
   --scene-2: #eef1fb;
   --plastic: #1a1a1a;
+  --plastic-dark: #101010;
   --hl: #ff2fd0;
   --shadow: 0 10px 30px rgba(31, 36, 64, 0.08);
   --glow: rgba(91, 91, 255, 0.2);
@@ -52,6 +53,7 @@
     --scene-1: #2a2f59;
     --scene-2: #191d38;
     --plastic: #0d0d12;
+    --plastic-dark: #08080b;
     --hl: #ff5ada;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
     --glow: rgba(143, 143, 255, 0.3);
@@ -79,6 +81,7 @@
   --scene-1: #2a2f59;
   --scene-2: #191d38;
   --plastic: #0d0d12;
+  --plastic-dark: #08080b;
   --hl: #ff5ada;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --glow: rgba(143, 143, 255, 0.3);
@@ -186,11 +189,24 @@ main {
 .cube { position: relative; width: 0; height: 0; transform-style: preserve-3d; }
 .cubie { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
 .face {
-  position: absolute; border-radius: 7px;   /* size, margin and border width are set per cube by view.js */
-  background: var(--plastic); border: 3px solid var(--plastic); backface-visibility: hidden;
+  /* --fs (size), --fb (border) and --fr (radius) are set per cube by view.js */
+  position: absolute; width: var(--fs); height: var(--fs); margin: calc(var(--fs) / -2) 0 0 calc(var(--fs) / -2);
+  border: var(--fb, 3px) solid var(--plastic); border-radius: var(--fr, 7px);
+  background: var(--plastic); backface-visibility: hidden;
   transition: filter 0.2s ease, box-shadow 0.2s ease;
 }
-.face.inner { background: var(--plastic); border-color: var(--plastic); filter: brightness(0.6); }
+/* which way a face points; the depth is half a cubie */
+.f-pz { transform: translateZ(calc(var(--fs) / 2)); }
+.f-nz { transform: rotateY(180deg) translateZ(calc(var(--fs) / 2)); }
+.f-px { transform: rotateY(90deg) translateZ(calc(var(--fs) / 2)); }
+.f-nx { transform: rotateY(-90deg) translateZ(calc(var(--fs) / 2)); }
+.f-py { transform: rotateX(90deg) translateZ(calc(var(--fs) / 2)); }
+.f-ny { transform: rotateX(-90deg) translateZ(calc(var(--fs) / 2)); }
+/* The dark inside of the cube: one face on every hidden side of every cubie, up to
+   seven hundred of them on a 6x6, so they have to be cheap to draw. They used to be
+   the same plastic with a CSS filter on each - the single biggest cost of drawing a
+   big cube - and they carried a border and a corner radius nobody can see. */
+.face.inner { background: var(--plastic-dark); border-width: 0; border-radius: 0; }
 .c-W { background: var(--W); } .c-Y { background: var(--Y); } .c-G { background: var(--G); }
 .c-B { background: var(--B); } .c-R { background: var(--R); } .c-O { background: var(--O); }
 .face.hl { box-shadow: inset 0 0 0 5px var(--hl), 0 0 14px var(--hl); animation: pulse 0.9s ease-in-out infinite alternate; }

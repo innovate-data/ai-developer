@@ -79,6 +79,10 @@ cube" are 3×3.
 
 ## Tested on
 
+Drawing is tuned for a device: a 6×6 turn holds 36-40 fps with the CPU throttled to a
+quarter, where it used to manage 16, and a 3×3 move takes exactly as long as the speed
+you picked rather than 40% longer.
+
 `npm run test:ios` drives the very bundle the build phase produces, on an iPhone 12
 and an iPad Pro 11 profile, by touch: 43 checks, including a whole 4×4 solved by
 tapping and a check that no control is smaller than 44pt. Layout was checked at
