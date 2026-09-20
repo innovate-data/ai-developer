@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
+  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, Store, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
   // The biggest cube knows every move token the app can show, so it does the describing.
   const ANY = NCube.make(NCube.SIZES[NCube.SIZES.length - 1]);
 
@@ -346,6 +346,97 @@
       }
     }
     return out;
+  }
+
+  // -------------------------------------------------------------- paywall
+  // The 2x2 walkthrough is free; the rest is bought once. This card goes where the
+  // steps would have been, and calls back when the guide may run after all.
+  function paywall(container, size, onUnlocked) {
+    hush();
+    container.innerHTML = '';
+    container.classList.add('guide');
+    const card = el('div', 'paywall');
+    card.appendChild(el('h3', 'paywall-title', '🔒 Step-by-step help for the ' + size + '×' + size));
+    card.appendChild(el('p', '', 'The 2×2 walkthrough is free, and always will be. Showing every step for '
+      + 'the 3×3 and the bigger cubes is a one-off purchase of ' + Store.price() + ': buy it once and it works '
+      + 'on every size, on all the devices signed in to the same account.'));
+    card.appendChild(el('p', 'paywall-free', 'Free either way: all ten lessons, practice with stars, mixing, '
+      + 'undo, the timer, and the whole 2×2 walkthrough.'));
+
+    const out = el('p', 'msg');
+    const buttons = el('div', 'guide-btns');
+
+    if (!Store.canBuy()) {
+      // A plain web page has no shop behind it, and saying otherwise would be a lie.
+      card.appendChild(el('p', 'paywall-where', 'This copy cannot take payments. The step-by-step guide is '
+        + 'unlocked inside the Cube Clubhouse app for iPhone and iPad.'));
+      const back = el('button', 'btn', '◀ Back to the cube');
+      back.addEventListener('click', () => { container.innerHTML = ''; });
+      buttons.appendChild(back);
+      card.appendChild(buttons);
+      container.appendChild(card);
+      return;
+    }
+
+    // Apple asks for a grown-up check before a purchase in a children's app, and it
+    // stops a child buying anything by pressing the bright button.
+    const gate = el('div', 'gate');
+    const a = 3 + Math.floor(Math.random() * 7);
+    const b = 6 + Math.floor(Math.random() * 4);
+    const label = el('label', 'gate-q', 'Grown-up check: what is ' + a + ' × ' + b + '?');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.inputMode = 'numeric';
+    input.className = 'gate-input';
+    input.id = 'gate-answer';
+    label.setAttribute('for', input.id);
+    const go = el('button', 'btn primary', 'Unlock for ' + Store.price());
+    gate.append(label, input, go);
+    card.appendChild(gate);
+
+    const restore = el('button', 'btn ghost', 'I already bought it');
+    const later = el('button', 'btn ghost', 'Not now');
+    buttons.append(restore, later);
+    card.append(buttons, out);
+    container.appendChild(card);
+
+    const working = (on, what) => {
+      go.disabled = on; restore.disabled = on;
+      out.textContent = on ? what : '';
+    };
+    const settled = (res) => {
+      if (res.ok && Store.isUnlocked()) {
+        out.textContent = 'Thank you! The step-by-step guide is yours.';
+        out.className = 'msg good';
+        if (onUnlocked) onUnlocked();
+        return;
+      }
+      out.className = 'msg';
+      out.textContent = res.reason === 'cancelled' ? 'No problem — nothing was bought.'
+        : res.reason === 'nothing-to-restore' ? 'There is no earlier purchase on this account to bring back.'
+          : res.reason === 'no-shop' || res.reason === 'no-answer' ? 'The shop did not answer. Please try again in a moment.'
+            : res.message || 'That did not go through. Nothing has been charged.';
+    };
+    go.addEventListener('click', async () => {
+      if (Number(input.value) !== a * b) {
+        out.className = 'msg bad';
+        out.textContent = 'That is not it. This bit is for a grown-up.';
+        input.value = '';
+        input.focus();
+        return;
+      }
+      working(true, 'Opening the shop…');
+      const res = await Store.buy();
+      working(false);
+      settled(res);
+    });
+    restore.addEventListener('click', async () => {
+      working(true, 'Looking for your purchase…');
+      const res = await Store.restore();
+      working(false);
+      settled(res);
+    });
+    later.addEventListener('click', () => { container.innerHTML = ''; });
   }
 
   // ---------------------------------------------------------------- Guide
@@ -991,21 +1082,30 @@
       padBox.querySelectorAll('.pad-btn').forEach((b) => { b.disabled = on; });
       section.classList.toggle('thinking', on);
     }
+    const runGuide = async () => {
+      const myGen = station.view.gen;
+      const solved = station.model.isSolved(station.state);
+      const ok = await guide.start(station.state);
+      if (station.view.gen !== myGen) return;       // the cube was replaced meanwhile
+      statusEl.textContent = !ok ? 'Hmm, I could not work that one out. Read the message below.'
+        : solved ? 'This cube is already solved! Press Mix it up for a new one.'
+          : 'Follow the steps below. Press Watch to see each one.';
+      guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
     $('#play-help').addEventListener('click', async () => {
       if (thinking) return;
       stopTimer();
       scrambled = false;
+      if (Store.needsUnlock(station.model.N)) {
+        statusEl.textContent = 'Step-by-step help for this size is a one-off purchase. The 2×2 is free.';
+        paywall(guideBox, station.model.N, () => { setThinking(true); runGuide().finally(() => setThinking(false)); });
+        guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
       statusEl.textContent = 'Thinking\u2026';
       setThinking(true);
-      const myGen = station.view.gen;
       try {
-        const solved = station.model.isSolved(station.state);
-        const ok = await guide.start(station.state);
-        if (station.view.gen !== myGen) return;     // the cube was replaced meanwhile
-        statusEl.textContent = !ok ? 'Hmm, I could not work that one out. Read the message below.'
-          : solved ? 'This cube is already solved! Press Mix it up for a new one.'
-            : 'Follow the steps below. Press Watch to see each one.';
-        guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        await runGuide();
       } finally {
         setThinking(false);
       }
@@ -1045,6 +1145,25 @@
       }
     });
     section.querySelectorAll('.back-to-app').forEach((b) => b.addEventListener('click', () => showScreen('learn')));
+
+    // What the purchase covers, and the only place a grown-up can start one without a
+    // child pressing Help first. The paywall card brings its own grown-up check.
+    const state = $('#solver-state', section);
+    const unlockBtn = $('#solver-unlock', section);
+    const shop = $('#solver-shop', section);
+    function showState() {
+      $('#solver-price', section).textContent = Store.price();
+      const has = Store.isUnlocked();
+      state.textContent = has ? 'Unlocked on this device. Thank you!'
+        : Store.canBuy() ? 'Not unlocked yet.'
+          : 'Not unlocked. This copy cannot take payments; the purchase is made in the Cube Clubhouse app for iPhone and iPad.';
+      state.className = 'msg' + (has ? ' good' : '');
+      unlockBtn.hidden = has;
+      if (has) shop.innerHTML = '';
+    }
+    unlockBtn.addEventListener('click', () => paywall(shop, 3, showState));
+    Store.onChange(showState);
+    showState();
     screens.grownups = { section };
   }
   const openGrownUps = (part) => {
@@ -1101,11 +1220,17 @@
         msg.className = 'msg bad';
         return;
       }
-      msg.innerHTML = '✅ That is a real cube! Hold your cube like the picture, then follow the steps below.';
-      msg.className = 'msg good';
       station.view.resetView();
       station.set(painted);
-      guide.start(painted);
+      if (Store.needsUnlock(3)) {
+        msg.innerHTML = '✅ That is a real cube! Step-by-step help for a 3×3 is a one-off purchase.';
+        msg.className = 'msg';
+        paywall(guideBox, 3, () => guide.start(painted));
+      } else {
+        msg.innerHTML = '✅ That is a real cube! Hold your cube like the picture, then follow the steps below.';
+        msg.className = 'msg good';
+        guide.start(painted);
+      }
       guideBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     $('#solve-clear').addEventListener('click', () => setPainted(Cube.solved()));

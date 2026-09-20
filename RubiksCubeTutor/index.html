@@ -168,6 +168,17 @@
               cube is being held a different way round — check the centres first.</li>
           </ul>
 
+          <h3>What costs money</h3>
+          <p>One thing, once: <b>Help me solve it</b> on a 3×3 or bigger — the walkthrough that
+            shows every move of a solve. It is <span id="solver-price">$0.99</span>, it covers every
+            cube size, and it carries across the devices signed in to the same account.</p>
+          <p>Free, and staying free: all ten lessons and their practice, the stars, mixing, undo, the
+            timer, My real cube's colour check, and the whole 2×2 walkthrough — which teaches the
+            same idea on a cube with no middles to worry about.</p>
+          <p id="solver-state" class="msg" aria-live="polite"></p>
+          <p><button type="button" id="solver-unlock" class="btn primary">Unlock step-by-step help</button></p>
+          <div id="solver-shop"></div>
+
           <h3>Stars and progress</h3>
           <p>Stars mark lessons a child has practised: one for finishing, more for doing it without
             hints. They are kept on this device only, and there is no account, no leaderboard and no
@@ -195,12 +206,13 @@
             anywhere. There are no accounts, no adverts, no analytics and no tracking of any kind.</p>
 
           <h3>What is saved, and where</h3>
-          <p>Three small things are kept in this browser's own storage, on this device, so the app is
+          <p>A few small things are kept in this browser's own storage, on this device, so the app is
             where the child left it:</p>
           <ul>
             <li>which lessons have been practised, and their stars;</li>
             <li>the cube size last chosen on the Play screen;</li>
-            <li>the speed chosen for the guided solve.</li>
+            <li>the speed chosen for the guided solve;</li>
+            <li>whether the step-by-step guide has been unlocked — a yes or a no, nothing more.</li>
           </ul>
           <p>That is all of it. No names, no ages, no messages, no photos, no location, no identifiers.
             Nothing is sent off the device, and nothing is shared between devices. Removing the app,
@@ -213,6 +225,12 @@
             connection, or if that request is blocked, the app falls back to the font already on your
             device and works exactly the same. Nothing else — no lessons, no progress, no solving —
             needs a connection at all.</p>
+
+          <h3>Paying for the step-by-step guide</h3>
+          <p>The one purchase in the app goes through Apple's App Store. The app never sees a card
+            number, a billing address or an Apple ID: it asks Apple whether this account has bought
+            the unlock, and keeps the yes or no on the device. Nobody here can tell who bought it,
+            and no purchase information is sent anywhere else.</p>
 
           <h3>Reading aloud</h3>
           <p>The <b>Read</b> button uses the voice built into your device or browser, and only ever
@@ -337,6 +355,7 @@ Copyright (c) 2026 Ira Learning LLC. All rights reserved.
   <script src="js/cube.js"></script>
   <script src="js/ncube.js"></script>
   <script src="js/solver.js"></script>
+  <script src="js/store.js"></script>
   <script src="js/bigsolver.js"></script>
   <script src="js/view.js"></script>
   <script src="js/lessons.js"></script>

@@ -34,7 +34,8 @@ On a device, the first launch needs you to trust the certificate:
 | Path | What it is |
 |------|------------|
 | `ios/CubeClubhouse.xcodeproj` | The Xcode project |
-| `ios/CubeClubhouse/*.swift` | Three files: the app, the web view host, the bundle server |
+| `ios/CubeClubhouse/*.swift` | Four files: the app, the web view host, the bundle server, the shop |
+| `ios/Products.storekit` | A local shop, so the purchase works in the Simulator with no account |
 | `ios/CubeClubhouse/Assets.xcassets` | App icon (1024×1024, no alpha) and accent colour |
 | `index.html`, `css/`, `js/` | The app itself: lessons, solver, cube models, 3D view |
 | `tests/` | Test suites, not part of the app bundle |
@@ -52,6 +53,40 @@ a message telling you so.
 
 The name under the icon comes from `INFOPLIST_KEY_CFBundleDisplayName` in the target's
 build settings. Change it there; you do not need to rename files or the scheme.
+
+## The in-app purchase
+
+Step-by-step help on a 3×3 and bigger is a one-off purchase; the 2×2 walkthrough and
+everything else stays free. Apple requires this kind of unlock to go through in-app
+purchase, so it is StoreKit, not a card form.
+
+**It already runs in the Simulator.** `ios/Products.storekit` describes the product and
+the shared scheme points at it, so Product → Run gives you a working shop with no
+account: buy it, and Debug → StoreKit → Manage Transactions lets you refund it and watch
+the app lock again.
+
+**Before it works on a real device or in TestFlight**, create the product in App Store
+Connect:
+
+1. My Apps → your app → **Monetization → In-App Purchases** → **+**
+2. Type **Non-Consumable**, reference name *Step-by-step help*, product ID
+   **`com.iralearning.cubeclubhouse.solver`** — it must match `StoreManager.productID`
+   and `js/store.js` exactly.
+3. Price: **Tier 1** ($0.99 in the US; App Store Connect fills in the other currencies).
+   The app never hard-codes the price on a device — it shows `Product.displayPrice`, so
+   every country sees its own.
+4. Fill in a display name, a description and a review screenshot, then attach the
+   purchase to your first submission.
+5. Family Sharing is switched on in the test configuration; leave it on in App Store
+   Connect if you want one purchase to cover a family.
+
+**In the review notes**, say where the purchase lives (Play → a 3×3 or bigger → *Help me
+solve it*), that a grown-up check stands in front of it, and that *I already bought it*
+restores it. Reviewers look for a restore button on a non-consumable and for the
+parental gate in a children's app.
+
+To change the price, change it in App Store Connect — nothing in the code needs
+touching. To change what is free, `FREE_SIZE` in `js/store.js` is the only line.
 
 ## Uploading to the App Store
 

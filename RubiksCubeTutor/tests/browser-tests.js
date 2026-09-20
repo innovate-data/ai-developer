@@ -49,10 +49,15 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.waitForTimeout(120);
     return p.evaluate(view(sel));
   };
-  const newPage = async () => {
+  // Every case but R23 is about the guide itself, not about paying for it, so a page
+  // starts with the purchase already made. Pass {locked: true} to test the paywall.
+  const newPage = async (opts) => {
     const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
     p.on('pageerror', e => errs.push(e.message));
     p.on('console', m => { if (m.type() === 'error' && !/ERR_CERT/.test(m.text())) errs.push('console: ' + m.text()); });
+    if (!(opts && opts.locked)) {
+      await p.addInitScript(() => { try { localStorage.setItem('cubeclubhouse.unlock', 'yes'); } catch { /* private mode */ } });
+    }
     await p.goto(URL); return p;
   };
 
@@ -212,6 +217,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     // It records what was spoken and lets the test end an utterance on cue.
     const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
     p.on('pageerror', (e) => errs.push(e.message));
+    await p.addInitScript(() => { try { localStorage.setItem('cubeclubhouse.unlock', 'yes'); } catch { /* private mode */ } });
     await p.addInitScript(() => {
       const log = { spoken: [], cancels: 0 };
       let current = null;
@@ -439,6 +445,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
   console.log('R17 the narrator stops when the cube it was describing goes away');
   { const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
     p.on('pageerror', (e) => errs.push(e.message));
+    await p.addInitScript(() => { try { localStorage.setItem('cubeclubhouse.unlock', 'yes'); } catch { /* private mode */ } });
     await p.addInitScript(() => {
       const log = { spoken: [], cancels: 0 };
       let cur = null;
@@ -614,6 +621,91 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.goto(URL + '#toString');
     await p.waitForTimeout(400);
     ck('a nonsense hash still shows the lessons', !(await p.locator('#screen-learn').isHidden()));
+    await p.close(); }
+
+  console.log('R23 the 2x2 guide is free and the rest is behind the purchase');
+  { const p = await newPage({ locked: true });
+    // A stand-in for StoreKit: the page cannot tell the difference, and this is the
+    // only way to walk the whole flow without the App Store.
+    await p.addInitScript(() => {
+      window.__shop = { asked: [], unlocked: false, answer: { ok: true } };
+      window.CubeClubhouseHost = {
+        postMessage(msg) {
+          window.__shop.asked.push(msg.action);
+          setTimeout(() => {
+            const shop = window.__shop;
+            if (msg.action === 'sync') { window.RC.Store.applyNative({ unlocked: shop.unlocked, price: '$0.99', shopReady: true }); return; }
+            if (shop.answer.ok) shop.unlocked = true;
+            window.RC.Store.applyNative({ unlocked: shop.unlocked, price: '$0.99', shopReady: true, result: shop.answer });
+          }, 30);
+        },
+      };
+    });
+    await p.reload();
+    await p.waitForTimeout(300);
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+
+    // the 2x2 costs nothing
+    await p.locator('#play-size .size-btn', { hasText: '2×2' }).click();
+    await p.waitForTimeout(300);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForTimeout(500);
+    ck('2x2: the guide opens without paying', (await p.locator('#play-guide .guide-count').count()) === 1);
+    ck('2x2: no paywall in sight', (await p.locator('#play-guide .paywall').count()) === 0);
+
+    // a 3x3 asks first
+    await p.locator('#play-size .size-btn', { hasText: '3×3' }).click();
+    await p.waitForTimeout(300);
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForTimeout(300);
+    ck('3x3: the paywall stands in for the steps', (await p.locator('#play-guide .paywall').count()) === 1);
+    ck('3x3: and no steps are given away', (await p.locator('#play-guide .guide-count').count()) === 0);
+    const pitch = await p.locator('#play-guide .paywall').textContent();
+    ck('it says what it costs and that the 2x2 is free', /\$0\.99/.test(pitch) && /2×2/.test(pitch), pitch.slice(0, 80));
+    ck('the status line says so too', /one-off purchase/.test(await p.locator('#play-status').textContent()));
+
+    // the grown-up check has to be answered
+    await p.locator('#play-guide .btn', { hasText: 'Unlock for' }).click();
+    await p.waitForTimeout(200);
+    ck('a blank answer buys nothing', (await p.evaluate(() => window.__shop.asked.length)) === 0);
+    await p.locator('#play-guide .gate-input').fill('1');
+    await p.locator('#play-guide .btn', { hasText: 'Unlock for' }).click();
+    await p.waitForTimeout(200);
+    ck('a wrong answer buys nothing', (await p.evaluate(() => window.__shop.asked.length)) === 0);
+    ck('and says the bit is for a grown-up', /grown-up/.test(await p.locator('#play-guide .msg').textContent()));
+
+    // answer it properly and the purchase goes through
+    const sum = await p.locator('#play-guide .gate-q').textContent();
+    const [x, y] = sum.match(/(\d+) × (\d+)/).slice(1).map(Number);
+    await p.locator('#play-guide .gate-input').fill(String(x * y));
+    await p.locator('#play-guide .btn', { hasText: 'Unlock for' }).click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 30000 });
+    ck('the right answer reaches the shop', (await p.evaluate(() => window.__shop.asked)).includes('buy'));
+    ck('and the steps follow straight away', (await p.locator('#play-guide .guide-count').count()) === 1);
+
+    // it stays bought, and the grown-ups page says so
+    await p.reload();
+    await p.waitForTimeout(400);
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(2600);
+    await p.locator('#play-help').click();
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 30000 });
+    ck('a paid-for guide stays paid for', (await p.locator('#play-guide .paywall').count()) === 0);
+    await p.locator('.foot-links [data-info="parents"]').click();
+    await p.waitForTimeout(300);
+    ck('the grown-ups page shows it as unlocked', /Unlocked on this device/.test(await p.locator('#solver-state').textContent()));
+    ck('and stops offering to sell it', await p.locator('#solver-unlock').isHidden());
+
+    // a refund takes it away again
+    await p.evaluate(() => window.RC.Store.applyNative({ unlocked: false }));
+    await p.waitForTimeout(150);
+    ck('losing the purchase locks it again', /Not unlocked/.test(await p.locator('#solver-state').textContent()));
     await p.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');

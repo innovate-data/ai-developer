@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		CB0000000000000000000021 /* CubeClubhouseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000011 /* CubeClubhouseApp.swift */; };
 		CB0000000000000000000022 /* WebAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000012 /* WebAppView.swift */; };
+		CB0000000000000000000024 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000015 /* StoreManager.swift */; };
 		CB0000000000000000000023 /* BundleSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000013 /* BundleSchemeHandler.swift */; };
 		CB0000000000000000000024 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000014 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -17,6 +18,8 @@
 		CB0000000000000000000006 /* CubeClubhouse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CubeClubhouse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CB0000000000000000000011 /* CubeClubhouseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CubeClubhouseApp.swift; sourceTree = "<group>"; };
 		CB0000000000000000000012 /* WebAppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAppView.swift; sourceTree = "<group>"; };
+		CB0000000000000000000015 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
+		CB0000000000000000000016 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
 		CB0000000000000000000013 /* BundleSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleSchemeHandler.swift; sourceTree = "<group>"; };
 		CB0000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -36,6 +39,7 @@
 			isa = PBXGroup;
 			children = (
 				CB0000000000000000000004 /* CubeClubhouse */,
+				CB0000000000000000000016 /* Products.storekit */,
 				CB0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +58,7 @@
 				CB0000000000000000000011 /* CubeClubhouseApp.swift */,
 				CB0000000000000000000012 /* WebAppView.swift */,
 				CB0000000000000000000013 /* BundleSchemeHandler.swift */,
+				CB0000000000000000000015 /* StoreManager.swift */,
 				CB0000000000000000000014 /* Assets.xcassets */,
 			);
 			path = CubeClubhouse;
@@ -150,6 +155,7 @@
 				CB0000000000000000000021 /* CubeClubhouseApp.swift in Sources */,
 				CB0000000000000000000022 /* WebAppView.swift in Sources */,
 				CB0000000000000000000023 /* BundleSchemeHandler.swift in Sources */,
+				CB0000000000000000000024 /* StoreManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
