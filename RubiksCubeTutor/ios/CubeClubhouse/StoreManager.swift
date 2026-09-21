@@ -34,7 +34,13 @@ final class StoreManager: ObservableObject {
         }
     }
 
-    deinit { updates?.cancel() }
+    /// Stop listening for purchases made elsewhere. Called when the view hosting this
+    /// goes away. (A `deinit` cannot touch main-actor state under Swift 6's rules, so
+    /// the teardown is explicit rather than automatic.)
+    func stopListening() {
+        updates?.cancel()
+        updates = nil
+    }
 
     var priceText: String? { product?.displayPrice }
 

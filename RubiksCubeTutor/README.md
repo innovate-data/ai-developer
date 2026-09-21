@@ -384,8 +384,11 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress takes two presses. |
 | R23 | The 2×2 guide is free; a 3×3 shows the paywall and no steps; the grown-up check has to be answered (and changes after a wrong answer) before the shop is asked; after buying, the steps follow and survive a reload; a refund locks it again and the grown-ups page can bring it back. |
 
-`npm run test:ios` (`tests/ios-bundle-tests.js`) drives the bundle the Xcode build phase
-produces, by touch, on an iPhone and an iPad profile: 58 checks, including a whole
+`npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
+object ids, nothing pointed at that is not there, the shop and the privacy manifest in
+the build phases, a deployment target iOS 17 satisfies), checks `PrivacyInfo.xcprivacy`
+says what the app's Privacy page says, then drives the bundle the build phase
+produces, by touch, on an iPhone and an iPad profile: 68 checks, including a whole
 4×4 solved by tapping, that the app keeps painting and holds its controls while it
 works a big cube out, and that no control is smaller than 44pt.
 

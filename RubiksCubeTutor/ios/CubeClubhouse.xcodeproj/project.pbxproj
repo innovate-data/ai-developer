@@ -9,9 +9,10 @@
 /* Begin PBXBuildFile section */
 		CB0000000000000000000021 /* CubeClubhouseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000011 /* CubeClubhouseApp.swift */; };
 		CB0000000000000000000022 /* WebAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000012 /* WebAppView.swift */; };
-		CB0000000000000000000024 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000015 /* StoreManager.swift */; };
+		CB0000000000000000000025 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000015 /* StoreManager.swift */; };
 		CB0000000000000000000023 /* BundleSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000013 /* BundleSchemeHandler.swift */; };
 		CB0000000000000000000024 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000014 /* Assets.xcassets */; };
+		CB0000000000000000000026 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000017 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +21,7 @@
 		CB0000000000000000000012 /* WebAppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAppView.swift; sourceTree = "<group>"; };
 		CB0000000000000000000015 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
 		CB0000000000000000000016 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
+		CB0000000000000000000017 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		CB0000000000000000000013 /* BundleSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleSchemeHandler.swift; sourceTree = "<group>"; };
 		CB0000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -59,6 +61,7 @@
 				CB0000000000000000000012 /* WebAppView.swift */,
 				CB0000000000000000000013 /* BundleSchemeHandler.swift */,
 				CB0000000000000000000015 /* StoreManager.swift */,
+				CB0000000000000000000017 /* PrivacyInfo.xcprivacy */,
 				CB0000000000000000000014 /* Assets.xcassets */,
 			);
 			path = CubeClubhouse;
@@ -124,6 +127,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CB0000000000000000000024 /* Assets.xcassets in Resources */,
+				CB0000000000000000000026 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -155,7 +159,7 @@
 				CB0000000000000000000021 /* CubeClubhouseApp.swift in Sources */,
 				CB0000000000000000000022 /* WebAppView.swift in Sources */,
 				CB0000000000000000000023 /* BundleSchemeHandler.swift in Sources */,
-				CB0000000000000000000024 /* StoreManager.swift in Sources */,
+				CB0000000000000000000025 /* StoreManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

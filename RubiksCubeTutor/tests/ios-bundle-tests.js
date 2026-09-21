@@ -62,7 +62,33 @@ function runCopyPhase() {
 }
 
 (async () => {
-  console.log('the Xcode copy phase');
+  console.log('the Xcode project itself');
+  {
+    const proj = fs.readFileSync(PBXPROJ, 'utf8');
+    // Two objects sharing an id is the kind of thing Xcode notices and a person does not.
+    const defined = [...proj.matchAll(/^\t\t([0-9A-F]{24}) /gm)].map((m) => m[1]);
+    const twice = defined.filter((id, i) => defined.indexOf(id) !== i);
+    ck('every object in the project has its own id', twice.length === 0, twice.join(',') || 'none');
+    const referenced = [...new Set([...proj.matchAll(/\b([0-9A-F]{24})\b/g)].map((m) => m[1]))];
+    const missing = referenced.filter((id) => !defined.includes(id) && !new RegExp('^\t\t' + id + ' = \\{', 'm').test(proj));
+    ck('every id the project points at exists', missing.length === 0, missing.join(',') || 'none');
+    for (const [what, re] of [['the shop', /StoreManager\.swift in Sources/], ['the privacy manifest', /PrivacyInfo\.xcprivacy in Resources/]]) {
+      ck('the target builds ' + what, re.test(proj));
+    }
+    const target = /IPHONEOS_DEPLOYMENT_TARGET = ([0-9.]+)/.exec(proj);
+    ck('the deployment target is one iOS 17 satisfies', target && parseFloat(target[1]) <= 17, target && target[1]);
+
+    // Apple reads this file; it has to parse, and it has to say what the app's own
+    // Privacy page says.
+    const manifest = fs.readFileSync(path.join(IOS, 'CubeClubhouse', 'PrivacyInfo.xcprivacy'), 'utf8');
+    ck('the privacy manifest is a plist', /<plist version="1.0">/.test(manifest) && /<\/plist>/.test(manifest));
+    ck('it declares no tracking', /<key>NSPrivacyTracking<\/key>\s*<false\/>/.test(manifest));
+    for (const key of ['NSPrivacyTrackingDomains', 'NSPrivacyCollectedDataTypes', 'NSPrivacyAccessedAPITypes']) {
+      ck('it declares an empty ' + key, new RegExp('<key>' + key + '<\\/key>\\s*<array\\/>').test(manifest));
+    }
+  }
+
+  console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
   for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/store.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));

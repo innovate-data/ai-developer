@@ -51,11 +51,22 @@ struct WebAppView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
+    /// SwiftUI is finished with the view. `WKUserContentController` holds a script
+    /// message handler strongly, so without this the coordinator - and the web view's
+    /// whole configuration - outlive the screen they belong to.
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "store")
+        Task { @MainActor in coordinator.stop() }
+    }
+
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let schemeHandler = BundleSchemeHandler()
         let store = StoreManager()
         weak var webView: WKWebView?
         private var pageIsUp = false
+
+        /// Called from `dismantleUIView`.
+        func stop() { store.stopListening() }
 
         override init() {
             super.init()

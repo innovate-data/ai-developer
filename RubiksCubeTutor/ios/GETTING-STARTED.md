@@ -130,6 +130,45 @@ controls until it is ready, rather than freezing. The tables it builds are kept 
 the size in play only, about 30 MB at the largest. The Learn lessons and "My real
 cube" are 3×3.
 
+## Which iOS versions
+
+The deployment target is **iOS 15.0**, so iOS 17 and iPadOS 17 are comfortably inside
+it — on iPhone and iPad, portrait and landscape, and in Split View, Slide Over and
+Stage Manager (the target does not require full screen).
+
+Everything the app calls was audited against iOS 17:
+
+| | |
+|---|---|
+| SwiftUI, WKWebView, the custom scheme handler | iOS 15 era, nothing deprecated in 17 |
+| `webView.isInspectable` | iOS 16.4, behind `#available` |
+| StoreKit 2 (`Product.products`, `purchase`, `Transaction.currentEntitlements`, `Transaction.updates`, `AppStore.sync`) | iOS 15, all current in 17 |
+| The web app's CSS | nothing newer than Safari 15, bar `overscroll-behavior-y` (Safari 16) and `:focus-visible` (15.4), which simply do nothing on an older WebKit |
+| The web app's JavaScript | no optional chaining, no `??`, no `structuredClone`; generators and `async`/`await` are the newest things in it |
+
+Three things the audit changed:
+
+* **`PrivacyInfo.xcprivacy`** now ships in the app. It declares no tracking, no tracking
+  domains, no collected data and no required-reason API use — which is the truth, and
+  what App Review has expected of new submissions since 2024.
+* **Teardown.** `WKUserContentController` holds a script message handler strongly, so
+  the coordinator (and the whole web view configuration) outlived the screen.
+  `dismantleUIView` now removes the handler and stops the StoreKit listener. The
+  listener's `deinit` went with it: a `deinit` cannot touch main-actor state under
+  Swift 6's rules, so the teardown is explicit.
+* **Two objects in `project.pbxproj` shared an id** after the shop was added. Fixed,
+  and `npm run test:ios` now fails if it ever happens again.
+
+`SWIFT_VERSION` is 5.0, so building with Xcode 16 does not drag the code into Swift 6's
+strict concurrency checking. Note that App Store Connect has required builds made with
+the iOS 18 SDK (Xcode 16) since spring 2025; nothing here pins an SDK, so a newer Xcode
+is fine.
+
+**What no test here can prove:** the harness is Chromium, because no WebKit build ships
+in this environment. The cube is drawn with CSS 3D transforms, which WebKit renders on
+its own terms, so run the app once in the iOS 17 Simulator (and on a device if you
+have one) before you ship.
+
 ## Tested on
 
 Drawing is tuned for a device: a 6×6 turn holds 36-40 fps with the CPU throttled to a
