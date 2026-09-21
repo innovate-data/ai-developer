@@ -5,10 +5,11 @@ classic beginner "layer by layer" method. It is a single-page web app with **no 
 step and no dependencies**: open `index.html` in any modern browser and it works,
 including on a phone or tablet.
 
-> **Proprietary software.** Cube Clubhouse is the property of Ira Learning LLC. It is
-> not open source: see `LICENSE` for the terms, which are also shown to the reader on
-> the app's own Licence page. The repository's root `LICENSE` covers the other projects
-> beside this folder, not this one.
+> **Free to use, proprietary code.** Cube Clubhouse costs nothing to use — every
+> feature, no purchases, no adverts — but it is not open source: Ira Learning LLC owns
+> it, and the licence grants permission to use it and nothing more. See `LICENSE`, which
+> is also shown to the reader on the app's own Licence page. The repository's root
+> `LICENSE` covers the other projects beside this folder, not this one.
 
 ```
 RubiksCubeTutor/
@@ -17,7 +18,6 @@ RubiksCubeTutor/
 ├── js/cube.js            3x3 model: facelets, moves, pieces, validity check
 ├── js/ncube.js           N x N model for 2x2 to 6x6, sticker-identical to cube.js at N=3
 ├── js/solver.js          beginner-method solver that explains every step
-├── js/store.js           who may use the guided solve (the 2x2 is free)
 ├── js/bigsolver.js       reduction solver for the 4x4, 5x5 and 6x6 (centres, edges, parity, then 3x3)
 ├── js/view.js            3D cube (CSS transforms) and 2D net view
 ├── js/lessons.js         the course content (plain data, easy to edit or translate)
@@ -266,32 +266,6 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   its two colours in the same order, and when a step has to take a finished edge apart
   again the card says so instead of quietly showing that edge twice.
 
-### The one purchase (`js/store.js`, `ios/CubeClubhouse/StoreManager.swift`)
-* The 2×2 walkthrough is free; on a 3×3 and bigger, *Help me solve it* and *My real
-  cube*'s steps are a one-off non-consumable, `com.iralearning.cubeclubhouse.solver`.
-  Everything else — ten lessons, practice, stars, mixing, undo, the timer, the colour
-  check — is free, so a child can learn the method whether or not anyone pays.
-* **StoreKit decides.** `store.js` holds no logic beyond "is it unlocked, and who do I
-  ask": inside the app the question goes to `StoreManager` over a `WKScriptMessage`,
-  and the answer comes back through `evaluateJavaScript` as `Store.applyNative(...)`.
-  The manager re-reads `Transaction.currentEntitlements` on every launch and after
-  every purchase, so the copy kept in `localStorage` is only there to stop the screen
-  flickering while that runs; a tampered copy is corrected within a second. A refund
-  shows up through `Transaction.updates` and takes the unlock away again.
-* **A plain web page has no shop.** With no native host, `canBuy()` is false and the
-  card says the purchase is made in the iOS app rather than offering a button that
-  cannot work. A browser cannot enforce an entitlement without a server, and the app
-  does not pretend otherwise.
-* **A grown-up check** stands in front of the buy button: two digits times one, past
-  what a child of this app's age can do in their head, with a fresh sum after every
-  wrong answer so guessing gets nowhere. That is what Apple asks for in the Kids
-  Category, and what stops a child buying anything by pressing the bright button.
-* **Restoring** a non-consumable is something Apple requires a way back to, but it does
-  not belong on a card a child is reading: it lives on the *For parents* page, beside
-  the price, and only shows when there is a shop to ask and nothing unlocked yet.
-* `ios/Products.storekit` lets the whole flow run in the Simulator, with no App Store
-  Connect account, because the shared scheme points at it.
-
 ### 3D view (`js/view.js`)
 * **What it costs to draw.** A 6×6 is 152 cubies of six faces each: 912 elements, of
   which only 216 are stickers a child can see. The rest are the dark insides that stop
@@ -347,17 +321,14 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
 * that anything `validate()` accepts, the solver can actually solve;
 * that the algorithms printed in the lessons are the ones the solver runs, so the
   teaching and the code cannot drift apart;
-* that a practice cube always still needs the stage it was built for;
-* the purchase rules: a 2×2 never needs paying for, every larger size does until
-  StoreKit says otherwise, a refund takes the unlock away, and with no host the answer
-  is "there is no shop here" rather than a pretend sale.
+* that a practice cube always still needs the stage it was built for.
 * the big cubes: the parity tricks move only the edges they claim to and keep every
   centre on the 4×4, 5×5 and 6×6; seeded scrambles of each size solve, with the stages
   in order and the replayed steps ending solved; a rotated solved cube needs no steps;
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 134 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 123 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -382,13 +353,13 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R20 | The whole-solve run can be paused, resumed, stopped and re-speeded; stopping lands on a whole step, and the steps left still solve the cube. |
 | R21 | The view repaints only what changed, so every sticker on screen is checked against the state it is meant to show. |
 | R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress takes two presses. |
-| R23 | The 2×2 guide is free; a 3×3 shows the paywall and no steps; the grown-up check has to be answered (and changes after a wrong answer) before the shop is asked; after buying, the steps follow and survive a reload; a refund locks it again and the grown-ups page can bring it back. |
+| R23 | Every part of the app is free: the guide opens on a 2×2, 3×3 and 4×4 and from My real cube with nothing in the way, no page asks for money, and the grown-ups pages say so — free to use, still proprietary, still no copying or reselling. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
 the build phases, a deployment target iOS 17 satisfies), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
-produces, by touch, on an iPhone and an iPad profile: 68 checks, including a whole
+produces, by touch, on an iPhone and an iPad profile: 63 checks, including a whole
 4×4 solved by tapping, that the app keeps painting and holds its controls while it
 works a big cube out, and that no control is smaller than 44pt.
 

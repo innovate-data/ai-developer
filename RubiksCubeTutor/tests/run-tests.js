@@ -4,7 +4,6 @@ const Cube = require('../js/cube.js');
 const Solver = require('../js/solver.js');
 const NCube = require('../js/ncube.js');
 const BigSolver = require('../js/bigsolver.js');
-const Store = require('../js/store.js');
 
 let passed = 0;
 const waiting = [];          // tests that answer later, awaited before the summary
@@ -632,40 +631,6 @@ test('solveAny hands the 2x2 and 3x3 to their own solvers', () => {
   assert.throws(() => BigSolver.solve(three, s3), /4 layers/);
 });
 
-test('the 2x2 walkthrough is free and the rest is bought once', () => {
-  Store.__reset();
-  assert.strictEqual(Store.needsUnlock(2), false, 'a 2x2 never needs paying for');
-  for (const n of [3, 4, 5, 6]) assert.strictEqual(Store.needsUnlock(n), true, n + 'x' + n + ' needs the purchase');
-  assert.strictEqual(Store.isUnlocked(), false);
-  assert.strictEqual(Store.price(), '$0.99');
-  // With no host there is no shop, and asking to buy says so rather than pretending.
-  assert.strictEqual(Store.canBuy(), false);
-  return Store.buy().then((res) => {
-    assert.deepStrictEqual(res, { ok: false, reason: 'no-shop' });
-    // StoreKit's answer is the one that counts, and it carries the local price.
-    Store.applyNative({ unlocked: true, price: '£0.99', shopReady: true });
-    assert.strictEqual(Store.isUnlocked(), true);
-    assert.strictEqual(Store.price(), '£0.99');
-    for (const n of [2, 3, 6]) assert.strictEqual(Store.needsUnlock(n), false);
-    // ...and it can take the unlock away again, which is what a refund looks like.
-    Store.applyNative({ unlocked: false });
-    assert.strictEqual(Store.needsUnlock(3), true);
-    assert.strictEqual(Store.needsUnlock(2), false);
-    Store.__reset();
-  });
-});
-
-test('the store tells listeners when the answer changes', () => {
-  Store.__reset();
-  const seen = [];
-  const off = Store.onChange((s) => seen.push(s.unlocked));
-  Store.applyNative({ unlocked: true });
-  Store.applyNative({ unlocked: false });
-  off();
-  Store.applyNative({ unlocked: true });
-  assert.deepStrictEqual(seen, [true, false], 'one call per change, and none after unsubscribing');
-  Store.__reset();
-});
 
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));

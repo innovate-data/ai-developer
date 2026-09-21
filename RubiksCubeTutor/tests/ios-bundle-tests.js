@@ -72,9 +72,8 @@ function runCopyPhase() {
     const referenced = [...new Set([...proj.matchAll(/\b([0-9A-F]{24})\b/g)].map((m) => m[1]))];
     const missing = referenced.filter((id) => !defined.includes(id) && !new RegExp('^\t\t' + id + ' = \\{', 'm').test(proj));
     ck('every id the project points at exists', missing.length === 0, missing.join(',') || 'none');
-    for (const [what, re] of [['the shop', /StoreManager\.swift in Sources/], ['the privacy manifest', /PrivacyInfo\.xcprivacy in Resources/]]) {
-      ck('the target builds ' + what, re.test(proj));
-    }
+    ck('the target builds the privacy manifest', /PrivacyInfo\.xcprivacy in Resources/.test(proj));
+    ck('nothing of the old shop is left in the project', !/StoreManager|storekit/i.test(proj));
     const target = /IPHONEOS_DEPLOYMENT_TARGET = ([0-9.]+)/.exec(proj);
     ck('the deployment target is one iOS 17 satisfies', target && parseFloat(target[1]) <= 17, target && target[1]);
 
@@ -90,7 +89,7 @@ function runCopyPhase() {
 
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
-  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/store.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js']) {
+  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));
   }
 
@@ -113,9 +112,6 @@ function runCopyPhase() {
     console.log('\n' + profile + ', served from the bundle');
     const ctx = await b.newContext({ ...devices[profile] });
     const p = await ctx.newPage();
-    // The tap-only solves below are about the guide, not about buying it; the paywall
-    // has its own check further down.
-    await p.addInitScript(() => { try { localStorage.setItem('cubeclubhouse.unlock', 'yes'); } catch { /* private mode */ } });
     const errs = [];
     p.on('pageerror', (e) => errs.push(e.message));
     // the font CDN is unreachable offline, which is the case on a device in flight mode
@@ -238,30 +234,15 @@ function runCopyPhase() {
     await p.locator('#screen-grownups .back-to-app').first().tap();
     await p.waitForTimeout(300);
 
-    // The purchase: a 3x3 asks, a 2x2 does not, and the grown-up check guards the till.
-    // Take the purchase away the way a refund would, rather than by reloading: the
-    // harness re-seeds it on every navigation.
-    await p.evaluate(() => window.RC.Store.applyNative({ unlocked: false }));
+    // Everything is free: the guide opens on a 3x3 with nothing in the way.
     await p.locator('nav button[data-screen="play"]').tap();
     await p.waitForTimeout(300);
     await p.locator('#play-scramble').tap();
     await p.waitForTimeout(2600);
     await p.locator('#play-help').tap();
-    await p.waitForTimeout(400);
-    ck('3x3: the paywall comes up instead of the steps', (await p.locator('#play-guide .paywall').count()) === 1
-      && (await p.locator('#play-guide .guide-count').count()) === 0);
-    // Chromium is not the app, so there is no StoreKit behind it: the card should say
-    // where the purchase happens instead of pretending it can take the money.
-    ck('3x3: with no shop behind it, it says where to buy', (await p.locator('#play-guide .paywall-where').count()) === 1
-      && (await p.locator('#play-guide .gate-input').count()) === 0);
-    await p.locator('#play-size .size-btn', { hasText: '2×2' }).tap();
-    await p.waitForTimeout(400);
-    await p.locator('#play-scramble').tap();
-    await p.waitForTimeout(2600);
-    await p.locator('#play-help').tap();
-    await p.waitForTimeout(600);
-    ck('2x2: still free, still solves', (await p.locator('#play-guide .guide-count').count()) === 1);
-    await p.evaluate(() => window.RC.Store.applyNative({ unlocked: true }));
+    await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 60000 });
+    ck('3x3: the guide opens with nothing to pay', (await p.locator('#play-guide .guide-count').count()) === 1
+      && (await p.locator('#play-guide .paywall').count()) === 0);
 
     ck('no page errors', errs.length === 0, errs.join(' | ') || 'none');
     await ctx.close();

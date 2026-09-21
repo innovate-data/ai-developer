@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, Store, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
+  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
   // The biggest cube knows every move token the app can show, so it does the describing.
   const ANY = NCube.make(NCube.SIZES[NCube.SIZES.length - 1]);
 
@@ -346,100 +346,6 @@
       }
     }
     return out;
-  }
-
-  // -------------------------------------------------------------- paywall
-  // The 2x2 walkthrough is free; the rest is bought once. This card goes where the
-  // steps would have been, and calls back when the guide may run after all.
-  function paywall(container, size, onUnlocked) {
-    hush();
-    container.innerHTML = '';
-    container.classList.add('guide');
-    const card = el('div', 'paywall');
-    card.appendChild(el('h3', 'paywall-title', '🔒 Step-by-step help for the ' + size + '×' + size));
-    card.appendChild(el('p', '', 'The 2×2 walkthrough is free, and always will be. Showing every step for '
-      + 'the 3×3 and the bigger cubes is a one-off purchase of ' + Store.price() + ': buy it once and it works '
-      + 'on every size, on all the devices signed in to the same account.'));
-    card.appendChild(el('p', 'paywall-free', 'Free either way: all ten lessons, practice with stars, mixing, '
-      + 'undo, the timer, and the whole 2×2 walkthrough.'));
-
-    const out = el('p', 'msg');
-    const buttons = el('div', 'guide-btns');
-
-    if (!Store.canBuy()) {
-      // A plain web page has no shop behind it, and saying otherwise would be a lie.
-      card.appendChild(el('p', 'paywall-where', 'This copy cannot take payments. The step-by-step guide is '
-        + 'unlocked inside the Cube Clubhouse app for iPhone and iPad.'));
-      const back = el('button', 'btn', '◀ Back to the cube');
-      back.addEventListener('click', () => { container.innerHTML = ''; });
-      buttons.appendChild(back);
-      card.appendChild(buttons);
-      container.appendChild(card);
-      return;
-    }
-
-    // Apple asks for a grown-up check before a purchase in a children's app, and it
-    // stops a child buying anything by pressing the bright button.
-    // Two digits times one, which a child at the age this app is written for cannot do
-    // in their head, and a new sum after every wrong answer so guessing gets nowhere.
-    const gate = el('div', 'gate');
-    let a = 0, b = 0;
-    const label = el('label', 'gate-q', '');
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.inputMode = 'numeric';
-    input.className = 'gate-input';
-    input.id = 'gate-answer';
-    input.setAttribute('autocomplete', 'off');
-    label.setAttribute('for', input.id);
-    function newSum() {
-      a = 13 + Math.floor(Math.random() * 27);        // 13 to 39
-      if (a % 10 === 0) a += 3;                        // nothing that ends in a nought
-      b = 4 + Math.floor(Math.random() * 6);           // 4 to 9
-      label.textContent = 'Grown-up check: what is ' + a + ' × ' + b + '?';
-      input.value = '';
-    }
-    newSum();
-    const go = el('button', 'btn primary', 'Unlock for ' + Store.price());
-    gate.append(label, input, go);
-    card.appendChild(gate);
-
-    const later = el('button', 'btn ghost', 'Not now');
-    buttons.append(later);
-    card.append(buttons, out);
-    container.appendChild(card);
-
-    const working = (on, what) => {
-      go.disabled = on;
-      out.textContent = on ? what : '';
-    };
-    const settled = (res) => {
-      if (res.ok && Store.isUnlocked()) {
-        out.textContent = 'Thank you! The step-by-step guide is yours.';
-        out.className = 'msg good';
-        if (onUnlocked) onUnlocked();
-        return;
-      }
-      out.className = 'msg';
-      out.textContent = res.reason === 'cancelled' ? 'No problem — nothing was bought.'
-        : res.reason === 'nothing-to-restore' ? 'There is no earlier purchase on this account to bring back.'
-          : res.reason === 'no-shop' || res.reason === 'no-answer' ? 'The shop did not answer. Please try again in a moment.'
-            : res.message || 'That did not go through. Nothing has been charged.';
-    };
-    go.addEventListener('click', async () => {
-      if (input.value.trim() === '' || Number(input.value) !== a * b) {
-        out.className = 'msg bad';
-        out.textContent = 'That is not it. This bit is for a grown-up — here is another sum.';
-        newSum();
-        input.focus();
-        return;
-      }
-      working(true, 'Opening the shop…');
-      const res = await Store.buy();
-      working(false);
-      settled(res);
-    });
-    later.addEventListener('click', () => { container.innerHTML = ''; });
   }
 
   // ---------------------------------------------------------------- Guide
@@ -1099,12 +1005,6 @@
       if (thinking) return;
       stopTimer();
       scrambled = false;
-      if (Store.needsUnlock(station.model.N)) {
-        statusEl.textContent = 'Step-by-step help for this size is a one-off purchase. The 2×2 is free.';
-        paywall(guideBox, station.model.N, () => { setThinking(true); runGuide().finally(() => setThinking(false)); });
-        guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        return;
-      }
       statusEl.textContent = 'Thinking\u2026';
       setThinking(true);
       try {
@@ -1149,37 +1049,6 @@
     });
     section.querySelectorAll('.back-to-app').forEach((b) => b.addEventListener('click', () => showScreen('learn')));
 
-    // What the purchase covers, and the only place a grown-up can start one without a
-    // child pressing Help first. The paywall card brings its own grown-up check.
-    const state = $('#solver-state', section);
-    const unlockBtn = $('#solver-unlock', section);
-    const restoreBtn = $('#solver-restore', section);
-    const shop = $('#solver-shop', section);
-    function showState() {
-      $('#solver-price', section).textContent = Store.price();
-      const has = Store.isUnlocked();
-      state.textContent = has ? 'Unlocked on this device. Thank you!'
-        : Store.canBuy() ? 'Not unlocked yet.'
-          : 'Not unlocked. This copy cannot take payments; the purchase is made in the Cube Clubhouse app for iPhone and iPad.';
-      state.className = 'msg' + (has ? ' good' : '');
-      unlockBtn.hidden = has;
-      restoreBtn.hidden = has || !Store.canBuy();
-      if (has) shop.innerHTML = '';
-    }
-    unlockBtn.addEventListener('click', () => paywall(shop, 3, showState));
-    restoreBtn.addEventListener('click', async () => {
-      restoreBtn.disabled = true;
-      state.textContent = 'Asking the App Store…';
-      const res = await Store.restore();
-      restoreBtn.disabled = false;
-      if (res.ok && Store.isUnlocked()) { showState(); return; }
-      state.className = 'msg';
-      state.textContent = res.reason === 'nothing-to-restore'
-        ? 'There is no earlier purchase on this account to bring back.'
-        : 'The App Store did not answer just now. Please try again in a moment.';
-    });
-    Store.onChange(showState);
-    showState();
     screens.grownups = { section };
   }
   const openGrownUps = (part) => {
@@ -1238,15 +1107,9 @@
       }
       station.view.resetView();
       station.set(painted);
-      if (Store.needsUnlock(3)) {
-        msg.innerHTML = '✅ That is a real cube! Step-by-step help for a 3×3 is a one-off purchase.';
-        msg.className = 'msg';
-        paywall(guideBox, 3, () => guide.start(painted));
-      } else {
-        msg.innerHTML = '✅ That is a real cube! Hold your cube like the picture, then follow the steps below.';
-        msg.className = 'msg good';
-        guide.start(painted);
-      }
+      msg.innerHTML = '✅ That is a real cube! Hold your cube like the picture, then follow the steps below.';
+      msg.className = 'msg good';
+      guide.start(painted);
       guideBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     $('#solve-clear').addEventListener('click', () => setPainted(Cube.solved()));

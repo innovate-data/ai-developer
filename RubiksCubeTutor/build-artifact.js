@@ -23,7 +23,7 @@ if (!bodyMatch) throw new Error('index.html: no <body> found');
 
 // Drop the <script src> tags from the copied body; they are re-emitted below so the
 // order stays explicit and a new file cannot be forgotten silently.
-const SCRIPTS = ['js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/store.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js'];
+const SCRIPTS = ['js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js'];
 const inHtml = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
 if (inHtml.join(',') !== SCRIPTS.join(',')) {
   throw new Error('index.html scripts changed (' + inHtml.join(', ') + '); update SCRIPTS in build-artifact.js');

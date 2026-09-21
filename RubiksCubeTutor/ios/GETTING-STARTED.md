@@ -34,8 +34,7 @@ On a device, the first launch needs you to trust the certificate:
 | Path | What it is |
 |------|------------|
 | `ios/CubeClubhouse.xcodeproj` | The Xcode project |
-| `ios/CubeClubhouse/*.swift` | Four files: the app, the web view host, the bundle server, the shop |
-| `ios/Products.storekit` | A local shop, so the purchase works in the Simulator with no account |
+| `ios/CubeClubhouse/*.swift` | Three files: the app, the web view host, the bundle server |
 | `ios/CubeClubhouse/Assets.xcassets` | App icon (1024×1024, no alpha) and accent colour |
 | `index.html`, `css/`, `js/` | The app itself: lessons, solver, cube models, 3D view |
 | `tests/` | Test suites, not part of the app bundle |
@@ -53,42 +52,6 @@ a message telling you so.
 
 The name under the icon comes from `INFOPLIST_KEY_CFBundleDisplayName` in the target's
 build settings. Change it there; you do not need to rename files or the scheme.
-
-## The in-app purchase
-
-Step-by-step help on a 3×3 and bigger is a one-off purchase; the 2×2 walkthrough and
-everything else stays free. Apple requires this kind of unlock to go through in-app
-purchase, so it is StoreKit, not a card form.
-
-**It already runs in the Simulator.** `ios/Products.storekit` describes the product and
-the shared scheme points at it, so Product → Run gives you a working shop with no
-account: buy it, and Debug → StoreKit → Manage Transactions lets you refund it and watch
-the app lock again.
-
-**Before it works on a real device or in TestFlight**, create the product in App Store
-Connect:
-
-1. My Apps → your app → **Monetization → In-App Purchases** → **+**
-2. Type **Non-Consumable**, reference name *Step-by-step help*, product ID
-   **`com.iralearning.cubeclubhouse.solver`** — it must match `StoreManager.productID`
-   and `js/store.js` exactly.
-3. Price: **Tier 1** ($0.99 in the US; App Store Connect fills in the other currencies).
-   The app never hard-codes the price on a device — it shows `Product.displayPrice`, so
-   every country sees its own.
-4. Fill in a display name, a description and a review screenshot, then attach the
-   purchase to your first submission.
-5. Family Sharing is switched on in the test configuration; leave it on in App Store
-   Connect if you want one purchase to cover a family.
-
-**In the review notes**, say where the purchase lives (Play → a 3×3 or bigger → *Help me
-solve it*), that a grown-up check stands in front of it, and where the restore button is:
-**For parents → Bring back a purchase**, reached from the *For parents* link in the
-footer. Reviewers look for both — a restore control on a non-consumable, and a parental
-gate in a children's app — and the restore one is deliberately not on the card a child
-sees, so point them at it.
-
-To change the price, change it in App Store Connect — nothing in the code needs
-touching. To change what is free, `FREE_SIZE` in `js/store.js` is the only line.
 
 ## Uploading to the App Store
 
@@ -116,11 +79,13 @@ Two things to settle before you submit:
   nothing to request or delete. If you want one shown, add it to the end of the Privacy
   section in `index.html`.
 
-If you publish in the Kids category, note that the app has no external links, no
-purchases and no advertising, so no parental gate is needed.
+The app is free with no purchases, no subscriptions and no advertising, so there is
+nothing to declare under in-app purchases and nothing to price. If you publish in the
+Kids category, note that it also has no external links, so no parental gate is needed.
 
 ## Known scope
 
+Every part of the app is free to use, with nothing held back and nothing to buy.
 Every size from 2×2 to 6×6 has a guided solve on the Play screen. The 4×4, 5×5 and
 6×6 use the reduction method (centres, then edge pairing, then the 3×3 method), so a
 6×6 solve is long, around 95 cards. Working one out is real arithmetic: about a
@@ -142,7 +107,6 @@ Everything the app calls was audited against iOS 17:
 |---|---|
 | SwiftUI, WKWebView, the custom scheme handler | iOS 15 era, nothing deprecated in 17 |
 | `webView.isInspectable` | iOS 16.4, behind `#available` |
-| StoreKit 2 (`Product.products`, `purchase`, `Transaction.currentEntitlements`, `Transaction.updates`, `AppStore.sync`) | iOS 15, all current in 17 |
 | The web app's CSS | nothing newer than Safari 15, bar `overscroll-behavior-y` (Safari 16) and `:focus-visible` (15.4), which simply do nothing on an older WebKit |
 | The web app's JavaScript | no optional chaining, no `??`, no `structuredClone`; generators and `async`/`await` are the newest things in it |
 
@@ -151,13 +115,8 @@ Three things the audit changed:
 * **`PrivacyInfo.xcprivacy`** now ships in the app. It declares no tracking, no tracking
   domains, no collected data and no required-reason API use — which is the truth, and
   what App Review has expected of new submissions since 2024.
-* **Teardown.** `WKUserContentController` holds a script message handler strongly, so
-  the coordinator (and the whole web view configuration) outlived the screen.
-  `dismantleUIView` now removes the handler and stops the StoreKit listener. The
-  listener's `deinit` went with it: a `deinit` cannot touch main-actor state under
-  Swift 6's rules, so the teardown is explicit.
-* **Two objects in `project.pbxproj` shared an id** after the shop was added. Fixed,
-  and `npm run test:ios` now fails if it ever happens again.
+* **Object ids in `project.pbxproj`.** Two objects once shared one. `npm run test:ios`
+  now reads the project file and fails if it ever happens again.
 
 `SWIFT_VERSION` is 5.0, so building with Xcode 16 does not drag the code into Swift 6's
 strict concurrency checking. Note that App Store Connect has required builds made with
@@ -175,9 +134,10 @@ Drawing is tuned for a device: a 6×6 turn holds 36-40 fps with the CPU throttle
 quarter, where it used to manage 16, and a 3×3 move takes exactly as long as the speed
 you picked rather than 40% longer.
 
-`npm run test:ios` drives the very bundle the build phase produces, on an iPhone 12
-and an iPad Pro 11 profile, by touch: 43 checks, including a whole 4×4 solved by
-tapping and a check that no control is smaller than 44pt. Layout was checked at
+`npm run test:ios` reads the Xcode project and then drives the very bundle the build
+phase produces, on an iPhone 12 and an iPad Pro 11 profile, by touch: 63 checks,
+including a whole 4×4 solved by tapping and a check that no control is smaller
+than 44pt. Layout was checked at
 iPhone SE, iPhone 15 Pro (portrait and landscape), iPad mini, iPad Pro 12.9, and the
 narrow iPad Split View and Slide Over widths, since the app allows multitasking.
 The one thing no test here can prove is WebKit itself: run it once in the Simulator.

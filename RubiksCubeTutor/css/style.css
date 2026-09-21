@@ -177,20 +177,6 @@ main {
 }
 .back-to-app { margin: 4px 0 10px; }
 
-/* ---- the one thing that costs money */
-.paywall { background: var(--warm-bg); border-radius: 16px; padding: 16px 18px; }
-.paywall-title { margin: 0 0 6px; font-size: 1.15rem; }
-.paywall p { line-height: 1.55; }
-.paywall-free { color: var(--muted); font-size: 0.92rem; }
-.paywall-where { font-weight: 600; }
-.gate { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 4px; }
-.gate-q { font-weight: 700; }
-.gate-input {
-  width: 92px; min-height: 44px; padding: 8px 12px; font: inherit; font-weight: 700;
-  border: 2px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink);
-}
-.gate-input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-
 /* ---- layout */
 .two-col { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 24px; align-items: start; }
 @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
