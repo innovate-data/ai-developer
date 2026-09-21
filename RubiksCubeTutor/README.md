@@ -1,6 +1,6 @@
-# Cube Clubhouse – a Rubik's Cube tutor for kids
+# Cube Clubhouse – a Cube tutor for kids
 
-Cube Clubhouse teaches children (roughly ages 7–12) to solve a 3×3 Rubik's Cube using the
+Cube Clubhouse teaches children (roughly ages 7–12) to solve a 3×3 Cube using the
 classic beginner "layer by layer" method. It is a single-page web app with **no build
 step and no dependencies**: open `index.html` in any modern browser and it works,
 including on a phone or tablet.

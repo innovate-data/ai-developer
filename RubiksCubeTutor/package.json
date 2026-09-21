@@ -2,7 +2,7 @@
   "name": "cube-clubhouse",
   "version": "1.0.0",
   "private": true,
-  "description": "A Rubik's Cube tutor for kids: interactive 3D lessons, practice puzzles and a guided solver.",
+  "description": "A Cube tutor for kids: interactive 3D lessons, practice puzzles and a guided solver.",
   "author": "Ira Learning LLC",
   "license": "UNLICENSED",
   "scripts": {
