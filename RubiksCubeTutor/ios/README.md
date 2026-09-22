@@ -11,7 +11,7 @@ no Swift packages, no `xcodegen`.
 
 | | |
 |---|---|
-| Deployment target | iOS 15.0 |
+| Deployment target | iOS 17.0 |
 | Devices | iPhone and iPad, all orientations |
 | Bundle identifier | `com.example.cubeclubhouse`, change it to your own |
 | Signing | Automatic. Pick your team under Signing & Capabilities before running on a device. |
@@ -58,9 +58,13 @@ did to the build log.
 
 ## Things worth knowing
 
-- **Fonts.** The page asks Google Fonts for Fredoka. With no network it falls back to
-  `ui-rounded`, which is SF Pro Rounded on iOS and suits the app well. Everything else
-  works offline. Bundle the font if you want the same look on a plane.
+- **Fonts.** Fredoka is bundled, in `../fonts/`, under the SIL Open Font Licence, whose
+  text ships beside it. Nothing is fetched from Google Fonts or anywhere else.
+- **No network, and it is enforced twice.** The page's `Content-Security-Policy` allows no
+  http(s) source at all and sets `connect-src 'none'`; `WebAppView` additionally compiles a
+  `WKContentRuleList` that blocks every http(s) load inside the web view, and the
+  navigation delegate refuses anything that is not the bundle's own scheme. Run the app in
+  aeroplane mode: it behaves identically.
 - **App icon.** `Assets.xcassets/AppIcon.appiconset/AppIcon.png` is a 1024×1024 image with
   no alpha channel, which is what the App Store requires.
 - **Safari Web Inspector** is enabled in Debug builds, so you can inspect the running page

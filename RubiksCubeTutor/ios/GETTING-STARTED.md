@@ -9,7 +9,8 @@ generator and no build script to run first.
 open ios/CubeClubhouse.xcodeproj
 ```
 
-Xcode 14 or newer. The project targets iOS 15, and builds for both iPhone and iPad.
+Xcode 15 or newer, which is the first with the iOS 17 SDK. The project targets iOS 17,
+and builds for both iPhone and iPad.
 
 ## 2. Set your team and bundle identifier
 
@@ -61,10 +62,11 @@ build settings. Change it there; you do not need to rename files or the scheme.
 3. **Product → Archive**, then **Distribute App**.
 
 The icon already meets Apple's requirement of 1024×1024 with no alpha channel. The app
-requests no permissions, collects nothing and has no network calls of its own, so App
-Privacy is "Data Not Collected". One caveat: the page asks Google Fonts for its
-typeface and falls back to the system rounded font when offline, so declare no tracking
-but be aware of that one outbound request, or bundle the font to remove it.
+requests no permissions, collects nothing and makes no network requests whatsoever, so
+App Privacy is "Data Not Collected" with no caveats: the typeface ships inside the
+bundle, the page carries a `Content-Security-Policy` that forbids loading anything over
+http(s), and `WebAppView` installs a `WKContentRuleList` that blocks such loads at the
+WebKit level. You can demonstrate all of this by running the app in aeroplane mode.
 
 The **Copyright** field App Store Connect asks for is already set in the target's build
 settings as "Copyright © 2026 Ira Learning LLC. All rights reserved."; the app is
@@ -97,26 +99,39 @@ cube" are 3×3.
 
 ## Which iOS versions
 
-The deployment target is **iOS 15.0**, so iOS 17 and iPadOS 17 are comfortably inside
-it — on iPhone and iPad, portrait and landscape, and in Split View, Slide Over and
-Stage Manager (the target does not require full screen).
+The deployment target is **iOS 17.0**, on iPhone and iPad, portrait and landscape, and
+in Split View, Slide Over and Stage Manager (the target does not require full screen).
+`npm run test:ios` fails if either build configuration drifts off 17.0.
+
+**This is a floor, not a requirement.** Nothing in the app needs iOS 17; it was built to
+run on iOS 15 and did. If you would rather reach older hardware — an iPad 5th generation
+or an iPhone X stops at iOS 16, and those are exactly the hand-me-down devices children
+get — set `IPHONEOS_DEPLOYMENT_TARGET` back to `15.0` in both configurations and change
+the one test that asserts 17.0. The only code that assumed 17 is `webView.isInspectable`,
+which then needs its `if #available(iOS 16.4, *)` guard back.
 
 Everything the app calls was audited against iOS 17:
 
 | | |
 |---|---|
 | SwiftUI, WKWebView, the custom scheme handler | iOS 15 era, nothing deprecated in 17 |
-| `webView.isInspectable` | iOS 16.4, behind `#available` |
-| The web app's CSS | nothing newer than Safari 15, bar `overscroll-behavior-y` (Safari 16) and `:focus-visible` (15.4), which simply do nothing on an older WebKit |
-| The web app's JavaScript | no optional chaining, no `??`, no `structuredClone`; generators and `async`/`await` are the newest things in it |
+| `WKContentRuleListStore` (the network blocker) | iOS 11 |
+| `webView.isInspectable` | iOS 16.4, so no `#available` guard is needed at this target |
+| The web app's CSS | nothing newer than Safari 15.4; `:focus-visible`, `aspect-ratio`, `clamp()`, `env()` and flexbox `gap` are the newest things in it |
+| The web app's JavaScript | no `Object.groupBy`, no `Promise.withResolvers`, no `Array.fromAsync`, no regex `v` flag — none of which reached Safari until 17.4; generators and `async`/`await` are the newest things in it |
+| The bundled typeface | a variable WOFF2, supported since Safari 11 |
 
-Three things the audit changed:
+Things the audit changed:
 
 * **`PrivacyInfo.xcprivacy`** now ships in the app. It declares no tracking, no tracking
   domains, no collected data and no required-reason API use — which is the truth, and
   what App Review has expected of new submissions since 2024.
 * **Object ids in `project.pbxproj`.** Two objects once shared one. `npm run test:ios`
   now reads the project file and fails if it ever happens again.
+* **The last outbound request is gone.** The typeface used to come from Google Fonts.
+  It is now in `fonts/`, the page carries a `Content-Security-Policy` that allows no
+  http(s) source, and `WebAppView` compiles a `WKContentRuleList` that blocks any such
+  load inside the web view. The app makes no network requests at all.
 
 `SWIFT_VERSION` is 5.0, so building with Xcode 16 does not drag the code into Swift 6's
 strict concurrency checking. Note that App Store Connect has required builds made with

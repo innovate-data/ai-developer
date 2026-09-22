@@ -104,6 +104,17 @@ body { -webkit-touch-callout: none; }
 /* a class-level display rule outranks the UA [hidden] rule, so state it explicitly */
 [hidden] { display: none !important; }
 html, body { margin: 0; }
+
+/* The typeface travels with the app: one variable file covers every weight used, so the
+   page asks the network for nothing at all. Licence and provenance: fonts/README.md. */
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../fonts/fredoka-latin-var.woff2') format('woff2');
+}
+
 body {
   font-family: 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', 'Segoe UI', system-ui, sans-serif;
   background-color: var(--bg);

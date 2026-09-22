@@ -42,7 +42,8 @@ const IOS = path.resolve(__dirname, '..', 'ios');
 const PBXPROJ = path.join(IOS, 'CubeClubhouse.xcodeproj', 'project.pbxproj');
 // mirrors BundleSchemeHandler.mimeTypes
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
-               '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8' };
+               '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
+               '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 
 let pass = 0, fail = 0;
 const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  PASS ' : '  FAIL ') + name + (extra !== undefined ? '  [' + extra + ']' : '')); };
@@ -74,8 +75,22 @@ function runCopyPhase() {
     ck('every id the project points at exists', missing.length === 0, missing.join(',') || 'none');
     ck('the target builds the privacy manifest', /PrivacyInfo\.xcprivacy in Resources/.test(proj));
     ck('nothing of the old shop is left in the project', !/StoreManager|storekit/i.test(proj));
-    const target = /IPHONEOS_DEPLOYMENT_TARGET = ([0-9.]+)/.exec(proj);
-    ck('the deployment target is one iOS 17 satisfies', target && parseFloat(target[1]) <= 17, target && target[1]);
+    const targets = [...proj.matchAll(/IPHONEOS_DEPLOYMENT_TARGET = ([0-9.]+)/g)].map((m) => m[1]);
+    ck('every configuration targets iOS 17', targets.length === 2 && targets.every((t) => t === '17.0'), targets.join(','));
+    ck('the SDK is the device SDK', /SDKROOT = iphoneos/.test(proj));
+    ck('it builds for iPhone and iPad', /TARGETED_DEVICE_FAMILY = "1,2"/.test(proj));
+    // An #available check below the deployment target is dead code Xcode warns about.
+    const swift = fs.readdirSync(path.join(IOS, 'CubeClubhouse'))
+      .filter((f) => f.endsWith('.swift'))
+      .map((f) => fs.readFileSync(path.join(IOS, 'CubeClubhouse', f), 'utf8')).join('\n');
+    const stale = [...swift.matchAll(/#available\(iOS ([0-9.]+)/g)].map((m) => m[1]).filter((v) => parseFloat(v) <= 17);
+    ck('no availability check the target already guarantees', stale.length === 0, stale.join(',') || 'none');
+
+    // The web app promises it asks the internet for nothing; the shell has to hold that up.
+    ck('the shell blocks every http(s) load', /WKContentRuleListStore/.test(swift)
+      && /\^https\?:\/\//.test(swift) && /"type": "block"/.test(swift));
+    ck('it refuses navigations off the bundle', /refused a navigation off the bundle/.test(swift));
+    ck('the scheme handler can serve a font', /"woff2": "font\/woff2"/.test(swift));
 
     // Apple reads this file; it has to parse, and it has to say what the app's own
     // Privacy page says.
@@ -89,7 +104,8 @@ function runCopyPhase() {
 
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
-  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js']) {
+  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js',
+                   'fonts/fredoka-latin-var.woff2', 'fonts/OFL.txt']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));
   }
 
@@ -113,6 +129,8 @@ function runCopyPhase() {
     const ctx = await b.newContext({ ...devices[profile] });
     const p = await ctx.newPage();
     const errs = [];
+    const offDevice = [];
+    p.on('request', (r) => { if (!r.url().startsWith(base) && !/^(data|blob):/.test(r.url())) offDevice.push(r.url()); });
     p.on('pageerror', (e) => errs.push(e.message));
     // the font CDN is unreachable offline, which is the case on a device in flight mode
     p.on('console', (m) => {
@@ -137,8 +155,17 @@ function runCopyPhase() {
     ck('progress saved under the old app name still counts', await p.locator('.lesson-card.done').count() >= 1);
     await p.evaluate(() => localStorage.clear());
 
-    ck('the font falls back without the CDN', /ui-rounded|SF Pro Rounded|system-ui/.test(
+    // The typeface now ships in the bundle, so it must actually arrive over the origin
+    // the custom scheme gives the page - and nothing may be fetched from anywhere.
+    ck('the bundled typeface loads', await p.evaluate(async () => {
+      await document.fonts.ready;
+      return document.fonts.check('700 18px Fredoka');
+    }));
+    ck('the font is served as a font', (await (await fetch(base + '/fonts/fredoka-latin-var.woff2')).headers.get('content-type')) === 'font/woff2');
+    ck('the licence ships beside it', /SIL OPEN FONT LICENSE/i.test(await (await fetch(base + '/fonts/OFL.txt')).text()));
+    ck('the body still names the fallback stack', /ui-rounded|SF Pro Rounded|system-ui/.test(
       await p.evaluate(() => getComputedStyle(document.body).fontFamily)));
+    ck('the bundle asked for nothing off the device', offDevice.length === 0, offDevice.join(' | ') || 'none');
 
     // a whole solve, driven only by taps
     await p.locator('nav button[data-screen="play"]').tap();

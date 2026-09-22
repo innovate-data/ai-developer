@@ -11,8 +11,14 @@
   <title>Cube Clubhouse</title>
   <meta name="description" content="Cube Clubhouse teaches kids to solve the Cube step by step with an interactive 3D cube, practice puzzles and a guided solver.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23222'/%3E%3Crect x='3' y='3' width='8' height='8' rx='1.5' fill='%23ffd500'/%3E%3Crect x='12' y='3' width='8' height='8' rx='1.5' fill='%23009b48'/%3E%3Crect x='21' y='3' width='8' height='8' rx='1.5' fill='%23b71234'/%3E%3Crect x='3' y='12' width='8' height='8' rx='1.5' fill='%230046ad'/%3E%3Crect x='12' y='12' width='8' height='8' rx='1.5' fill='%23fff'/%3E%3Crect x='21' y='12' width='8' height='8' rx='1.5' fill='%23ff5800'/%3E%3Crect x='3' y='21' width='8' height='8' rx='1.5' fill='%23ff5800'/%3E%3Crect x='12' y='21' width='8' height='8' rx='1.5' fill='%23b71234'/%3E%3Crect x='21' y='21' width='8' height='8' rx='1.5' fill='%23ffd500'/%3E%3C/svg%3E">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!--
+    Nothing here reaches the network. The typeface is in fonts/, not at Google Fonts, and
+    this policy makes that permanent: no http(s) source is allowed for anything, and
+    connect-src 'none' blocks fetch, XHR, beacons and sockets outright. The three local
+    ways this app is opened are all allowed - a server ('self'), the iOS bundle's custom
+    scheme, and a file:// double-click.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' cubeclubhouse: file:; style-src 'self' cubeclubhouse: file:; font-src 'self' cubeclubhouse: file:; img-src 'self' cubeclubhouse: file: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -214,12 +220,13 @@
             or pressing <b>Clear saved progress</b> above, erases it.</p>
 
           <h3>What the app asks the internet for</h3>
-          <p>One thing: the page asks Google Fonts for the typeface it is drawn in. Like any web
-            request, that tells Google the request happened and the address it came from. It carries
-            nothing about your child and does not happen again once the font is cached. With no
-            connection, or if that request is blocked, the app falls back to the font already on your
-            device and works exactly the same. Nothing else — no lessons, no progress, no solving —
-            needs a connection at all.</p>
+          <p><strong>Nothing.</strong> Not one request, not even for the typeface it is drawn in —
+            that is stored inside the app like the lessons are. You can put the device in aeroplane
+            mode before your child ever opens it and every part of the app still works.</p>
+          <p>We did not simply leave the requests out; we made them impossible. The page carries a
+            rule that forbids it from loading anything from the web, and on iPhone and iPad the app
+            tells the system to refuse any web address on its behalf as well. If a future version of
+            this app ever tried to call home, both of those would stop it.</p>
 
           <h3>Nothing to buy</h3>
           <p>Cube Clubhouse is free to use and has no purchases, no subscriptions and no adverts, so
@@ -234,7 +241,8 @@
 
           <h3>What the app never touches</h3>
           <p>No camera, microphone, location, contacts, photos or notifications. No cookies. No
-            third-party code beyond the typeface above. Nothing your child does here can be seen by
+            third-party code and no third-party servers: the one outside ingredient is the
+            typeface, which is an open-source file stored inside the app and talks to nobody. Nothing your child does here can be seen by
             anyone else.</p>
 
           <h3>Children's privacy</h3>
@@ -320,15 +328,17 @@ open source: the licence below grants permission to use it and nothing more.
    applicable law, and nothing in it affects the statutory rights of a
    consumer.
 
-9. THIRD-PARTY MATERIAL. The Software displays the Fredoka typeface, which is
-   licensed separately under the SIL Open Font Licence 1.1 and remains the
-   property of its authors. That licence applies to the typeface alone and
-   grants no rights in the Software.</pre>
+9. THIRD-PARTY MATERIAL. The Software includes and displays the Fredoka
+   typeface, licensed separately under the SIL Open Font Licence 1.1 and
+   remaining the property of its authors; a copy of that licence ships with
+   the Software. That licence applies to the typeface alone and grants no
+   rights in the Software.</pre>
 
           <h3>Other people's work</h3>
           <ul>
-            <li><b>Fredoka</b>, the typeface, from Google Fonts, under the SIL Open Font Licence 1.1.
-              It is used under that licence and is not owned by Ira Learning LLC.</li>
+            <li><b>Fredoka</b>, the typeface, under the SIL Open Font Licence 1.1. It is stored
+              inside the app rather than fetched from anywhere, so the app needs no connection,
+              and a copy of its licence travels with it. It is not owned by Ira Learning LLC.</li>
             <li>Nothing else. The cube, the lessons, the 3D drawing and the solver are all written
               for this app, with no frameworks, libraries or trackers.</li>
           </ul>

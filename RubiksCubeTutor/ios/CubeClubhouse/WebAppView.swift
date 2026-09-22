@@ -8,6 +8,21 @@ import WebKit
 
 /// Hosts the bundled web app.
 struct WebAppView: UIViewRepresentable {
+    /// Blocks every http(s) load the web view could possibly make.
+    ///
+    /// The app has nothing to fetch: the page, the styles, the scripts and the typeface
+    /// all come out of the bundle over `cubeclubhouse://`, which this rule never matches.
+    /// It is here so that stays true - a stray `<img src="https://...">` or a pasted
+    /// analytics snippet would be blocked by WebKit itself, not merely absent today.
+    /// The page carries a Content-Security-Policy saying the same thing; this is the
+    /// half a web page cannot switch off.
+    ///
+    /// Links a child actually taps are unaffected: `decidePolicyFor` below cancels them
+    /// and hands them to Safari before any load begins.
+    private static let blockAllNetworkLoads = """
+    [{"trigger": {"url-filter": "^https?://"}, "action": {"type": "block"}}]
+    """
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -38,10 +53,26 @@ struct WebAppView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         #if DEBUG
-        if #available(iOS 16.4, *) { webView.isInspectable = true }   // Safari > Develop
+        webView.isInspectable = true                             // Safari > Develop > device
         #endif
 
-        webView.load(URLRequest(url: BundleSchemeHandler.startURL))
+        // Install the blocker, then load. If WebKit cannot compile the rule - it is the
+        // only part of this that can fail at runtime - the app still opens and the page's
+        // own Content-Security-Policy still blocks the network, so this fails open.
+        WKContentRuleListStore.default().compileContentRuleList(
+            forIdentifier: "CubeClubhouseBlockNetwork",
+            encodedContentRuleList: Self.blockAllNetworkLoads
+        ) { list, error in
+            DispatchQueue.main.async {
+                if let list = list {
+                    webView.configuration.userContentController.add(list)
+                } else {
+                    NSLog("Cube Clubhouse: network blocker unavailable (%@); the page's CSP still applies",
+                          error?.localizedDescription ?? "unknown")
+                }
+                webView.load(URLRequest(url: BundleSchemeHandler.startURL))
+            }
+        }
         return webView
     }
 
@@ -60,11 +91,15 @@ struct WebAppView: UIViewRepresentable {
             if url.scheme == BundleSchemeHandler.scheme {
                 decisionHandler(.allow)
             } else if navigationAction.navigationType == .linkActivated {
+                // A link the child deliberately tapped: hand it to Safari, where a
+                // grown-up can see where they are. The app itself still loads nothing.
                 UIApplication.shared.open(url)
                 decisionHandler(.cancel)
             } else {
-                // stylesheets and fonts the page fetches over https
-                decisionHandler(.allow)
+                // Everything the app needs is in the bundle, so anything else is either a
+                // mistake or something we did not put there. Refuse it.
+                NSLog("Cube Clubhouse: refused a navigation off the bundle: %@", url.absoluteString)
+                decisionHandler(.cancel)
             }
         }
 

@@ -142,7 +142,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nSRC=\"$SRCROOT/..\"\nDEST=\"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Web\"\n\n# One source of truth: the web app lives in RubiksCubeTutor/, not duplicated in here.\nif [ ! -f \"$SRC/index.html\" ]; then\n  echo \"error: no web app at $SRC - keep CubeClubhouse.xcodeproj inside RubiksCubeTutor/ios/\"\n  exit 1\nfi\n\nrm -rf \"$DEST\"\nmkdir -p \"$DEST\"\ncp \"$SRC/index.html\" \"$DEST/index.html\"\ncp -R \"$SRC/css\" \"$DEST/css\"\ncp -R \"$SRC/js\" \"$DEST/js\"\necho \"note: copied the web app into $DEST\"\n";
+			shellScript = "set -e\nSRC=\"$SRCROOT/..\"\nDEST=\"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Web\"\n\n# One source of truth: the web app lives in RubiksCubeTutor/, not duplicated in here.\nif [ ! -f \"$SRC/index.html\" ]; then\n  echo \"error: no web app at $SRC - keep CubeClubhouse.xcodeproj inside RubiksCubeTutor/ios/\"\n  exit 1\nfi\n\nrm -rf \"$DEST\"\nmkdir -p \"$DEST\"\ncp \"$SRC/index.html\" \"$DEST/index.html\"\ncp -R \"$SRC/css\" \"$DEST/css\"\ncp -R \"$SRC/js\" \"$DEST/js\"\nmkdir -p \"$DEST/fonts\"\ncp \"$SRC/fonts/fredoka-latin-var.woff2\" \"$DEST/fonts/fredoka-latin-var.woff2\"\ncp \"$SRC/fonts/OFL.txt\" \"$DEST/fonts/OFL.txt\"\necho \"note: copied the web app into $DEST\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -176,7 +176,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
@@ -210,7 +210,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";

@@ -9,6 +9,10 @@
  * published file must contain only the page's own <title>, <style> and content. The
  * stylesheet is inlined; the scripts stay separate files published alongside the page.
  *
+ * The typeface is inlined as a data: URL, because the app promises on its own Privacy
+ * page that it asks the network for nothing, and the published page has to keep that
+ * promise too. Nothing here points anywhere off the page.
+ *
  * Usage: node build-artifact.js   ->  dist/artifact.html
  */
 const fs = require('fs');
@@ -17,6 +21,16 @@ const path = require('path');
 const root = __dirname;
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
+
+// Inline the font, so the published page fetches nothing either. One source of truth:
+// the rule lives in style.css and only its src is rewritten here.
+const FONT = 'fonts/fredoka-latin-var.woff2';
+const FONT_URL = "url('../" + FONT + "') format('woff2')";
+if (!css.includes(FONT_URL)) {
+  throw new Error('css/style.css no longer loads ' + FONT + '; update build-artifact.js');
+}
+const fontData = fs.readFileSync(path.join(root, FONT)).toString('base64');
+const inlinedCss = css.replace(FONT_URL, "url(data:font/woff2;base64," + fontData + ") format('woff2')");
 
 const bodyMatch = html.match(/<body>([\s\S]*)<\/body>/);
 if (!bodyMatch) throw new Error('index.html: no <body> found');
@@ -35,10 +49,8 @@ for (const f of SCRIPTS) {
 const body = bodyMatch[1].replace(/\s*<script src="[^"]+"><\/script>/g, '').trim();
 const out = [
   '<title>Cube Clubhouse</title>',
-  '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
-  '<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">',
   '<style>',
-  css.trim(),
+  inlinedCss.trim(),
   '</style>',
   '',
   body,

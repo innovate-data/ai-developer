@@ -126,8 +126,8 @@ tips on the right.
 
 **For grown-ups** – reached from the three footer links, never from the child's nav:
 what the app teaches and how to sit with a child through it; a privacy page naming the
-three things kept on the device and the single outbound request (the typeface), with a
-two-press button that erases the lot; and the licence conditions in full - the app is
+three things kept on the device and the fact that the app makes no network requests at
+all, with a two-press button that erases the lot; and the licence conditions in full - the app is
 proprietary, owned by Ira Learning LLC - with the typeface's own licence and the
 trademark notes. `#parents`, `#privacy` and `#licence` open it at the right
 section, and anything unrecognised in the hash lands on the lessons.
@@ -313,6 +313,32 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
 * Lessons are data (`js/lessons.js`); `MOVE_WORDS` gives the plain-English meaning of every
   move token, used for tooltips, the notation lesson and speech.
 
+### Nothing reaches the network
+
+The app makes no requests at all, and three separate things keep it that way, because a
+privacy promise held up only by nobody having typed a URL is not worth making to a
+parent.
+
+1. **There is nothing to fetch.** The page, the styles, the seven scripts and the
+   typeface are all local. Fredoka lives in `fonts/` as a 29 KB variable WOFF2 under the
+   SIL Open Font Licence, whose text ships beside it; it used to come from Google Fonts,
+   which handed Google the device's address and the time of every launch.
+2. **The page forbids it.** A `Content-Security-Policy` in `index.html` sets
+   `default-src 'none'` and `connect-src 'none'`, and names no http(s) source in any
+   directive — so `fetch`, `XMLHttpRequest`, beacons, sockets, remote scripts, remote
+   styles, remote fonts and remote images are all refused by the browser itself. The
+   three local ways the app is opened are allowed by scheme: a server (`'self'`), the
+   iOS bundle (`cubeclubhouse:`) and a double-clicked file (`file:`).
+3. **The iOS shell forbids it.** `WebAppView` compiles a `WKContentRuleList` that blocks
+   every `^https?://` load inside the web view, and the navigation delegate cancels
+   anything that is not the bundle's own scheme. This is the half a web page cannot
+   switch off, and it fails open: if the rule will not compile the app still runs, with
+   the policy above still in force.
+
+A test in each of the three suites holds this down — see R24 and the offline group in
+§5. The published single-page artifact inlines the typeface as a `data:` URL for the
+same reason.
+
 ---
 
 ## 5. Testing
@@ -338,8 +364,14 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
   in order and the replayed steps ending solved; a rotated solved cube needs no steps;
   a cube that only has parity gets just the fix; a 6×6 edge whose outer and inner pairs
   disagree is paired again; and the 2×2 and 3×3 still go to their own solvers.
+* that the app stays offline: no shipped file names a remote address, the page's
+  `Content-Security-Policy` allows no http(s) source anywhere and sets `connect-src
+  'none'`, the typeface and its licence are really in `fonts/`, and the iOS shell
+  both blocks http(s) inside the web view and refuses navigation off the bundle.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 123 checks.
+42 groups in all.
+
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 128 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -365,14 +397,17 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R21 | The view repaints only what changed, so every sticker on screen is checked against the state it is meant to show. |
 | R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress takes two presses. |
 | R23 | Every part of the app is free: the guide opens on a 2×2, 3×3 and 4×4 and from My real cube with nothing in the way, no page asks for money, and the grown-ups pages say so — free to use, still proprietary, still no copying or reselling. |
+| R24 | The app asks the network for nothing. Every request the page makes is recorded and anything off-device is refused outright; the walk covers all four screens, `fetch` to the outside is blocked by the page's own policy, and the app still works with the network cut. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
-the build phases, a deployment target iOS 17 satisfies), checks `PrivacyInfo.xcprivacy`
+the build phases, both configurations on iOS 17.0, no `#available` check the target
+already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
-produces, by touch, on an iPhone and an iPad profile: 63 checks, including a whole
+produces, by touch, on an iPhone and an iPad profile: 79 checks, including a whole
 4×4 solved by tapping, that the app keeps painting and holds its controls while it
-works a big cube out, and that no control is smaller than 44pt.
+works a big cube out, that the bundled typeface really loads and nothing is fetched
+from off the device, and that no control is smaller than 44pt.
 
 A note on testing animations: a layer turn is a CSS transform, so the sticker colours
 do not change until the move lands. Tests that wait for colours to stop changing pass

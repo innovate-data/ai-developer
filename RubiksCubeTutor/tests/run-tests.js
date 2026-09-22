@@ -632,6 +632,82 @@ test('solveAny hands the 2x2 and 3x3 to their own solvers', () => {
 });
 
 
+/* ---------------------------------------------------------------- offline ----
+ * The app's Privacy page tells a parent it asks the internet for nothing. These
+ * guard that sentence: nothing shipped may name a remote address, the page must
+ * carry a policy that forbids one, and the typeface must be in the bundle.
+ */
+const fs = require('fs');
+const path = require('path');
+const ROOT = path.join(__dirname, '..');
+const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+const SHIPPED = ['index.html', 'css/style.css',
+  ...fs.readdirSync(path.join(ROOT, 'js')).map((f) => 'js/' + f)];
+
+test('nothing the app ships points at a remote address', () => {
+  const found = [];
+  for (const f of SHIPPED) {
+    for (const m of read(f).matchAll(/https?:\/\/[^\s"'`)<>]+/g)) {
+      // the SVG namespace is an identifier, not an address: it is never fetched
+      if (m[0] === 'http://www.w3.org/2000/svg') continue;
+      found.push(f + ': ' + m[0]);
+    }
+  }
+  assert.deepStrictEqual(found, [], 'remote addresses in shipped files:\n  ' + found.join('\n  '));
+});
+
+test('the page forbids loading anything over the network', () => {
+  const csp = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(read('index.html'));
+  assert(csp, 'index.html has no Content-Security-Policy');
+  const rules = Object.fromEntries(csp[1].split(';').map((d) => {
+    const [name, ...rest] = d.trim().split(/\s+/);
+    return [name, rest];
+  }));
+  assert.deepStrictEqual(rules['default-src'], ["'none'"], 'default-src must be none');
+  assert.deepStrictEqual(rules['connect-src'], ["'none'"], 'no fetch, XHR, beacon or socket');
+  for (const d of ['script-src', 'style-src', 'font-src', 'img-src']) {
+    assert(rules[d], 'no ' + d + ' in the policy');
+    const remote = rules[d].filter((src) => /^https?:|^\*$|unsafe-inline|unsafe-eval/.test(src));
+    assert.deepStrictEqual(remote, [], d + ' allows ' + remote.join(' '));
+    // the three local ways the app is opened: a server, the iOS bundle, a double-click
+    for (const src of ["'self'", 'cubeclubhouse:', 'file:']) {
+      assert(rules[d].includes(src), d + ' is missing ' + src);
+    }
+  }
+});
+
+test('the typeface is in the bundle, with its licence', () => {
+  const font = 'fonts/fredoka-latin-var.woff2';
+  const bytes = fs.readFileSync(path.join(ROOT, font));
+  assert.strictEqual(bytes.subarray(0, 4).toString('latin1'), 'wOF2', font + ' is not a woff2');
+  assert(bytes.length < 200 * 1024, 'the font is ' + Math.round(bytes.length / 1024) + 'KB');
+  const css = read('css/style.css');
+  assert(/@font-face\s*\{[^}]*url\('\.\.\/fonts\/fredoka-latin-var\.woff2'\)/.test(css),
+    'style.css does not load the bundled font');
+  assert(/font-family: 'Fredoka'/.test(css), 'the body no longer asks for Fredoka');
+  // the OFL requires the licence to travel with the font
+  const ofl = read('fonts/OFL.txt');
+  assert(/SIL OPEN FONT LICENSE Version 1\.1/i.test(ofl) && /Fredoka/i.test(ofl), 'fonts/OFL.txt is not the licence');
+});
+
+test('the iOS shell refuses the network too', () => {
+  const web = read('ios/CubeClubhouse/WebAppView.swift');
+  assert(/WKContentRuleListStore/.test(web) && /"url-filter": "\^https\?:\/\/"/.test(web),
+    'no content rule list blocking http(s)');
+  assert(/"action": \{"type": "block"\}/.test(web), 'the rule list does not block');
+  // Exactly one navigation may be allowed: the bundle's own scheme. Everything else,
+  // including the https subresources an earlier version waved through, is cancelled.
+  assert((web.match(/decisionHandler\(\.allow\)/g) || []).length === 1,
+    'more than one kind of navigation is allowed');
+  assert(/url\.scheme == BundleSchemeHandler\.scheme\s*\{\s*decisionHandler\(\.allow\)/.test(web),
+    'the one allowed navigation is not the bundle scheme');
+  assert(/refused a navigation off the bundle/.test(web), 'off-bundle navigations are not refused');
+  const copy = read('ios/CubeClubhouse.xcodeproj/project.pbxproj');
+  assert(/fredoka-latin-var\.woff2/.test(copy), 'the copy phase does not bundle the font');
+  assert(/fonts\/OFL\.txt/.test(copy), 'the copy phase does not bundle the font licence');
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

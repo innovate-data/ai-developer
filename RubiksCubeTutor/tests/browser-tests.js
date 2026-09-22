@@ -576,7 +576,9 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('a footer link opens the grown-ups screen', !(await p.locator('#screen-grownups').isHidden()));
     ck('the child screens step aside', await p.locator('#screen-learn').isHidden() && await p.locator('#screen-play').isHidden());
     const privacy = await p.locator('#privacy').textContent();
-    ck('privacy says what is stored and that nothing leaves', /collects nothing/.test(privacy) && /Google Fonts/.test(privacy), privacy.slice(0, 60));
+    ck('privacy says what is stored and that nothing leaves', /collects nothing/.test(privacy)
+      && /What the app asks the internet for/.test(privacy) && /Nothing\./.test(privacy)
+      && !/Google Fonts/.test(privacy), privacy.replace(/\s+/g, ' ').slice(0, 70));
     const licence = await p.locator('#licence').textContent();
     ck('the licence is there in full, not just described', /END USER LICENCE AGREEMENT/.test(licence) && /WITHOUT\s+WARRANTY OF ANY KIND/.test(licence));
     ck('it says who owns the app, and that it is not open source', /Ira Learning LLC/.test(licence) && /not open source/.test(licence));
@@ -651,6 +653,48 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('and still forbids copying and selling', /may not/i.test(licence) && /resell/i.test(licence));
     const privacy = await p.locator('#privacy').textContent();
     ck('privacy says there is nothing to pay for', /no purchases/i.test(privacy) && /Nothing to buy/i.test(privacy));
+    await p.close(); }
+
+  console.log('R24 the app asks the network for nothing');
+  { const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
+    p.on('pageerror', e => errs.push(e.message));
+    const asked = [];
+    // Record everything the page tries to load, and refuse anything that is not local,
+    // so a request that slipped back in shows up as a broken page as well as a failure.
+    await p.route('**/*', (route) => {
+      const u = route.request().url();
+      asked.push(u);
+      if (/^(file|data|blob):/.test(u)) route.continue();
+      else route.abort();
+    });
+    await p.goto(URL);
+    await p.waitForTimeout(400);
+    // walk the whole app, since a stray request could hide behind any screen
+    for (const screen of ['play', 'solve', 'learn']) {
+      await p.locator(`nav button[data-screen="${screen}"]`).click();
+      await p.waitForTimeout(250);
+    }
+    await p.locator('.lesson-card').first().click();
+    await p.waitForTimeout(400);
+    await p.locator('.foot-links [data-info="privacy"]').click();
+    await p.waitForTimeout(300);
+
+    const remote = asked.filter((u) => !/^(file|data|blob):/.test(u));
+    ck('not one request leaves the device', remote.length === 0, remote.join(' | ') || 'none of ' + asked.length);
+    ck('the typeface is not fetched from anywhere', !asked.some((u) => /fonts\.(googleapis|gstatic)/.test(u)), 'none');
+
+    // the policy is the thing that keeps it that way, so check the browser applied it
+    const blocked = await p.evaluate(async () => {
+      try { await fetch('https://example.com/ping'); return 'allowed'; } catch { return 'blocked'; }
+    });
+    ck('the policy blocks fetch outright', blocked === 'blocked', blocked);
+    ck('the page declares a policy with no http source', await p.evaluate(() => {
+      const m = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+      return !!m && !/https?:/.test(m.content) && /connect-src 'none'/.test(m.content);
+    }));
+    ck('the app still works with the network refused', await p.evaluate(
+      () => typeof RC !== 'undefined' && RC.Cube.validate(RC.Cube.solved()).ok)
+      && (await p.locator('.lesson-card').count()) === 10);
     await p.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
