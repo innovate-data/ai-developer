@@ -60,7 +60,7 @@ npm run test:all       # all three
 4. **Never stuck.** *Hint* gives one small step at a time, and warns gently when an earlier stage got broken so the child can *Undo* instead of panicking.
 5. **Reassurance where the method looks scary.** The last stage temporarily scrambles two layers; the text says so up front and repeats "do not turn the whole cube".
 6. **Rewards, not punishments.** Stars per lesson (3 without hints, 2 with hints) are stored locally; nothing resets, no timers in lessons, confetti when a Play solve finishes.
-7. **Accessible.** Large targets, readable font, keyboard shortcuts, `aria-label`s on cube stickers and move buttons, and a 🔊 *Read* button using the browser's speech synthesis for early readers.
+7. **Accessible.** Large targets, readable font, keyboard shortcuts (U D L R F B turn a side, X Y Z the whole cube, Shift for the ′ turn, and a digit first for an inner layer on a big cube), `aria-label`s on cube stickers and move buttons, and a 🔊 *Read* button using the browser's speech synthesis for early readers.
 8. **Written to be read at seven.** Every sentence a child sees, in lessons, hints and
    solver steps, scores at a word-weighted Flesch-Kincaid grade of 2.0, with an average
    sentence of nine words. New words (layer, front, front-right, home, twisted) are
@@ -371,7 +371,7 @@ same reason.
 
 42 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 128 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 164 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -398,6 +398,13 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress takes two presses. |
 | R23 | Every part of the app is free: the guide opens on a 2×2, 3×3 and 4×4 and from My real cube with nothing in the way, no page asks for money, and the grown-ups pages say so — free to use, still proprietary, still no copying or reselling. |
 | R24 | The app asks the network for nothing. Every request the page makes is recorded and anything off-device is refused outright; the walk covers all four screens, `fetch` to the outside is blocked by the page's own policy, and the app still works with the network cut. |
+| R25 | Undo takes back the child's own turns, never the mix. One turn and twenty-one Undos used to walk the mix back and announce "Solved in 00:02 with 1 move!" with confetti; now the mix is cleared from the history when it finishes, and Undo does nothing while it is still mixing. |
+| R26 | Holding a key down turns the cube once. Every auto-repeat used to queue a turn, so the cube spun on for about nine seconds after the key came up. |
+| R27 | A drag that turns the picture a quarter or more round swings it back before a button, key or move chip turns a layer, so R is always the side on the right. A small peek round the side is left alone. |
+| R28 | When a trick card's Watch makes the last turns of a practice, the stars are still earned but the 🧠 badge is not, and the app says why. The same turns typed by the child, or watched first and then taken back, still earn it. |
+| R29 | Swapping cube size with a mixed cube on screen takes a second tap, and the first tap says what will be lost. A solved cube swaps on one tap. |
+| R30 | The keyboard reaches every layer: X, Y and Z turn the whole cube, and a digit typed first picks an inner layer on a big cube (2 then R is 2R). A layer the cube has not got is ignored. |
+| R31 | Clear my colours really clears: every sticker but the centres goes grey, and Check asks for the grey ones before it says anything about the cube. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in

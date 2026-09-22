@@ -254,8 +254,10 @@
       container.appendChild(r);
     }
     const hasKeyboard = !window.matchMedia || window.matchMedia('(hover: hover)').matches;
+    const inner = M.padRows().some((row) => row.depth > 1);
     const hint = el('div', 'pad-hint', hasKeyboard
-      ? 'Drag the cube to look around. Keyboard: U, D, L, R, F or B turn a side; hold Shift for the ′ turn.'
+      ? 'Drag the cube to look around. Keyboard: U, D, L, R, F or B turn a side, and X, Y or Z turn the whole cube. Hold Shift for the ′ turn.'
+        + (inner ? ' For a layer further in, type its number first: 2 then R turns the 2nd layer from the right.' : '')
       : 'Drag the cube to look around.');
     container.appendChild(hint);
   }
@@ -291,7 +293,12 @@
         st.history = [];
         st.emit();
       },
+      // Moves before this point are not the child's to take back (the mix in Play).
+      forget() { st.history = []; },
+      // Only a child's own turn comes through here, and it is named for the cube held
+      // the usual way, so swing the picture back first if a drag turned it round.
       move(token, duration) {
+        view.straighten();
         st.state = M.applyMove(st.state, token);
         st.history.push(token);
         st.emit();
@@ -308,6 +315,7 @@
       // untouched, so a hint, the guide and the practice goal all stay exactly as they
       // were. If the cube is replaced mid-wiggle, set() repaints it, so nothing is lost.
       demo(token) {
+        view.straighten();
         return view.play([token, M.invertMove(token)], 450);
       },
       // st.state updates the moment a move is applied, while the cube is still
@@ -625,6 +633,15 @@
       window.scrollTo(0, 0);
     }
 
+    // A trick card's Watch and Undo turn the practice cube for the child. play() applies
+    // the moves and tells the practice goal at once, inside this call, so the flag is
+    // up exactly while the goal hears about the app's own turns and at no other time.
+    let appMoving = false;
+    function appPlay(moves, ms) {
+      appMoving = true;
+      try { return station.play(moves, ms); } finally { appMoving = false; }
+    }
+
     function renderAlgs(L) {
       const box = $('#lesson-algs');
       box.innerHTML = '';
@@ -637,8 +654,8 @@
         const watch = el('button', 'btn small primary', '▶ Watch');
         const undo = el('button', 'btn small ghost', '↩ Undo');
         const say = readButton(() => a.name + '. ' + movesInWords(Cube.parseAlg(a.moves)), '', 'btn small ghost');
-        watch.addEventListener('click', () => station.play(a.moves, 380));
-        undo.addEventListener('click', () => station.play(Cube.invertAlg(a.moves), 200));
+        watch.addEventListener('click', () => appPlay(a.moves, 380));
+        undo.addEventListener('click', () => appPlay(Cube.invertAlg(a.moves), 200));
         btns.append(watch, undo, say);
         card.appendChild(btns);
         box.appendChild(card);
@@ -787,11 +804,15 @@
         if (Solver.goals[L.stage](state)) {
           solvedThis = true;                       // latch now so this fires exactly once
           // Finishing earns all three stars. Hints are how a child learns, not cheating;
-          // doing it without any earns a separate brain badge on top.
-          award(L.id, 3, hintsUsed === 0);
+          // doing it without any earns a separate brain badge on top. If a trick card's
+          // Watch made the last turns, the app did it, so that is help too.
+          const byWatch = appMoving;
+          award(L.id, 3, hintsUsed === 0 && !byWatch);
           renderList();
           station.settled().then(() => {
-            status.innerHTML = '🎉 <b>You did it!</b> ★★★' + (hintsUsed ? '' : ' 🧠 No hints!');
+            status.innerHTML = '🎉 <b>You did it!</b> ★★★' + (byWatch
+              ? ' The Watch button did the last turns, so no 🧠 this time. Try Another puzzle with your own turns!'
+              : hintsUsed ? '' : ' 🧠 No hints!');
             status.classList.add('win');
             hintBox.hidden = true;
             station.view.setHighlights([]);
@@ -871,7 +892,7 @@
     const timerEl = $('#play-timer', section);
     const statusEl = $('#play-status', section);
     const guideBox = $('#play-guide', section);
-    let timerStart = null, timerId = null, scrambled = false, moveCount = 0, thinking = false;
+    let timerStart = null, timerId = null, scrambled = false, moveCount = 0, thinking = false, mixing = false;
     const guide = Guide(guideBox, station, {
       onFinish: () => { stopTimer(); },
       solve: (s) => BigSolver.solveAnyAsync(station.model, s, (what) => { statusEl.textContent = 'Thinking… ' + what + '.'; }),
@@ -932,17 +953,43 @@
       timerStart = null;
       scrambled = false;
       moveCount = 0;
-      sizeNote.textContent = n <= 3
+      sizeNote.textContent = noteFor(n);
+      statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
+    }
+    function noteFor(n) {
+      return n <= 3
         ? 'Cube Clubhouse can guide you through this one.'
         : 'Cube Clubhouse can guide this one too: centres, then edges, then it works like a 3×3. Lessons and My real cube use the 3×3.';
-      statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
+    }
+    // A new size means a new cube. With a mixed cube on screen that throws away the
+    // child's work, so the first tap only says so and the second tap swaps. Two taps
+    // rather than a pop-up, as with Clear saved progress: WKWebView shows no confirm().
+    let armed = null, armTimer = null;
+    function disarm() {
+      clearTimeout(armTimer);
+      if (armed === null) return;
+      armed = null;
+      sizeBox.querySelectorAll('.size-btn').forEach((x) => x.classList.remove('confirm'));
+      sizeNote.textContent = noteFor(size);
     }
     for (const n of NCube.SIZES) {
       const b = el('button', 'size-btn', n + '×' + n);
       b.type = 'button';
       b.dataset.size = n;
       b.setAttribute('aria-label', n + ' by ' + n + ' cube');
-      b.addEventListener('click', () => { if (n !== size) applySize(n, false); });
+      b.addEventListener('click', () => {
+        if (n === size) { disarm(); return; }
+        if (armed !== n && !station.model.isSolved(station.state)) {
+          disarm();
+          armed = n;
+          b.classList.add('confirm');
+          sizeNote.textContent = 'Tap ' + n + '×' + n + ' again to swap cubes. Your mixed-up ' + size + '×' + size + ' will be lost.';
+          armTimer = setTimeout(disarm, 5000);
+          return;
+        }
+        disarm();
+        applySize(n, false);
+      });
       sizeBox.appendChild(b);
     }
     applySize(size, true);
@@ -957,11 +1004,16 @@
       statusEl.textContent = 'Mixing it up…';
       station.set(station.model.solved());
       const myGen = station.view.gen;
+      mixing = true;
       await station.play(station.model.scramble(20), 90);
+      mixing = false;
       // A size change (or a Reset) during the mixing replaces the cube. Without this
       // the solved new cube would be marked as scrambled, and the next move plus an
       // undo would be celebrated as a solve.
       if (station.view.gen !== myGen) return;
+      // Undo takes back the child's own turns, never the mix: otherwise one turn and
+      // twenty-one Undos is a "solve" in two seconds, with confetti.
+      station.forget();
       scrambled = true;
       statusEl.textContent = 'Go! The clock starts on your first move. Stuck? Press "Help me solve it".';
     });
@@ -976,6 +1028,11 @@
       statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
     });
     $('#play-undo').addEventListener('click', () => {
+      if (mixing) return;                 // the mix is not the child's to take back
+      if (!station.history.length) {
+        if (scrambled) statusEl.textContent = 'Undo takes back your own turns, not the mix. Press Make it solved to start again.';
+        return;
+      }
       staleGuide();
       station.undo();
     });
@@ -1099,6 +1156,12 @@
       msg.textContent = '';
     }
     $('#solve-check').addEventListener('click', () => {
+      const grey = painted.filter((c) => c === 'X').length;
+      if (grey) {
+        msg.innerHTML = '🎨 ' + grey + (grey === 1 ? ' sticker is' : ' stickers are') + ' still grey. Paint each one to match your cube, then press Check.';
+        msg.className = 'msg bad';
+        return;
+      }
       const v = Cube.validate(painted);
       if (!v.ok) {
         msg.innerHTML = '🤔 ' + v.reason;
@@ -1112,7 +1175,13 @@
       guide.start(painted);
       guideBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    $('#solve-clear').addEventListener('click', () => setPainted(Cube.solved()));
+    // Clear means clear: every sticker but the centres goes grey, so none can be left
+    // showing a colour the child never painted. The centres never move, so they stay.
+    $('#solve-clear').addEventListener('click', () => {
+      setPainted(Cube.solved().map((c, i) => (i % 9 === 4 ? c : 'X')));
+      msg.textContent = 'All clear. Now paint every grey sticker to match your cube.';
+      msg.className = 'msg';
+    });
     $('#solve-random').addEventListener('click', () => setPainted(Cube.applyAlg(Cube.solved(), Cube.scramble(20))));
     $('#solve-from-play').addEventListener('click', () => {
       if (screens.play.station.model.N !== 3) {
@@ -1145,18 +1214,40 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) hush(); });
   }
 
+  // U D L R F B turn a side and X Y Z the whole cube; Shift gives the ′ turn. On a big
+  // cube a digit typed first picks the layer: 2 then R is 2R, the second layer in.
   function keyboard() {
+    let layer = 0, layerTimer = null;
+    const dropLayer = () => { layer = 0; clearTimeout(layerTimer); };
     document.addEventListener('keydown', (e) => {
-      if (e.target.matches('input, textarea, select, [contenteditable]')) return;
-      const letter = e.key.toUpperCase();
-      if (!'UDLRFB'.includes(letter) || e.ctrlKey || e.metaKey || e.altKey || letter.length !== 1) return;
+      if (e.target.matches && e.target.matches('input, textarea, select, [contenteditable]')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
       const active = Object.keys(screens).find((k) => !screens[k].section.hidden);
-      if (!active) return;
-      const token = letter + (e.shiftKey ? "'" : '');
-      if (active === 'play') { if (!screens.play.userMove(token)) return; }
-      else if (active === 'learn' && !$('#lesson-view').hidden) screens.learn.station.move(token);
-      else return;
+      const station = active === 'play' ? screens.play.station
+        : active === 'learn' && !$('#lesson-view').hidden ? screens.learn.station : null;
+      if (!station) return;
+      const key = e.key.toUpperCase();
+      if (/^[2-9]$/.test(key)) {
+        e.preventDefault();
+        if (e.repeat) return;
+        layer = +key;
+        clearTimeout(layerTimer);
+        layerTimer = setTimeout(dropLayer, 2000);
+        return;
+      }
+      let token;
+      if ('UDLRFB'.includes(key)) token = (layer || '') + key;
+      else if ('XYZ'.includes(key)) token = key.toLowerCase();
+      else { dropLayer(); return; }
+      dropLayer();
       e.preventDefault();
+      // Holding a key down repeats it many times a second. Each repeat would queue a
+      // turn, and the cube would go on spinning for seconds after the key came up.
+      if (e.repeat) return;
+      if (e.shiftKey) token += "'";
+      try { station.model.parseMove(token); } catch { return; }   // no such layer on this cube
+      if (active === 'play') screens.play.userMove(token);
+      else station.move(token);
     });
   }
 

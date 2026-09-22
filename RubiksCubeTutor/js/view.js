@@ -18,7 +18,8 @@
   const Cube = root.RC.Cube;
   const defaultModel = () => (root.RC.NCube ? root.RC.NCube.make(3) : Cube);
 
-  const COLOR_CLASS = { W: 'c-W', Y: 'c-Y', G: 'c-G', B: 'c-B', R: 'c-R', O: 'c-O' };
+  // X is a sticker not painted yet, on the My real cube screen.
+  const COLOR_CLASS = { W: 'c-W', Y: 'c-Y', G: 'c-G', B: 'c-B', R: 'c-R', O: 'c-O', X: 'c-X' };
   // Which way each of a cubie's six faces points. The transform itself lives in CSS
   // (class f-pz and friends, off a --fs custom property), so building a 6x6 does not
   // mean writing six inline styles onto each of nine hundred elements.
@@ -258,6 +259,21 @@
       this.rotY = this.opts.rotY;
       this.applyView();
     }
+
+    // The move buttons are named for the cube held the usual way. Once a drag has
+    // turned the picture a quarter or more round, R would turn a side that is no longer
+    // on the right of the screen, so swing the picture back before the turn plays. It
+    // goes on the animation queue, so it waits for any turn already running.
+    straighten() {
+      if (Math.round((this.rotY - this.opts.rotY) / 90) % 4 === 0) return;
+      const swing = () => {
+        const still = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.cubeEl.classList.toggle('swing', !still);
+        this.resetView();
+        return new Promise((done) => setTimeout(() => { this.cubeEl.classList.remove('swing'); done(); }, still ? 0 : 280));
+      };
+      this.queue = this.queue.then(swing, swing);
+    }
   }
 
   // 2D net (unfolded cube). Editable when `onPick` is given.
@@ -302,7 +318,7 @@
       for (let i = 0; i < 54; i++) {
         const c = this.cells[i];
         c.className = 'net-cell ' + COLOR_CLASS[this.state[i]] + (i % 9 === 4 ? ' centre' : '');
-        c.setAttribute('aria-label', Cube.faceOfIndex(i) + ' ' + (i % 9 + 1) + ' ' + Cube.COLOR_NAMES[this.state[i]]);
+        c.setAttribute('aria-label', Cube.faceOfIndex(i) + ' ' + (i % 9 + 1) + ' ' + (Cube.COLOR_NAMES[this.state[i]] || 'not painted yet'));
       }
     }
 

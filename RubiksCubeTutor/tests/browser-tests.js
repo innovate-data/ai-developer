@@ -34,6 +34,13 @@ const view = (sel) => `(() => { const st=new Array(54);
   document.querySelectorAll('${sel} .face:not(.inner)').forEach(f=>{st[+f.dataset.index]=f.className.match(/c-(\\w)/)[1];});
   return st.join(''); })()`;
 let pass = 0, fail = 0;
+// Swapping size with a mixed cube on screen takes a second tap (R29). The cases that
+// use this are about what happens after a swap, so they make both taps.
+const swapSize = async (p, n) => {
+  const b = p.locator('#play-size .size-btn', { hasText: n + '×' + n });
+  await b.click();
+  if (!(await b.evaluate((x) => x.classList.contains('active')))) await b.click();
+};
 const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  PASS ' : '  FAIL ') + name + (extra !== undefined ? '  [' + extra + ']' : '')); };
 
 (async () => {
@@ -44,7 +51,8 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
   const settle = async (p, sel) => {
     await p.waitForFunction((s) => {
       const c = document.querySelectorAll(s + ' .cubie');
-      return c.length > 0 && [...c].every((e) => !/rotate/.test(e.style.transform));
+      // .swing is the picture turning back to the usual view before a turn (R27)
+      return c.length > 0 && [...c].every((e) => !/rotate/.test(e.style.transform)) && !document.querySelector(s + ' .cube.swing');
     }, sel, { timeout: 30000 });
     await p.waitForTimeout(120);
     return p.evaluate(view(sel));
@@ -181,6 +189,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
   { const p = await newPage();
     await p.locator('nav button[data-screen="play"]').click();
     await p.locator('#play-scramble').click(); await p.waitForTimeout(2600);
+    await p.keyboard.press('r'); await p.waitForTimeout(500);      // a turn of the child's own to undo
     await p.locator('#play-help').click(); await p.waitForTimeout(300);
     await p.locator('#play-undo').click(); await p.waitForTimeout(600);
     ck('guide cleared', await p.locator('#play-guide').evaluate(e => e.childElementCount === 0));
@@ -376,7 +385,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('6x6: the first step plays without errors', (await p.locator('#play-guide .guide-count').textContent()).length > 0);
 
     // the choice is remembered, and My real cube knows Play is not a 3x3
-    await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
+    await swapSize(p, 4);
     await p.waitForTimeout(250);
     await p.reload();
     await p.waitForTimeout(300);
@@ -393,7 +402,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
 
   console.log('R16 changing cube size mid-flight leaves nothing stale behind');
   { const p = await newPage();
-    const pick = async (n) => { await p.locator('#play-size .size-btn', { hasText: n + '×' + n }).click(); await p.waitForTimeout(220); };
+    const pick = async (n) => { await swapSize(p, n); await p.waitForTimeout(220); };
     const solvedOnScreen = (n) => p.evaluate((N) => {
       const by = {};
       document.querySelectorAll('#play-cube .face:not(.inner)').forEach((f) => {
@@ -462,12 +471,12 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#play-guide .btn', { hasText: 'Read' }).click();
     await p.waitForTimeout(120);
     let before = await cancels();
-    await p.locator('#play-size .size-btn', { hasText: '5×5' }).click();
+    await swapSize(p, 5);
     await p.waitForTimeout(250);
     ck('changing size stops the narration', (await cancels()) > before);
 
     // and a manual move, which also tears the guide down
-    await p.locator('#play-size .size-btn', { hasText: '3×3' }).click();
+    await swapSize(p, 3);
     await p.waitForTimeout(250);
     await p.locator('#play-scramble').click();
     await p.waitForTimeout(2600);
@@ -695,6 +704,214 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the app still works with the network refused', await p.evaluate(
       () => typeof RC !== 'undefined' && RC.Cube.validate(RC.Cube.solved()).ok)
       && (await p.locator('.lesson-card').count()) === 10);
+    await p.close(); }
+
+  // ---- R25-R31: found by playing with the app the way a curious 12-year-old would ----
+  // Every sticker of the Play cube, by index, for a cube of any size.
+  const stickersOf = (p, sel) => p.evaluate((s) => {
+    const out = [];
+    document.querySelectorAll(s + ' .face:not(.inner)').forEach((f) => { out[+f.dataset.index] = f.className.match(/c-(\w)/)[1]; });
+    return out.join('');
+  }, sel);
+  const expectAfter = (p, n, moves) => p.evaluate(([N, ms]) => {
+    const M = RC.NCube.make(N);
+    return M.applyAlg(M.solved(), ms).join('');
+  }, [n, moves]);
+
+  console.log('R25 Undo takes back your own turns, never the mix');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-scramble').click();
+    await p.waitForFunction(() => /Go!/.test(document.querySelector('#play-status').textContent), null, { timeout: 10000 });
+    const mixed = await settle(p, '#play-cube');
+    await p.keyboard.press('r');
+    await settle(p, '#play-cube');
+    await p.locator('#play-undo').click();
+    ck('one Undo takes back the one turn', (await settle(p, '#play-cube')) === mixed);
+    // the trick that used to work: twenty more Undos walked the mix back to solved
+    for (let i = 0; i < 20; i++) { await p.locator('#play-undo').click(); await p.waitForTimeout(30); }
+    ck('twenty more Undos leave the cube mixed', (await settle(p, '#play-cube')) === mixed);
+    await p.waitForTimeout(300);
+    const status = (await p.locator('#play-status').textContent()).trim();
+    ck('no fake "Solved" and no confetti', !/Solved in/.test(status) && (await p.locator('.confetti').count()) === 0, status);
+    ck('it says why', /not the mix/.test(status));
+    // pressing Undo while the cube is still mixing does nothing either
+    await p.locator('#play-scramble').click();
+    await p.waitForTimeout(500);
+    for (let i = 0; i < 5; i++) await p.locator('#play-undo').click();
+    await p.waitForFunction(() => /Go!/.test(document.querySelector('#play-status').textContent), null, { timeout: 10000 });
+    const after = await settle(p, '#play-cube');
+    await p.keyboard.press('r'); await settle(p, '#play-cube');
+    for (let i = 0; i < 21; i++) { await p.locator('#play-undo').click(); await p.waitForTimeout(30); }
+    ck('Undo during the mix cannot shorten it', (await settle(p, '#play-cube')) === after);
+    await p.close(); }
+
+  console.log('R26 holding a key down turns the cube once, not once per repeat');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+    // what a held key sends: one press, then a stream of auto-repeats
+    for (let i = 0; i < 30; i++) {
+      await p.evaluate((rep) => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', repeat: rep, bubbles: true })), i > 0);
+      await p.waitForTimeout(20);
+    }
+    const t0 = Date.now();
+    const shown = await settle(p, '#play-cube');
+    const tail = Date.now() - t0;
+    ck('the cube stops when the key comes up', tail < 1500, tail + 'ms');
+    ck('and turned exactly once', shown === await expectAfter(p, 3, 'R'));
+    await p.close(); }
+
+  console.log('R27 a spun picture swings back before a turn, so R is on the right');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.waitForTimeout(200);
+    const cube = () => p.evaluate(() => document.querySelector('#play-cube .cube').style.transform);
+    const box = await (await p.$('#play-cube')).boundingBox();
+    const drag = async (px) => {
+      const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+      await p.mouse.move(cx - px / 2, cy); await p.mouse.down();
+      await p.mouse.move(cx + px / 2, cy, { steps: 12 }); await p.mouse.up();
+      await p.waitForTimeout(150);
+    };
+    const usual = await cube();
+    await drag(360);                                   // half way round: R is now on the left
+    ck('a big drag turns the picture round', (await cube()) !== usual, await cube());
+    await p.keyboard.press('r');
+    await settle(p, '#play-cube'); await p.waitForTimeout(350);
+    ck('a key turn swings it back first', (await cube()) === usual, await cube());
+    ck('and the turn is still R', (await stickersOf(p, '#play-cube')) === await expectAfter(p, 3, 'R'));
+    await drag(360);
+    await p.locator('#play-controls .pad-btn', { hasText: /^U$/ }).click();
+    await settle(p, '#play-cube'); await p.waitForTimeout(350);
+    ck('so does a button', (await cube()) === usual);
+    await drag(50);                                    // a peek round the side is left alone
+    const peek = await cube();
+    await p.keyboard.press('r');
+    await settle(p, '#play-cube'); await p.waitForTimeout(350);
+    ck('a small look-around is not undone', (await cube()) === peek && peek !== usual, peek);
+    await p.close(); }
+
+  console.log('R28 a trick card\'s Watch finishing the practice is help, not a 🧠');
+  { // Practice cubes are random; seed them so both runs get the same cube.
+    const seeded = async () => {
+      const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
+      p.on('pageerror', (e) => errs.push(e.message));
+      await p.addInitScript(() => {
+        let x = 20260923;
+        Math.random = () => { x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+      });
+      await p.goto(URL);
+      await p.evaluate(() => localStorage.clear());
+      await p.reload(); await p.waitForTimeout(300);
+      await p.locator('.lesson-card', { hasText: 'The Yellow Cross' }).click();
+      await p.waitForTimeout(400);
+      return p;
+    };
+    // The solver's plan for the yellow cross, from the cube on screen.
+    const plan = (p) => stickersOf(p, '#lesson-cube').then((st) => p.evaluate((str) => {
+      const upTo = RC.Solver.STAGES.indexOf('ycross');
+      return RC.Solver.solve(str.split('')).steps
+        .filter((x) => RC.Solver.STAGES.indexOf(x.stage) <= upTo).map((x) => x.moves.slice());
+    }, st));
+    const type = async (p, moves) => {
+      for (const m of moves) {
+        const key = m[0].toLowerCase();
+        const times = m.endsWith('2') ? 2 : 1;
+        for (let t = 0; t < times; t++) await p.keyboard.press(m.endsWith("'") ? 'Shift+' + key.toUpperCase() : key);
+      }
+      await settle(p, '#lesson-cube'); await p.waitForTimeout(80);
+    };
+    const statusOf = async (p) => (await p.locator('#lesson-practice .practice-status').textContent()).trim();
+    const trick = "F R U R' U' F'";
+
+    const p = await seeded();
+    const steps = await plan(p);
+    const last = steps[steps.length - 1];
+    ck('the plan ends with the Cross trick', last.join(' ') === trick, last.join(' '));
+    // the child does everything else, then lets the trick card make the last turns
+    for (const st of steps.slice(0, -1)) await type(p, st);
+    await p.locator('#lesson-algs .alg-card .btn', { hasText: 'Watch' }).first().click();
+    await settle(p, '#lesson-cube'); await p.waitForTimeout(300);
+    const status = await statusOf(p);
+    ck('Watch making the last turns still finishes it', /You did it/.test(status), status);
+    ck('but it earns no 🧠', !/No hints/.test(status));
+    ck('and says so kindly', /Watch button did the last turns/.test(status));
+    ck('no brain badge is stored', await p.evaluate(() => !(JSON.parse(localStorage.getItem('cubeclubhouse.progress') || '{}').brain || {}).ycross));
+    await p.close();
+
+    // the same cube, the same turns, all typed by the child: that is a real 🧠
+    const q = await seeded();
+    for (const st of await plan(q)) await type(q, st);
+    await q.waitForTimeout(300);
+    ck('the same turns done by hand earn the 🧠', /No hints/.test(await statusOf(q)), await statusOf(q));
+    // watching the trick and taking it back first does not cost the badge
+    const r = await seeded();
+    await r.locator('#lesson-algs .alg-card .btn', { hasText: 'Watch' }).first().click();
+    await settle(r, '#lesson-cube');
+    await r.locator('#lesson-algs .alg-card .btn', { hasText: 'Undo' }).first().click();
+    await settle(r, '#lesson-cube');
+    for (const st of await plan(r)) await type(r, st);
+    await r.waitForTimeout(300);
+    ck('watching the trick first, then doing it, still earns the 🧠', /No hints/.test(await statusOf(r)), await statusOf(r));
+    await q.close(); await r.close(); }
+
+  console.log('R29 swapping size with a mixed cube takes a second tap');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-scramble').click();
+    await p.waitForFunction(() => /Go!/.test(document.querySelector('#play-status').textContent), null, { timeout: 10000 });
+    const mixed = await settle(p, '#play-cube');
+    const four = p.locator('#play-size .size-btn', { hasText: '4×4' });
+    await four.click(); await p.waitForTimeout(200);
+    ck('the first tap keeps the mixed cube', (await stickersOf(p, '#play-cube')) === mixed);
+    ck('and says what a second tap will do', /Tap 4×4 again/.test(await p.locator('#play-size-note').textContent()));
+    ck('the tapped size is marked', await four.evaluate((x) => x.classList.contains('confirm')));
+    await four.click(); await p.waitForTimeout(300);
+    ck('the second tap swaps', (await stickersOf(p, '#play-cube')).length === 96);
+    // a solved cube has nothing to lose, so one tap is enough
+    await p.locator('#play-size .size-btn', { hasText: '2×2' }).click(); await p.waitForTimeout(300);
+    ck('a solved cube swaps on one tap', (await stickersOf(p, '#play-cube')).length === 24);
+    await p.close(); }
+
+  console.log('R30 the keyboard reaches every layer, and turns the whole cube');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
+    await p.waitForTimeout(300);
+    ck('the pad says how', /type its number first/.test(await p.locator('#play-controls .pad-hint').textContent())
+      && /X, Y or Z/.test(await p.locator('#play-controls .pad-hint').textContent()));
+    await p.keyboard.press('2'); await p.keyboard.press('r');
+    await settle(p, '#play-cube');
+    ck('2 then R turns the 2nd layer in', (await stickersOf(p, '#play-cube')) === await expectAfter(p, 4, '2R'));
+    await p.keyboard.press('x'); await settle(p, '#play-cube');
+    await p.keyboard.press('Shift+Z'); await settle(p, '#play-cube');
+    ck('X and Shift+Z turn the whole cube', (await stickersOf(p, '#play-cube')) === await expectAfter(p, 4, "2R x z'"));
+    await p.keyboard.press('3'); await p.keyboard.press('Shift+U'); await settle(p, '#play-cube');
+    ck('3 then Shift+U turns the 3rd layer back', (await stickersOf(p, '#play-cube')) === await expectAfter(p, 4, "2R x z' 3U'"));
+    await p.keyboard.press('r'); await settle(p, '#play-cube');
+    ck('the number only counts for the next turn', (await stickersOf(p, '#play-cube')) === await expectAfter(p, 4, "2R x z' 3U' R"));
+    await p.keyboard.press('7'); await p.keyboard.press('r'); await settle(p, '#play-cube');
+    ck('a layer the cube has not got is ignored', (await stickersOf(p, '#play-cube')) === await expectAfter(p, 4, "2R x z' 3U' R"));
+    await p.close(); }
+
+  console.log('R31 Clear my colours really clears');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="solve"]').click();
+    await p.locator('#solve-random').click(); await p.waitForTimeout(300);
+    await p.locator('#solve-clear').click(); await p.waitForTimeout(300);
+    const cells = await p.evaluate(() => [...document.querySelectorAll('#solve-net .net-cell')].map((c) => ({ centre: c.classList.contains('centre'), grey: c.classList.contains('c-X') })));
+    ck('every sticker but the centres goes grey', cells.filter((c) => c.grey).length === 48 && cells.filter((c) => c.centre && !c.grey).length === 6);
+    ck('the 3D cube shows the grey too', (await p.locator('#solve-cube .face.c-X').count()) === 48);
+    ck('and it says what to do next', /paint every grey sticker/.test(await p.locator('#solve-msg').textContent()));
+    await p.locator('#solve-check').click(); await p.waitForTimeout(200);
+    const said = (await p.locator('#solve-msg').textContent()).trim();
+    ck('Check asks for the grey stickers first', /48 stickers are still grey/.test(said), said);
+    ck('and does not call it a real cube', !/real cube/.test(said) && (await p.locator('#solve-guide').evaluate((e) => e.childElementCount)) === 0);
+    await p.locator('.swatch.c-W').click();
+    await p.locator('#solve-net .net-cell.c-X').first().click();
+    await p.locator('#solve-check').click(); await p.waitForTimeout(200);
+    ck('painting one counts down', /47 stickers are still grey/.test(await p.locator('#solve-msg').textContent()));
     await p.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');

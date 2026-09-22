@@ -243,6 +243,8 @@ main {
 }
 .cube-scene:active { cursor: grabbing; }
 .cube { position: relative; width: 0; height: 0; transform-style: preserve-3d; }
+/* the picture swinging back to the usual view before a turn (CubeView.straighten) */
+.cube.swing { transition: transform 0.26s ease-out; }
 .cubie { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
 .face {
   /* --fs (size), --fb (border) and --fr (radius) are set per cube by view.js */
@@ -265,6 +267,8 @@ main {
 .face.inner { background: var(--plastic-dark); border-width: 0; border-radius: 0; }
 .c-W { background: var(--W); } .c-Y { background: var(--Y); } .c-G { background: var(--G); }
 .c-B { background: var(--B); } .c-R { background: var(--R); } .c-O { background: var(--O); }
+/* a sticker not painted yet on My real cube: plain grey stripes, unlike any real colour */
+.c-X { background: repeating-linear-gradient(45deg, #b9b4a8 0 5px, #d6d1c5 5px 10px); }
 .face.hl { box-shadow: inset 0 0 0 5px var(--hl), 0 0 12px var(--hl); animation: pulse 1.1s ease-in-out infinite alternate; }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.18); } }
 
@@ -286,6 +290,8 @@ main {
 }
 .size-btn:active { transform: translateY(2px); box-shadow: none; }
 .size-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); box-shadow: none; }
+/* first tap on a new size while a mixed cube is on screen: tap again to swap */
+.size-btn.confirm { border-color: var(--accent); border-style: dashed; background: var(--accent-soft); }
 .pad-btn sup { font-size: 0.8em; }
 .pad-hint { color: var(--muted); font-size: 0.8rem; text-align: center; max-width: 420px; }
 

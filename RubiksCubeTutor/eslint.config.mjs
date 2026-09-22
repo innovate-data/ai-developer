@@ -10,7 +10,7 @@ export default [
         console: 'readonly', module: 'writable', require: 'readonly', location: 'readonly',
         Event: 'readonly', SpeechSynthesisUtterance: 'readonly', speechSynthesis: 'readonly',
         Promise: 'readonly', Set: 'readonly', Map: 'readonly', process: 'readonly', __dirname: 'readonly',
-        getComputedStyle: 'readonly', PointerEvent: 'readonly', MessageChannel: 'readonly',
+        getComputedStyle: 'readonly', PointerEvent: 'readonly', KeyboardEvent: 'readonly', MessageChannel: 'readonly',
         requestAnimationFrame: 'readonly', MutationObserver: 'readonly', performance: 'readonly',
         // in the tests only: Node 18+ and every target browser both provide it
         fetch: 'readonly',
