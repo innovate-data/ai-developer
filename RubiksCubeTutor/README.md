@@ -78,6 +78,17 @@ npm run test:all       # all three
 10. **Hints are not cheating.** Finishing a practice earns all three stars; doing it
    without hints adds a 🧠 badge on top. A mistake reads "Oops, the white cross came
    apart. That happens to everyone!", never "wrong".
+11. **Colours that rest the eyes on an iPad.** Kids hold a tablet close and look at it
+   for a long time, so the app avoids blue-white glare. Light mode is warm paper
+   (`#f6f3ea`) with soft ink (`#2b3040`, about 13:1), dark mode is warm charcoal, not
+   black. There is one calm denim accent for anything tappable, so a child learns
+   "blue means press me" once. Mistakes are coral rather than alarm red, success is a
+   soft green, and the "turn this layer" highlight is pink because no sticker on the
+   cube is pink. Stickers keep the six real cube colours so the app matches the cube in
+   the child's hands. Every text and background pair passes WCAG AA, checked by a small
+   script over all pairs in both themes; the pulse on highlighted stickers is a gentle
+   brightness change rather than a flash, and animations are reduced when the device
+   asks for reduced motion.
 11. **Honest about the real cube.** The guide's next button says "I did it", because it
    applies the moves; auto-play ends with "That was the whole solve" and an offer to
    start again, not "You solved it".
