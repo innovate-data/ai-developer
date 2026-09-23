@@ -102,6 +102,56 @@ function runCopyPhase() {
     }
   }
 
+  console.log('\nthe launch screen');
+  {
+    const proj = fs.readFileSync(PBXPROJ, 'utf8');
+    const APP = path.join(IOS, 'CubeClubhouse');
+    const ASSETS = path.join(APP, 'Assets.xcassets');
+    // Info.plist: only the launch screen; Xcode generates and merges everything else
+    const plist = fs.readFileSync(path.join(APP, 'Info.plist'), 'utf8');
+    ck('Info.plist is a plist', /<plist version="1.0">/.test(plist) && /<\/plist>/.test(plist));
+    const launch = /<key>UILaunchScreen<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(plist);
+    const val = (k) => launch && (new RegExp('<key>' + k + '<\\/key>\\s*<string>([^<]+)<\\/string>').exec(launch[1]) || [])[1];
+    ck('it names a background colour and an image', val('UIColorName') === 'LaunchBackground' && val('UIImageName') === 'LaunchLogo',
+      val('UIColorName') + ' / ' + val('UIImageName'));
+    const configs = [...proj.matchAll(/^\t+INFOPLIST_FILE = ([^;]+);/gm)].map((m) => m[1]);
+    ck('both configurations use it', configs.length === 2 && configs.every((c) => c === 'CubeClubhouse/Info.plist'), configs.join(','));
+    ck('the blank generated launch screen is gone', !/UILaunchScreen_Generation/.test(proj));
+    ck('Info.plist is not copied as a resource', !/Info\.plist in Resources/.test(proj));
+
+    // the colour: light and dark, and exactly the page's own background, so the
+    // launch screen hands over to the app without a flash
+    const colour = JSON.parse(fs.readFileSync(path.join(ASSETS, 'LaunchBackground.colorset', 'Contents.json'), 'utf8'));
+    const hexOf = (c) => '#' + ['red', 'green', 'blue'].map((k) => Math.round(parseFloat(c.color.components[k]) * 255).toString(16).padStart(2, '0')).join('');
+    const isDark = (c) => (c.appearances || []).some((a) => a.value === 'dark');
+    const light = colour.colors.find((c) => !isDark(c)), dark = colour.colors.find(isDark);
+    const css = fs.readFileSync(path.join(IOS, '..', 'css', 'style.css'), 'utf8');
+    const bgLight = /:root \{[^}]*--bg: (#[0-9a-f]{6})/.exec(css)[1];
+    const bgDark = /:root\[data-theme="dark"\] \{[^}]*--bg: (#[0-9a-f]{6})/.exec(css)[1];
+    ck('the launch colour is the page background (light)', light && hexOf(light) === bgLight, light && hexOf(light) + ' vs ' + bgLight);
+    ck('the launch colour is the page background (dark)', dark && hexOf(dark) === bgDark, dark && hexOf(dark) + ' vs ' + bgDark);
+
+    // the image: every listed file exists, at 1x/2x/3x in light and dark, with the scales in step
+    const set = path.join(ASSETS, 'LaunchLogo.imageset');
+    const imgs = JSON.parse(fs.readFileSync(path.join(set, 'Contents.json'), 'utf8')).images;
+    const png = (f) => { const d = fs.readFileSync(path.join(set, f)); return { sig: d.subarray(1, 4).toString(), w: d.readUInt32BE(16), h: d.readUInt32BE(20), type: d[25] }; };
+    const files = imgs.map((i) => ({ ...i, ...png(i.filename) }));
+    ck('the logo comes at 1x, 2x and 3x, light and dark', ['1x', '2x', '3x'].every((sc) => files.some((f) => f.scale === sc && !isDark(f)) && files.some((f) => f.scale === sc && isDark(f))));
+    ck('every file is a PNG with transparency', files.every((f) => f.sig === 'PNG' && f.type === 6));
+    const one = files.find((f) => f.scale === '1x' && !isDark(f));
+    ck('the scales are in step', files.every((f) => f.w === one.w * parseInt(f.scale, 10) && f.h === one.h * parseInt(f.scale, 10)), one.w + 'x' + one.h + 'pt');
+    ck('it fits the narrowest iPhone iOS 17 runs on', one.w <= 375 - 2 * 16, one.w + 'pt');
+
+    // RootView keeps the same picture up until the page is ready, and never forever
+    const app = fs.readFileSync(path.join(APP, 'CubeClubhouseApp.swift'), 'utf8');
+    const web = fs.readFileSync(path.join(APP, 'WebAppView.swift'), 'utf8');
+    ck('the cover draws the same colour and image', /Color\("LaunchBackground"\)/.test(app) && /Image\("LaunchLogo"\)/.test(app));
+    ck('it comes down when the page has loaded', /WebAppView\(onReady: reveal\)/.test(app) && /didFinish navigation: WKNavigation!\) \{\s*onReady\(\)/.test(web));
+    ck('or if loading fails', (web.match(/withError error: Error\) \{[^}]*onReady\(\)/g) || []).length === 2);
+    ck('and after a few seconds regardless', /asyncAfter\(deadline: \.now\(\) \+ \d+\) \{ reveal\(\) \}/.test(app));
+    ck('it respects Reduce Motion', /accessibilityReduceMotion/.test(app));
+  }
+
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
   for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/timer.js', 'js/app.js',

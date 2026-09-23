@@ -1079,6 +1079,24 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('bad saved data is skipped, good data kept', (await times(p)).length === 1 && (await p.locator('#timer-size .size-btn.active').textContent()) === '3×3');
     await p.close(); }
 
+  console.log('R37 Cube Clubhouse® carries its registered-trademark sign');
+  { const p = await newPage();
+    const brand = await p.locator('.topbar .brand').textContent();
+    ck('the header brand, on every screen', /Cube Clubhouse®/.test(brand) && (await p.locator('.topbar .brand sup.reg').count()) === 1);
+    ck('the footer, with the notice', /Cube Clubhouse® ·/.test(await p.locator('footer').textContent())
+      && /Cube Clubhouse® is a registered trademark of Ira Learning LLC/.test(await p.locator('.foot-copy').textContent()));
+    await p.locator('.foot-links [data-info="licence"]').click(); await p.waitForTimeout(200);
+    ck('the first mention on the grown-ups pages', /know about Cube Clubhouse®/.test(await p.locator('.info-lede').textContent()));
+    ck('the licence opens with it', /^\s*CUBE CLUBHOUSE END USER LICENCE AGREEMENT[\s\S]*?Cube Clubhouse\(R\) is provided/.test(await p.locator('.licence-text').textContent()));
+    ck('the trademark note says who owns it', /Cube Clubhouse® is a registered trademark of Ira Learning LLC/.test(await p.locator('#licence').textContent()));
+    ck('the sign does not push the header taller', await p.evaluate(() => {
+      const b = document.querySelector('.topbar .brand');
+      return b.getBoundingClientRect().height <= 44;
+    }));
+    // names that a device shows on its own stay plain: a tab title, a home-screen label
+    ck('the page title stays plain', (await p.title()) === 'Cube Clubhouse');
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

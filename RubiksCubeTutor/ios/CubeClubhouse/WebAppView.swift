@@ -23,7 +23,11 @@ struct WebAppView: UIViewRepresentable {
     [{"trigger": {"url-filter": "^https?://"}, "action": {"type": "block"}}]
     """
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    /// Called when the bundled page has loaded (or failed to), so RootView can take the
+    /// launch screen down. It may be called more than once; RootView acts on the first.
+    var onReady: () -> Void = {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onReady: onReady) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -80,6 +84,12 @@ struct WebAppView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         let schemeHandler = BundleSchemeHandler()
+        let onReady: () -> Void
+
+        init(onReady: @escaping () -> Void) {
+            self.onReady = onReady
+            super.init()
+        }
 
         /// Keep in-app navigation inside the bundle; send real links to Safari.
         func webView(_ webView: WKWebView,
@@ -103,11 +113,19 @@ struct WebAppView: UIViewRepresentable {
             }
         }
 
+        /// The page and its scripts have loaded: the launch screen can go.
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            onReady()
+        }
+
+        // On a failure, uncover anyway: an error page is better than a logo that never goes.
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             NSLog("Cube Clubhouse failed to load: \(error.localizedDescription)")
+            onReady()
         }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             NSLog("Cube Clubhouse failed to start: \(error.localizedDescription)")
+            onReady()
         }
     }
 }

@@ -35,9 +35,11 @@ On a device, the first launch needs you to trust the certificate:
 | Path | What it is |
 |------|------------|
 | `ios/CubeClubhouse.xcodeproj` | The Xcode project |
-| `ios/CubeClubhouse/*.swift` | Three files: the app, the web view host, the bundle server |
-| `ios/CubeClubhouse/Assets.xcassets` | App icon (1024×1024, no alpha) and accent colour |
-| `index.html`, `css/`, `js/` | The app itself: lessons, solver, cube models, 3D view |
+| `ios/CubeClubhouse/*.swift` | Three files: the app (with its launch cover), the web view host, the bundle server |
+| `ios/CubeClubhouse/Info.plist` | Only the launch screen; Xcode generates every other key from build settings |
+| `ios/CubeClubhouse/Assets.xcassets` | App icon (1024×1024, no alpha), accent colour, and the launch screen's logo and background |
+| `ios/launch-art/` | The launch logo's source and `render.js`, which redraws it (`npm run build:launch`) |
+| `index.html`, `css/`, `js/`, `fonts/` | The app itself: lessons, solver, timer, cube models, 3D view |
 | `tests/` | Test suites, not part of the app bundle |
 
 The app is the web app in the parent folder, hosted in a `WKWebView`. A build phase
@@ -49,10 +51,34 @@ web app then pressing Run is enough.
 If you move `CubeClubhouse.xcodeproj` somewhere else on its own, the build stops with
 a message telling you so.
 
+## The launch screen
+
+While the app starts, iOS shows the Cube Clubhouse® logo (the cube face from the icon,
+with the name) centred on the app's own background colour, in light or dark to match the
+device. It comes from `UILaunchScreen` in `Info.plist`: the `LaunchBackground` colour and
+the `LaunchLogo` image set in the asset catalog. The colour is exactly the page's
+background, and `RootView` keeps the same picture on screen until the page has loaded,
+then fades it out (instantly if Reduce Motion is on), so there is no white flash between
+the launch screen and the first lesson list. If the page ever fails to load, the cover
+still lifts after four seconds.
+
+To change the logo, edit `ios/launch-art/logo.html` and run `npm run build:launch`
+(it needs `playwright-core`, like the browser tests); `npm run test:ios` checks the
+result fits every iPhone and matches the background.
+
+If the launch screen does not update on a device, delete the app and run again: iOS
+caches launch screens per install.
+
 ## Changing the app's name
 
 The name under the icon comes from `INFOPLIST_KEY_CFBundleDisplayName` in the target's
 build settings. Change it there; you do not need to rename files or the scheme.
+
+The name under the icon is "Cube Clubhouse" without the ® sign on purpose: the home
+screen has room for about twelve characters, and the sign would get it cut short. The ®
+appears in the app itself: in the header on every screen, on the launch screen, in the
+footer, and in the licence and trademark notice. Use ® only while the mark is actually
+registered; a mark that is claimed but not registered takes ™ instead.
 
 ## Uploading to the App Store
 

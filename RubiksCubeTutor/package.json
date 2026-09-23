@@ -11,6 +11,7 @@
     "build": "node build-artifact.js",
     "test:browser": "node tests/browser-tests.js",
     "test:all": "npm test && npm run test:browser && npm run test:ios",
-    "test:ios": "node tests/ios-bundle-tests.js"
+    "test:ios": "node tests/ios-bundle-tests.js",
+    "build:launch": "node ios/launch-art/render.js"
   }
 }

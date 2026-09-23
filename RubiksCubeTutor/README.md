@@ -1,4 +1,4 @@
-# Cube Clubhouse – a Cube tutor for kids
+# Cube Clubhouse® – a Cube tutor for kids
 
 Cube Clubhouse teaches children (roughly ages 7–12) to solve a 3×3 Cube using the
 classic beginner "layer by layer" method. It is a single-page web app with **no build
@@ -10,6 +10,7 @@ including on a phone or tablet.
 > it, and the licence grants permission to use it and nothing more. See `LICENSE`, which
 > is also shown to the reader on the app's own Licence page. The repository's root
 > `LICENSE` covers the other projects beside this folder, not this one.
+> Cube Clubhouse® is a registered trademark of Ira Learning LLC.
 
 ```
 RubiksCubeTutor/
@@ -119,6 +120,10 @@ Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" bu
 ---
 
 ## 3. Screens
+
+**Launch** – on iPhone and iPad the app opens on its logo, the cube face from the icon
+with "Cube Clubhouse®", on the app's own background colour in light or dark. The same
+picture stays up until the page has loaded and then fades, so there is no white flash.
 
 **Learn** – a grid of lesson cards with stars, then a two-column lesson page: sticky 3D
 cube with a move pad on the left, text, tricks, interactive widgets, practice area and
@@ -396,7 +401,7 @@ same reason.
 
 48 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 212 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 219 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -435,13 +440,17 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R34 | +2 and DNF toggle on the last solve (a DNF is never the best), delete takes two taps, and the 15 seconds to look count down, then give +2, then DNF. The clock is fast-forwarded rather than waited for. |
 | R35 | Leaving the screen mid-solve throws the solve away; Escape cancels the looking time. |
 | R36 | The Privacy and For parents pages describe the times; Clear saved progress erases them at once; opening the Timer stores nothing; damaged saved data is skipped, not fatal. |
+| R37 | Cube Clubhouse® carries its ® in the header on every screen, the footer (with the ownership notice), the first mention on the grown-ups pages, the licence and the trademark note, without making the header taller; the page title stays plain. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
 the build phases, both configurations on iOS 17.0, no `#available` check the target
 already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
-produces, by touch, on an iPhone and an iPad profile: 94 checks, including a whole
+produces, by touch, on an iPhone and an iPad profile: 110 checks, including the launch
+screen (Info.plist wired into both configurations, a background colour identical to the
+page's in light and dark, the logo at every scale and appearance and narrow enough for
+the smallest iPhone, and a cover that lifts on load, on failure and after a timeout), a whole
 4×4 solved by tapping, a timed solve by real touch events (hold, let go, tap to stop),
 the tab bar staying on one row, that the app keeps painting and holds its controls while it
 works a big cube out, that the bundled typeface really loads and nothing is fetched

@@ -139,6 +139,8 @@ button { font: inherit; cursor: pointer; }
   position: sticky; top: 0; z-index: 20;
 }
 .brand { font-weight: 700; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
+/* the registered-trademark sign: small and raised, and never pushing the line apart */
+.reg { font-size: 0.5em; font-weight: 600; vertical-align: super; line-height: 0; margin-left: 0.06em; }
 .brand-cube {
   width: 30px; height: 30px; border-radius: 7px; display: inline-block;
   background: conic-gradient(var(--R) 0 25%, var(--Y) 0 50%, var(--G) 0 75%, var(--B) 0);

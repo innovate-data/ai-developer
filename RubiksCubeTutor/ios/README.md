@@ -23,7 +23,8 @@ the same JavaScript the browser version runs.
 
 - **`CubeClubhouseApp.swift`** is the SwiftUI entry point. It lets the web view run edge
   to edge, because the page already handles the notch and the home indicator itself
-  through CSS `env(safe-area-inset-*)`.
+  through CSS `env(safe-area-inset-*)`, and it holds the launch screen's picture over the
+  page until the page has loaded, then fades it out, so the hand-over never flashes.
 - **`WebAppView.swift`** wraps `WKWebView`. It turns off bounce scrolling and pinch zoom,
   so a second finger cannot zoom the page while a child is dragging the cube around, and
   it sends real links out to Safari.
@@ -67,5 +68,9 @@ did to the build log.
   aeroplane mode: it behaves identically.
 - **App icon.** `Assets.xcassets/AppIcon.appiconset/AppIcon.png` is a 1024×1024 image with
   no alpha channel, which is what the App Store requires.
+- **Launch screen.** `Info.plist` holds only `UILaunchScreen`: the `LaunchBackground`
+  colour (the page's own background, light and dark) with the `LaunchLogo` image centred
+  on it, drawn at 1x, 2x and 3x in both appearances from `launch-art/logo.html`. No
+  storyboard. See "The launch screen" in `GETTING-STARTED.md`.
 - **Safari Web Inspector** is enabled in Debug builds, so you can inspect the running page
   from Safari's Develop menu while the app is on a simulator or a device.
