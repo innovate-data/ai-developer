@@ -781,6 +781,21 @@ test('timer: every cube size has a mix of the right length that the cube accepts
 });
 
 
+test('timer: the chart axis uses round ticks that cover every time', () => {
+  for (const [lo, hi] of [[11980, 14210], [9000, 31000], [8200, 8200], [45000, 125000], [600, 1800], [18900, 31200]]) {
+    const a = Timer.niceTicks(lo, hi, 5);
+    assert(a.ticks.length >= 2 && a.ticks.length <= 5, lo + '..' + hi + ': ' + a.ticks.length + ' ticks');
+    assert(a.lo <= lo && a.hi >= hi, lo + '..' + hi + ' not covered by ' + a.lo + '..' + a.hi);
+    assert(a.ticks.every((t) => t % 1000 === 0), 'ticks are whole seconds');
+    const step = a.ticks[1] - a.ticks[0];
+    assert(a.ticks.every((t, i) => i === 0 || t - a.ticks[i - 1] === step), 'evenly spaced');
+    assert(a.lo >= 0, 'never below zero');
+  }
+  assert.strictEqual(Timer.formatTick(15000), '15');
+  assert.strictEqual(Timer.formatTick(90000), '1:30');
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

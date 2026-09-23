@@ -97,6 +97,30 @@
     return format(s.ms);
   }
 
+  // Round tick marks for the progress chart's time axis: whole seconds at a friendly
+  // step (1, 2, 5, 10, 15, 30 s, then minutes), covering lo..hi with a little room.
+  // Returns { ticks, lo, hi } in milliseconds, with lo and hi on tick marks.
+  const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].map((s) => s * 1000);
+  function niceTicks(lo, hi, most) {
+    most = most || 5;
+    if (!(hi >= lo)) return { ticks: [], lo: 0, hi: 0 };
+    if (hi - lo < 1000) { lo -= 500; hi += 500; }          // one time, or all alike
+    let step = STEPS[STEPS.length - 1];
+    for (const s of STEPS) {
+      if (Math.floor(hi / s) - Math.ceil(Math.max(0, lo) / s) + 1 <= most - 1) { step = s; break; }
+    }
+    const from = Math.max(0, Math.floor(lo / step) * step);
+    const to = Math.ceil(hi / step) * step;
+    const ticks = [];
+    for (let t = from; t <= to + 1e-6; t += step) ticks.push(t);
+    return { ticks, lo: from, hi: to };
+  }
+  // An axis label: whole seconds, or m:ss from a minute up.
+  function formatTick(ms) {
+    const s = Math.round(ms / 1000);
+    return s >= 60 ? Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') : String(s);
+  }
+
   // The penalty earned by starting the solve this long after inspection began.
   function inspectionPenalty(ms) {
     if (ms <= INSPECTION_MS) return 0;
@@ -107,5 +131,6 @@
   return {
     DNF, SCRAMBLE_LENGTH, INSPECTION_MS, INSPECTION_DNF_MS,
     clockTime, value, average, best, bestAverage, stats, format, formatSolve, inspectionPenalty,
+    niceTicks, formatTick,
   };
 });

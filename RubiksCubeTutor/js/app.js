@@ -583,6 +583,7 @@
       const tab = $('nav button[data-screen="' + k + '"]');
       if (tab) tab.classList.toggle('active', k === name);
     }
+    if (screens[name] && screens[name].onShow) screens[name].onShow();
     location.hash = name;
   }
 
@@ -1095,7 +1096,16 @@
     const del = $('#timer-delete', section);
     const statsBox = $('#timer-stats', section);
     const list = $('#timer-list', section);
+    const mixProgress = $('#timer-mix-progress', section);
+    const solveHelp = $('#timer-solve-help', section);
+    const checkEl = $('#timer-check', section);
+    const guideBox = $('#timer-guide', section);
+    const guideNote = $('#timer-guide-note', section);
+    const chartBox = $('#timer-chart', section);
+    const showAllBtn = $('#timer-show-all', section);
     const KEEP = 1000;                 // times kept per size; the oldest go first
+    const CHART_LAST = 50;             // times drawn on the progress chart
+    let showAll = false;               // the list shows every time, not just the last few
     const HOLD_MS = 300;               // how long to hold before the clock is ready
     const SHOWN = 12;                  // times listed on screen
 
@@ -1120,13 +1130,110 @@
 
     const station = Station($('#timer-cube', section), { size: 40 }, NCube.make(data.size));
     let mix = [];
+    let mixDone = 0;                   // turns of the mix the child has ticked off
+    let guideOpen = false;             // "Help me solve this mix" is showing steps
+    let thinking = false;              // ...or working them out
+    const after = (k) => station.model.applyAlg(station.model.solved(), mix.slice(0, k));
+    const guide = Guide(guideBox, station, {
+      solve: (s) => BigSolver.solveAnyAsync(station.model, s, (what) => { mixProgress.textContent = 'Thinking… ' + what + '.'; }),
+    });
+    function closeGuide() {
+      if (!guideOpen) return;
+      guideOpen = false;
+      hush();
+      guideBox.innerHTML = '';
+      guideNote.hidden = true;
+    }
     function newMix() {
       const M = station.model;
+      closeGuide();
       mix = M.scramble(Timer.SCRAMBLE_LENGTH[M.N] || 25);
-      scrambleEl.textContent = mix.join(' ');
+      mixDone = 0;
+      // One button per turn, with a space between so the mix still reads (and copies)
+      // as ordinary notation.
+      scrambleEl.innerHTML = '';
+      mix.forEach((m, i) => {
+        if (i) scrambleEl.appendChild(document.createTextNode(' '));
+        const b = el('button', 'mix-turn');
+        b.type = 'button';
+        b.textContent = m;
+        b.setAttribute('aria-label', 'Turn ' + (i + 1) + ' of ' + mix.length + ', ' + m);
+        b.addEventListener('click', () => tickTurn(i));
+        scrambleEl.appendChild(b);
+      });
+      paintMix();
       station.view.resetView();
-      station.set(M.applyAlg(M.solved(), mix));
+      station.set(after(mix.length));
     }
+    // A long mix is easy to lose your place in (a 6x6 has 80 turns), so each turn is a
+    // button: tap it once it is done. Tapping a turn already done steps back to just
+    // before it, to put a slip right.
+    function paintMix() {
+      scrambleEl.querySelectorAll('.mix-turn').forEach((b, i) => {
+        b.classList.toggle('done', i < mixDone);
+        b.classList.toggle('next', i === mixDone);
+        b.setAttribute('aria-pressed', String(i < mixDone));
+      });
+      const n = mix.length;
+      mixProgress.textContent = mixDone === 0 ? 'Tap each turn once you have done it.'
+        : mixDone < n ? mixDone + ' of ' + n + ' turns done.'
+          : '✅ All ' + n + ' turns done! Put the cube down and time your solve.';
+      if (!guideOpen) {
+        checkEl.textContent = mixDone === 0 || mixDone === n
+          ? 'Your cube should look like this after the mix.'
+          : 'Your cube after ' + mixDone + ' of ' + n + ' turns. The picture turns with you.';
+      }
+    }
+    function tickTurn(i) {
+      if (phase !== 'idle' || inspecting || thinking) return;
+      closeGuide();
+      const was = mixDone;
+      mixDone = i < mixDone ? i : i + 1;
+      if (mixDone === was + 1) {
+        // One turn on: show it turning. Set the picture to exactly where the mix was
+        // first, which also stops anything still playing (a guided solve, say).
+        station.set(was === 0 ? station.model.solved() : after(was));
+        station.play([mix[was]], 260);
+      } else {
+        station.set(after(mixDone === 0 ? mix.length : mixDone));
+      }
+      paintMix();
+      if (mixDone === mix.length) pad.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // "Help me solve this mix": the app knows the exact mix it gave out, so it can walk
+    // the child from that cube to solved, any size, with the same steps as Play.
+    solveHelp.addEventListener('click', async () => {
+      if (thinking || phase !== 'idle' || inspecting) return;
+      hush();
+      mixDone = mix.length;                 // the steps start from the whole mix
+      paintMix();
+      const state = after(mix.length);
+      station.view.resetView();
+      station.set(state);
+      guideOpen = true;
+      guideNote.hidden = false;
+      guideNote.innerHTML = '';
+      guideNote.appendChild(document.createTextNode('These steps are for a cube mixed with exactly the turns above. '
+        + 'If you have turned it since, mix it again from solved' + (station.model.N === 3 ? ', or paint it in on My real cube.' : '.')));
+      if (station.model.N === 3) {
+        const go = el('button', 'btn small ghost', '🔍 My real cube');
+        go.type = 'button';
+        go.addEventListener('click', () => showScreen('solve'));
+        guideNote.appendChild(document.createTextNode(' '));
+        guideNote.appendChild(go);
+      }
+      checkEl.textContent = 'Follow the steps below on your real cube. Press Watch to see each one here.';
+      thinking = true;
+      setPhase('idle');
+      const myMix = mix;
+      let ok = false;
+      try { ok = await guide.start(state); } finally { thinking = false; setPhase('idle'); }
+      if (mix !== myMix || !guideOpen) return;
+      mixProgress.textContent = ok ? 'Follow the steps below. When you can do it on your own, time a fresh mix!'
+        : 'Hmm, I could not work that one out. Press New mix and try another.';
+      guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
 
     // ---- the clock
     // idle -> hold -> ready -> (let go) running -> (any touch or key) idle.
@@ -1137,6 +1244,7 @@
     let holdTimer = null, raf = 0;
     let justStopped = false;    // the touch or key that stopped the clock is still down
     let tapToInspect = false;   // a press that will start inspection when it lets go
+    let called = {};            // inspection call-outs already made
 
     const HELP = {
       idle: () => (data.inspect
@@ -1152,16 +1260,21 @@
       const shown = p === 'idle' && inspecting ? 'inspecting' : p;
       pad.dataset.phase = shown;
       help.textContent = HELP[shown]();
-      const busy = p !== 'idle' || inspecting;
-      section.classList.toggle('timing', busy);
+      const busy = p !== 'idle' || inspecting || thinking;
+      section.classList.toggle('timing', p !== 'idle' || inspecting);
       sizeBox.querySelectorAll('.size-btn').forEach((b) => { b.disabled = busy; });
-      for (const b of [inspectBtn, $('#timer-new-mix', section), plus2, dnf, del]) b.disabled = busy;
+      scrambleEl.querySelectorAll('.mix-turn').forEach((b) => { b.disabled = busy; });
+      for (const b of [inspectBtn, $('#timer-new-mix', section), solveHelp, plus2, dnf, del]) b.disabled = busy;
     }
     function frame() {
       const now = performance.now();
       if (phase === 'running') display.textContent = Timer.format(Timer.clockTime(now - startAt));
       else if (inspecting) {
         const t = now - inspectStart;
+        // A judge calls out 8 and 12 seconds, because the solver is looking at the
+        // cube, not the clock. So does this.
+        if (t >= 8000 && !called[8]) { called[8] = true; speak('Eight seconds'); }
+        if (t >= 12000 && !called[12]) { called[12] = true; speak('Twelve seconds'); }
         display.textContent = t < Timer.INSPECTION_MS ? String(Math.ceil((Timer.INSPECTION_MS - t) / 1000))
           : t <= Timer.INSPECTION_DNF_MS ? '+2' : 'DNF';
       } else { raf = 0; return; }
@@ -1170,7 +1283,7 @@
     const run = () => { if (!raf) raf = requestAnimationFrame(frame); };
 
     function press() {
-      if (justStopped) return;
+      if (justStopped || thinking) return;
       if (phase === 'running') { stop(); return; }
       if (phase !== 'idle') return;
       if (data.inspect && !inspecting) { tapToInspect = true; return; }
@@ -1184,6 +1297,7 @@
         tapToInspect = false;
         inspecting = true;
         inspectStart = performance.now();
+        called = {};
         setPhase('idle');
         run();
         return;
@@ -1193,6 +1307,8 @@
       else if (phase === 'holding') setPhase('idle');      // let go too soon: try again
     }
     function start() {
+      closeGuide();                     // a timed solve is the child's own
+      hush();                           // and no call-out talks over it
       startPen = inspecting ? Timer.inspectionPenalty(performance.now() - inspectStart) : 0;
       inspecting = false;
       startAt = performance.now();
@@ -1240,7 +1356,7 @@
       }
       said.textContent = lines.join(' ') || 'Nice solve! Mix it again for another go.';
       showLast();
-      render();
+      renderAll();
       newMix();
       if (party) confetti();
     }
@@ -1261,7 +1377,7 @@
       s.pen = s.pen === pen ? 0 : pen;
       save();
       showLast();
-      render();
+      renderAll();
       said.textContent = 'That time is now ' + Timer.formatSolve(s) + '.';
       display.textContent = Timer.format(Timer.value(s));
     }
@@ -1281,7 +1397,7 @@
       save();
       lastBox.hidden = true;
       display.textContent = '0.00';
-      render();
+      renderAll();
     });
 
     function render() {
@@ -1309,7 +1425,8 @@
         return;
       }
       const bestAt = all.findIndex((x) => Timer.value(x) === st.best);
-      for (let i = all.length - 1; i >= Math.max(0, all.length - SHOWN); i--) {
+      const upTo = showAll ? all.length : SHOWN;
+      for (let i = all.length - 1; i >= Math.max(0, all.length - upTo); i--) {
         const li = el('li', i === bestAt ? 'best' : '');
         li.appendChild(el('span', 'timer-n', String(i + 1) + '.'));
         li.appendChild(el('span', 'timer-t', Timer.formatSolve(all[i])));
@@ -1321,8 +1438,134 @@
         }
         list.appendChild(li);
       }
-      if (all.length > SHOWN) list.appendChild(el('li', 'timer-more', 'and ' + (all.length - SHOWN) + ' earlier ' + (all.length - SHOWN === 1 ? 'time' : 'times')));
+      if (!showAll && all.length > SHOWN) list.appendChild(el('li', 'timer-more', 'and ' + (all.length - SHOWN) + ' earlier ' + (all.length - SHOWN === 1 ? 'time' : 'times')));
     }
+    function renderAll() {
+      render();
+      const n = solves().length;
+      showAllBtn.hidden = n <= SHOWN;
+      showAllBtn.textContent = showAll ? 'Show only the last ' + SHOWN : 'Show all ' + n + ' times';
+      showAllBtn.setAttribute('aria-expanded', String(showAll));
+      drawChart();
+    }
+    showAllBtn.addEventListener('click', () => { showAll = !showAll; renderAll(); });
+
+    // ---- the progress chart: one line, the last few dozen times, lower is faster
+    const SVG = 'http://www.w3.org/2000/svg';
+    const svg = (tag, attrs, parent) => {
+      const n = document.createElementNS(SVG, tag);
+      for (const k of Object.keys(attrs)) n.setAttribute(k, attrs[k]);
+      if (parent) parent.appendChild(n);
+      return n;
+    };
+    function drawChart() {
+      chartBox.innerHTML = '';
+      const all = solves();
+      const pts = [];
+      for (let i = Math.max(0, all.length - CHART_LAST); i < all.length; i++) {
+        const v = Timer.value(all[i]);
+        if (v !== Infinity) pts.push({ n: i + 1, v, s: all[i] });   // a DNF has no time to plot
+      }
+      if (pts.length < 2) {
+        if (all.length) chartBox.appendChild(el('p', 'fact chart-wait', '📈 Your chart appears after two times. Keep going!'));
+        return;
+      }
+      const W = chartBox.clientWidth;
+      if (!W) return;                  // not on screen yet: drawn when the screen is shown
+      const best = Timer.best(all);
+      const span = all.length - Math.max(0, all.length - CHART_LAST);        // solves in view, DNFs too
+      const head = el('div', 'chart-head');
+      head.appendChild(el('h3', 'chart-title', span === all.length ? 'Your ' + span + ' solves so far' : 'Your last ' + span + ' solves'));
+      head.appendChild(el('p', 'chart-sub', 'Lower is faster. Touch the line to see any time.'
+        + (pts.length < span ? ' A DNF has no time, so it is left out.' : '')));
+      chartBox.appendChild(head);
+
+      const H = 190, L = 36, R = 84, T = 16, B = 26;
+      const lo = Math.min(...pts.map((p) => p.v)), hi = Math.max(...pts.map((p) => p.v));
+      const axis = Timer.niceTicks(lo, hi, 5);
+      const x = (n) => L + (pts.length === 1 ? 0 : (n - pts[0].n) / (pts[pts.length - 1].n - pts[0].n)) * (W - L - R);
+      const y = (v) => T + (1 - (v - axis.lo) / (axis.hi - axis.lo)) * (H - T - B);
+      const bestPt = pts.reduce((a, p) => (p.v < a.v ? p : a), pts[0]);
+      const last = pts[pts.length - 1];
+
+      const wrap = el('div', 'chart-wrap');
+      const root = svg('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, class: 'chart', role: 'img', tabindex: '0',
+        'aria-label': 'Your last ' + span + ' solves. Fastest ' + Timer.format(bestPt.v) + ', latest ' + Timer.format(last.v) + '. Use the arrow keys to read each one.' }, null);
+      for (const t of axis.ticks) {
+        svg('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), class: 'chart-grid' }, root);
+        svg('text', { x: L - 8, y: y(t) + 4, class: 'chart-axis', 'text-anchor': 'end' }, root).textContent = Timer.formatTick(t);
+      }
+      svg('text', { x: L, y: H - 6, class: 'chart-axis' }, root).textContent = 'solve ' + pts[0].n;
+      svg('text', { x: W - R, y: H - 6, class: 'chart-axis', 'text-anchor': 'end' }, root).textContent = 'solve ' + last.n;
+      svg('path', { d: pts.map((p, i) => (i ? 'L' : 'M') + x(p.n).toFixed(1) + ' ' + y(p.v).toFixed(1)).join(' '), class: 'chart-line' }, root);
+      // the two points worth a label: the fastest here, and the latest
+      svg('circle', { cx: x(bestPt.n), cy: y(bestPt.v), r: 5, class: 'chart-dot' }, root);
+      const bestLabel = (bestPt.v === best ? '⭐ ' : 'fastest here ') + Timer.format(bestPt.v);
+      if (bestPt === last) {
+        // the latest is the best: one label, at the end of the line like any latest time
+        svg('text', { x: x(last.n) + 9, y: y(last.v) + 4, class: 'chart-label' }, root).textContent = bestLabel;
+      } else {
+        const below = y(bestPt.v) < T + 22;
+        svg('text', { x: Math.min(Math.max(x(bestPt.n), L + 30), W - R - 10), y: y(bestPt.v) + (below ? 20 : -10), class: 'chart-label', 'text-anchor': 'middle' }, root).textContent = bestLabel;
+      }
+      if (last !== bestPt) {
+        svg('circle', { cx: x(last.n), cy: y(last.v), r: 4, class: 'chart-dot' }, root);
+        svg('text', { x: x(last.n) + 9, y: y(last.v) + 4, class: 'chart-label' }, root).textContent = Timer.format(last.v);
+      }
+      // the crosshair and its readout: finds the nearest solve, by touch, mouse or keys
+      const cross = svg('line', { y1: T, y2: H - B, class: 'chart-cross', visibility: 'hidden' }, root);
+      const hot = svg('circle', { r: 6, class: 'chart-dot hot', visibility: 'hidden' }, root);
+      const hit = svg('rect', { x: L, y: 0, width: W - L - R, height: H, class: 'chart-hit' }, root);
+      const tip = el('div', 'chart-tip');
+      tip.hidden = true;
+      let at = pts.length - 1;
+      const show = (k) => {
+        at = Math.max(0, Math.min(pts.length - 1, k));
+        const p = pts[at];
+        cross.setAttribute('x1', x(p.n)); cross.setAttribute('x2', x(p.n)); cross.setAttribute('visibility', 'visible');
+        hot.setAttribute('cx', x(p.n)); hot.setAttribute('cy', y(p.v)); hot.setAttribute('visibility', 'visible');
+        tip.innerHTML = '';
+        tip.appendChild(el('strong', ''));
+        tip.lastChild.textContent = Timer.formatSolve(p.s);
+        tip.appendChild(el('span', ''));
+        tip.lastChild.textContent = 'solve ' + p.n + (p.v === best ? ' · your best' : '');
+        tip.hidden = false;
+        // Beside the crosshair, never over the point it describes: to the right, or to
+        // the left near the right edge; at the top, or at the bottom for a high point.
+        const px = x(p.n), tw = tip.offsetWidth || 120, th = tip.offsetHeight || 52;
+        tip.style.left = (px + 12 + tw <= W ? px + 12 : px - 12 - tw) + 'px';
+        tip.style.top = (y(p.v) < T + th + 8 ? H - B - th : T) + 'px';
+      };
+      const hide = () => { cross.setAttribute('visibility', 'hidden'); hot.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+      const nearest = (e) => {
+        const r = root.getBoundingClientRect();
+        const px = e.clientX - r.left;
+        let k = 0;
+        pts.forEach((p, i) => { if (Math.abs(x(p.n) - px) < Math.abs(x(pts[k].n) - px)) k = i; });
+        return k;
+      };
+      hit.addEventListener('pointermove', (e) => show(nearest(e)));
+      hit.addEventListener('pointerdown', (e) => show(nearest(e)));
+      // a mouse that leaves puts the readout back on the latest time, where keys start
+      hit.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { hide(); at = pts.length - 1; } });
+      root.addEventListener('focus', () => show(at));
+      root.addEventListener('blur', hide);
+      root.addEventListener('keydown', (e) => {
+        const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: pts.length - 1 }[e.key];
+        if (to === undefined) return;
+        e.preventDefault();
+        show(to);
+      });
+      wrap.appendChild(root);
+      wrap.appendChild(tip);
+      chartBox.appendChild(wrap);
+    }
+    let redraw = 0;
+    window.addEventListener('resize', () => {
+      if (section.hidden) return;
+      cancelAnimationFrame(redraw);
+      redraw = requestAnimationFrame(drawChart);
+    });
 
     // ---- controls
     // Only a choice the child makes is saved: opening the Timer, or the grown-ups
@@ -1337,8 +1580,9 @@
       if (station.model.N !== n) station.setModel(NCube.make(n));
       lastBox.hidden = true;
       display.textContent = '0.00';
+      showAll = false;
       newMix();
-      render();
+      renderAll();
     }
     for (const n of NCube.SIZES) {
       const b = el('button', 'size-btn', n + '×' + n);
@@ -1391,7 +1635,8 @@
     setPhase('idle');
     screens.timer = {
       section,
-      onHide: abort,
+      onHide: () => { abort(); hush(); },
+      onShow: drawChart,
       // after Clear saved progress on the grown-ups screen
       reload() { abort(); data = load(); showInspect(); applySize(data.size, false); },
     };

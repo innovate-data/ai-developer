@@ -35,6 +35,7 @@
   --hl: #d9418f;        /* pink, because no sticker is pink; a raspberry rather than neon */
   --shadow: 0 8px 24px rgba(60, 50, 30, 0.08);
   --glow: rgba(47, 104, 171, 0.18);
+  --chart-line: #2f68ab;
   /* cube sticker colours: identical in both themes, they are the cube itself */
   --W: #ffffff; --Y: #ffd500; --G: #00a651; --B: #0055d4; --R: #d3202b; --O: #ff7a00;
   --radius: 18px;
@@ -66,6 +67,7 @@
     --hl: #ff6fb8;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
     --glow: rgba(147, 184, 234, 0.25);
+    --chart-line: #5a92e0;
   }
 }
 :root[data-theme="dark"] {
@@ -94,6 +96,7 @@
   --hl: #ff6fb8;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --glow: rgba(147, 184, 234, 0.25);
+  --chart-line: #5a92e0;
 }
 * { box-sizing: border-box; }
 /* Touch handling for iPhone and iPad: no tap flash, no double-tap zoom delay on
@@ -328,7 +331,8 @@ main {
 .alg-note { color: var(--muted); font-size: 0.95rem; }
 .alg-btns { display: flex; gap: 8px; margin-top: 8px; }
 .chip {
-  display: inline-grid; place-items: center; min-width: 44px; height: 40px; padding: 0 10px; border-radius: 10px; background: var(--accent-soft); border: 2px solid var(--accent-line);
+  /* every chip is a button (tap to see the move), so it meets Apple's 44pt minimum */
+  display: inline-grid; place-items: center; min-width: 44px; height: 44px; padding: 0 10px; border-radius: 10px; background: var(--accent-soft); border: 2px solid var(--accent-line);
   font-weight: 700; font-size: 1.15rem; color: var(--ink); cursor: pointer; font-family: inherit;
   transition: transform 0.08s ease;
 }
@@ -340,7 +344,7 @@ main {
 @keyframes reading { 50% { box-shadow: 0 0 0 4px var(--glow); } }
 @media (prefers-reduced-motion: reduce) { .btn.reading { animation: none; } }
 .then { align-self: center; color: var(--muted); font-weight: 600; padding: 0 2px; }
-.times { display: inline-grid; place-items: center; height: 40px; padding: 0 12px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 1.1rem; }
+.times { display: inline-grid; place-items: center; height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 1.1rem; }
 .brain { font-size: 1rem; letter-spacing: 0; }
 .chip-words { color: var(--muted); font-size: 0.98rem; margin: 2px 0 6px; min-height: 1.4em; }
 .chip-words b { color: var(--ink); }
@@ -383,6 +387,45 @@ main {
 .scramble-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin: 12px 0; }
 .scramble-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .scramble-top h3 { margin: 0; }
+/* each turn of the mix is a button: tap it once done (it goes green); the next one to do is outlined */
+.scramble-turns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mix-turn {
+  min-width: 48px; min-height: 44px; padding: 0 8px; border-radius: 12px; border: 2px solid var(--line);
+  background: var(--card); color: var(--ink); font-size: 1.2rem; font-weight: 700; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.mix-turn.next { border-color: var(--accent); }
+.mix-turn.done { background: var(--good-bg); border-color: transparent; color: var(--good); }
+.mix-turn:disabled { cursor: default; }
+.mix-progress { font-weight: 600; margin: 8px 0 4px; }
+.timer-guide-note { background: var(--warm-bg); border-radius: 12px; padding: 8px 12px; }
+.timer-guide-note .btn { margin-top: 6px; }
+/* the progress chart: one 2px line, two labelled dots, recessive grid, a crosshair readout */
+.timer-chart { margin-top: 14px; }
+.chart-head { margin-bottom: 4px; }
+.chart-title { margin: 0; }
+.chart-sub { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.chart-wrap { position: relative; }
+.chart { display: block; touch-action: pan-y; border-radius: 12px; }
+.chart:focus { outline: none; }                     /* a tap is not keyboard focus */
+.chart:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-axis { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart-line { fill: none; stroke: var(--chart-line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--chart-line); stroke: var(--bg); stroke-width: 2; }
+.chart-dot.hot { stroke-width: 3; }
+.chart-label { fill: var(--ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+  paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }   /* a halo where the line runs by */
+.chart-cross { stroke: var(--muted); stroke-width: 1; }
+.chart-hit { fill: transparent; cursor: crosshair; }
+.chart-tip {
+  position: absolute; pointer-events: none; min-width: 110px; padding: 6px 10px; border-radius: 10px;
+  background: var(--card); box-shadow: var(--shadow); border: 1px solid var(--line);
+  display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted);
+}
+.chart-tip strong { color: var(--ink); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.chart-wait { margin-top: 10px; }
+.timer-show-all { margin-top: 8px; }
 .scramble-text {
   font-size: 1.35rem; font-weight: 600; letter-spacing: 0.02em;
   word-spacing: 0.45em; line-height: 1.7; margin: 6px 0 0; color: var(--ink); overflow-wrap: anywhere;

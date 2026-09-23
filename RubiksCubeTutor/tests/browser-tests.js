@@ -1097,6 +1097,156 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the page title stays plain', (await p.title()) === 'Cube Clubhouse');
     await p.close(); }
 
+  // ---- R38-R41: the Timer grows up ----
+  const mixOf = (p) => p.$$eval('#timer-scramble .mix-turn', (b) => b.map((x) => x.textContent));
+  const cubeAfter = (p, n, moves) => p.evaluate(([N, ms]) => { const M = RC.NCube.make(N); return M.applyAlg(M.solved(), ms).join(''); }, [n, moves]);
+  const solvedPicture = (p, n) => p.evaluate((N) => {
+    const by = {};
+    document.querySelectorAll('#timer-cube .face:not(.inner)').forEach((f) => { const i = +f.dataset.index; (by[(i / (N * N)) | 0] ||= new Set()).add(f.className.match(/c-\w/)[0]); });
+    return Object.values(by).every((x) => x.size === 1);
+  }, n);
+
+  console.log('R38 Help me solve this mix');
+  { const p = await timerPage();
+    await p.locator('#timer-solve-help').click();
+    await p.waitForSelector('#timer-guide .guide-count', { timeout: 60000 });
+    ck('it opens the guided steps for this very mix', /step 1 of/.test(await p.locator('#timer-guide .guide-count').textContent()));
+    ck('the steps start from the whole mix, so every turn is ticked', (await p.locator('#timer-scramble .mix-turn.done').count()) === 25);
+    ck('the picture shows the mixed cube', (await stickersOf(p, '#timer-cube')) === await cubeAfter(p, 3, (await mixOf(p)).join(' ')));
+    const note = await p.locator('#timer-guide-note').textContent();
+    ck('it says the steps are for a cube mixed exactly so', /exactly the turns above/.test(note));
+    ck('and offers My real cube for one turned since', (await p.locator('#timer-guide-note .btn', { hasText: 'My real cube' }).count()) === 1);
+    await p.locator('#play-guide, #timer-guide').locator('.speed-btn', { hasText: 'Fast' }).click().catch(() => {});
+    await p.locator('#timer-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.waitForSelector('#timer-guide .guide-done', { timeout: 120000 });
+    await settle(p, '#timer-cube');
+    ck('watching the whole solve ends on a solved cube', await solvedPicture(p, 3));
+    // ticking a turn, a new mix, or starting the clock all put the steps away
+    await p.locator('#timer-scramble .mix-turn').first().click(); await p.waitForTimeout(150);
+    ck('tapping a turn closes the steps', (await p.locator('#timer-guide').evaluate((e) => e.childElementCount)) === 0 && await p.locator('#timer-guide-note').isHidden());
+    await p.locator('#timer-solve-help').click();
+    await p.waitForSelector('#timer-guide .guide-count', { timeout: 60000 });
+    await p.keyboard.down(' '); await p.waitForTimeout(380); await p.keyboard.up(' ');
+    ck('starting the clock closes them: a timed solve is your own', (await p.locator('#timer-guide').evaluate((e) => e.childElementCount)) === 0);
+    await p.keyboard.press('a'); await p.waitForTimeout(150);
+    // big cubes too
+    await p.locator('#timer-size .size-btn', { hasText: '5×5' }).click(); await p.waitForTimeout(200);
+    await p.locator('#timer-solve-help').click();
+    ck('a 5x5 holds the controls while it thinks', await p.locator('#timer-new-mix').isDisabled());
+    await p.waitForSelector('#timer-guide .guide-count', { timeout: 120000 });
+    const chips = await p.locator('#timer-guide .stage-chip').allTextContents();
+    ck('a 5x5 gets centres, edges and the 3x3 stages', chips.includes('Centres') && chips.includes('Pair the edges'), chips.slice(0, 4).join(','));
+    ck('and gives the controls back', !(await p.locator('#timer-new-mix').isDisabled()));
+    ck('the note sends a 5x5 back to its mix, not to My real cube', (await p.locator('#timer-guide-note .btn').count()) === 0);
+    await p.locator('#timer-new-mix').click(); await p.waitForTimeout(150);
+    ck('New mix closes the steps', (await p.locator('#timer-guide').evaluate((e) => e.childElementCount)) === 0);
+    await p.locator('#timer-size .size-btn', { hasText: '3×3' }).click(); await p.waitForTimeout(150);
+    await p.locator('#timer-solve-help').click();
+    await p.waitForSelector('#timer-guide .guide-count', { timeout: 60000 });
+    await p.locator('#timer-guide-note .btn', { hasText: 'My real cube' }).click(); await p.waitForTimeout(150);
+    ck('the My real cube button goes there', !(await p.locator('#screen-solve').isHidden()));
+    await p.close(); }
+
+  console.log('R39 tick off the mix as you go');
+  { const p = await timerPage();
+    const mix = await mixOf(p);
+    ck('every turn is a button', mix.length === 25 && /Tap each turn/.test(await p.locator('#timer-mix-progress').textContent()));
+    const tap = async (i) => { await p.locator('#timer-scramble .mix-turn').nth(i).click(); await settle(p, '#timer-cube'); };
+    await tap(0);
+    ck('one tap: 1 of 25, and the picture makes that turn', /1 of 25/.test(await p.locator('#timer-mix-progress').textContent())
+      && (await stickersOf(p, '#timer-cube')) === await cubeAfter(p, 3, mix.slice(0, 1).join(' ')));
+    await tap(4);
+    ck('tapping further on ticks everything up to it', /5 of 25/.test(await p.locator('#timer-mix-progress').textContent())
+      && (await p.locator('#timer-scramble .mix-turn.done').count()) === 5
+      && (await stickersOf(p, '#timer-cube')) === await cubeAfter(p, 3, mix.slice(0, 5).join(' ')));
+    ck('the next turn is marked', (await p.locator('#timer-scramble .mix-turn').nth(5).getAttribute('class')).includes('next'));
+    ck('done turns say so to a screen reader', (await p.locator('#timer-scramble .mix-turn').nth(0).getAttribute('aria-pressed')) === 'true');
+    await tap(2);
+    ck('tapping a done turn steps back to just before it', /2 of 25/.test(await p.locator('#timer-mix-progress').textContent())
+      && (await stickersOf(p, '#timer-cube')) === await cubeAfter(p, 3, mix.slice(0, 2).join(' ')));
+    ck('the words under the picture follow', /after 2 of 25 turns/.test(await p.locator('#timer-check').textContent()));
+    await tap(24);
+    ck('the last turn: all done, time to solve', /All 25 turns done/.test(await p.locator('#timer-mix-progress').textContent())
+      && (await stickersOf(p, '#timer-cube')) === await cubeAfter(p, 3, mix.join(' ')));
+    await p.keyboard.down(' '); await p.waitForTimeout(380); await p.keyboard.up(' ');
+    ck('turns cannot be ticked while the clock runs', await p.locator('#timer-scramble .mix-turn').first().isDisabled());
+    await p.keyboard.press('a'); await p.waitForTimeout(150);
+    ck('a solve brings a fresh mix with nothing ticked', (await p.locator('#timer-scramble .mix-turn.done').count()) === 0);
+    await p.close(); }
+
+  console.log('R40 inspection calls out 8 and 12 seconds');
+  { const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.addInitScript(() => {
+      const log = { spoken: [], cancels: 0 };
+      window.__speech = log;
+      Object.defineProperty(window, 'SpeechSynthesisUtterance', { configurable: true, value: function (text) { this.text = text; } });
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak(u) { log.spoken.push(u.text); }, cancel() { log.cancels++; }, getVoices: () => [] } });
+    });
+    await p.goto(URL);
+    await p.evaluate((k) => localStorage.setItem(k, JSON.stringify({ size: 3, inspect: true, solves: {} })), TKEY);
+    await p.reload(); await p.waitForTimeout(250);
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    await p.evaluate(() => { const real = performance.now.bind(performance); let off = 0; performance.now = () => real() + off; window.__skip = (ms) => { off += ms; }; });
+    const said = () => p.evaluate(() => window.__speech.spoken.slice());
+    await p.keyboard.down(' '); await p.keyboard.up(' '); await p.waitForTimeout(100);
+    ck('nothing is said at the start', (await said()).length === 0);
+    await p.evaluate(() => window.__skip(8100)); await p.waitForTimeout(150);
+    ck('"Eight seconds" at 8 seconds', (await said()).join('|') === 'Eight seconds');
+    await p.evaluate(() => window.__skip(4000)); await p.waitForTimeout(150);
+    ck('"Twelve seconds" at 12', (await said()).join('|') === 'Eight seconds|Twelve seconds');
+    await p.waitForTimeout(300);
+    ck('each is said once', (await said()).length === 2);
+    await spaceSolve(p, 5000);
+    ck('and never during the solve', (await said()).length === 2);
+    await p.close(); }
+
+  console.log('R41 a chart of your times');
+  { const t = [31200, 28400, 29900, 25100, 26800, 24300, 27700, 22900, 23500, 21800, 24900, 20400, 22100, 19800, 21200, 23800, 18900, 20600, 19500, 20100];
+    const seed = { size: 3, inspect: false, solves: { 3: t.map((ms, i) => ({ ms, pen: i === 6 ? 'DNF' : 0 })) } };
+    const p = await timerPage(seed);
+    ck('it is drawn', (await p.locator('#timer-chart svg.chart').count()) === 1);
+    ck('its title counts the solves', (await p.locator('.chart-title').textContent()) === 'Your 20 solves so far');
+    ck('and says a DNF is left out', /DNF has no time/.test(await p.locator('.chart-sub').textContent()));
+    const d = await p.locator('.chart-line').getAttribute('d');
+    ck('one point per timed solve', (d.match(/[ML]/g) || []).length === 19);
+    const labels = await p.locator('.chart-label').allTextContents();
+    ck('the best and the latest are labelled, nothing else', labels.length === 2 && labels[0] === '⭐ 18.90' && labels[1] === '20.10', labels.join(' / '));
+    ck('the axis reads in round seconds', (await p.locator('.chart-axis').allTextContents()).slice(0, 3).join(',') === '15,20,25');
+    const box = await p.locator('#timer-chart svg').boundingBox();
+    await p.mouse.move(box.x + box.width * 0.45, box.y + box.height / 2); await p.waitForTimeout(100);
+    const tip = await p.locator('.chart-tip').textContent();
+    ck('touching the line reads a time', await p.locator('.chart-tip').isVisible() && /^\d+\.\d\dsolve \d+/.test(tip), tip);
+    await p.mouse.move(5, 5); await p.waitForTimeout(80);             // the mouse moves off the chart
+    ck('the readout goes when the mouse leaves', await p.locator('.chart-tip').isHidden());
+    await p.locator('#timer-chart svg').focus();
+    ck('the keyboard reads the latest first', /^20\.10solve 20/.test(await p.locator('.chart-tip').textContent()));
+    await p.keyboard.press('ArrowLeft'); await p.keyboard.press('ArrowLeft'); await p.keyboard.press('ArrowLeft');
+    ck('and the arrows step back, to the best three solves ago', /^18\.90solve 17 · your best/.test(await p.locator('.chart-tip').textContent()), await p.locator('.chart-tip').textContent());
+    // the list is the chart's table: every value can be read without touching the line
+    ck('the list shows the last 12', (await times(p)).length === 12 && /Show all 20 times/.test(await p.locator('#timer-show-all').textContent()));
+    await p.locator('#timer-show-all').click();
+    ck('Show all lists every time', (await times(p)).length === 20 && (await p.locator('#timer-show-all').getAttribute('aria-expanded')) === 'true');
+    await p.locator('#timer-show-all').click();
+    ck('and folds back', (await times(p)).length === 12);
+    // it redraws for the space it has, and for dark mode
+    const wide = (await p.locator('#timer-chart svg').boundingBox()).width;
+    await p.setViewportSize({ width: 700, height: 950 }); await p.waitForTimeout(250);
+    ck('it redraws to fit a narrower screen', (await p.locator('#timer-chart svg').boundingBox()).width < wide);
+    await p.emulateMedia({ colorScheme: 'dark' }); await p.waitForTimeout(100);
+    ck('dark mode draws the line in its own blue', (await p.locator('.chart-line').evaluate((e) => getComputedStyle(e).stroke)) === 'rgb(90, 146, 224)');
+    await p.close();
+    const q = await timerPage({ size: 3, inspect: false, solves: { 3: [{ ms: 20000, pen: 0 }] } });
+    ck('one time is not a chart yet', (await q.locator('#timer-chart svg').count()) === 0 && /after two times/.test(await q.locator('#timer-chart').textContent()));
+    await q.close();
+    const many = Array.from({ length: 60 }, (_, i) => ({ ms: 30000 - i * 100, pen: 0 }));
+    const r = await timerPage({ size: 3, inspect: false, solves: { 3: many } });
+    ck('with more than 50, it shows the last 50', (await r.locator('.chart-title').textContent()) === 'Your last 50 solves'
+      && ((await r.locator('.chart-line').getAttribute('d')).match(/[ML]/g) || []).length === 50);
+    const one = await r.locator('.chart-label').allTextContents();
+    ck('when the latest is the best, it gets one label, at the end of the line', one.length === 1 && one[0] === '⭐ 24.10', one.join(' / '));
+    await r.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

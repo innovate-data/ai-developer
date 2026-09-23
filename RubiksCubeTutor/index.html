@@ -132,8 +132,13 @@
               <h3>1. Mix your cube like this</h3>
               <button type="button" id="timer-new-mix" class="btn small ghost">🎲 New mix</button>
             </div>
-            <p class="fact">Hold it with the <b>yellow centre on top</b> and the <b>green centre facing you</b>.</p>
-            <p id="timer-scramble" class="scramble-text" aria-label="Turns to mix your cube"></p>
+            <p class="fact">Hold it with the <b>yellow centre on top</b> and the <b>green centre facing you</b>.
+              Tap each turn once you have done it, so you never lose your place.</p>
+            <div id="timer-scramble" class="scramble-turns" role="group" aria-label="Turns to mix your cube"></div>
+            <p id="timer-mix-progress" class="fact mix-progress" aria-live="polite"></p>
+            <div class="btn-row">
+              <button type="button" id="timer-solve-help" class="btn">🦸 Help me solve this mix</button>
+            </div>
           </div>
           <h3 class="timer-step">2. Put the cube down, then time your solve</h3>
           <div id="timer-pad" class="timer-pad" role="button" aria-describedby="timer-help">
@@ -156,11 +161,15 @@
           <div class="cube-card small">
             <div id="timer-cube" class="cube-box short" aria-label="What your cube should look like after the mix"></div>
           </div>
-          <p class="fact timer-check">Your cube should look like this after the mix.</p>
+          <p id="timer-check" class="fact timer-check">Your cube should look like this after the mix.</p>
+          <p id="timer-guide-note" class="fact timer-guide-note" hidden></p>
+          <div id="timer-guide"></div>
           <div id="timer-stats" class="timer-stats"></div>
+          <div id="timer-chart" class="timer-chart"></div>
           <p class="fact timer-avg-note">An <b>average of 5</b> leaves out your best and worst time and averages the middle three, just like in a real competition.</p>
           <h3 class="timer-list-title">Your times</h3>
           <ol id="timer-list" class="timer-list"></ol>
+          <button type="button" id="timer-show-all" class="btn small ghost timer-show-all" hidden></button>
         </div>
       </div>
     </section>
@@ -197,9 +206,11 @@
               <b>Help me solve it</b> walks any mixed cube back to solved, one card at a time, at a
               speed you pick, with pause and stop.</li>
             <li><b>Timer</b> — for a child who can already solve: a speedcubing timer for the
-              real cube. It shows the turns to mix the cube with, times the solve to a hundredth of a
-              second, and keeps their best time and best average for each size. Hold to get ready, let
-              go to start, tap to stop — on the screen, or with the space bar.</li>
+              real cube. It shows the turns to mix the cube with (tap each one off as it is done),
+              times the solve to a hundredth of a second, and keeps their best time and best average
+              for each size, with a chart of how they are getting on. Hold to get ready, let go to
+              start, tap to stop — on the screen, or with the space bar. Stuck on a mix?
+              <b>Help me solve this mix</b> walks through it step by step.</li>
             <li><b>My real cube</b> — the child paints in the colours of the cube in their hand and
               the app works out the steps for that exact cube.</li>
           </ul>

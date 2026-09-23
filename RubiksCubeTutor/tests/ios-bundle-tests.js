@@ -347,6 +347,31 @@ function runCopyPhase() {
       .map((b) => ({ t: b.textContent.trim().slice(0, 16), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) }))
       .filter((b) => b.w < 44 || b.h < 44));
     ck('Timer: every control is at least 44pt', timerSmall.length === 0, JSON.stringify(timerSmall).slice(0, 160));
+    // tick off turns and ask for help, by touch
+    await p.locator('#timer-scramble .mix-turn').first().tap();
+    await p.waitForTimeout(350);
+    ck('Timer: a tapped turn is ticked off', /1 of 25/.test(await p.locator('#timer-mix-progress').textContent()));
+    await p.locator('#timer-solve-help').tap();
+    await p.waitForSelector('#timer-guide .guide-count', { timeout: 60000 });
+    ck('Timer: Help me solve this mix opens the steps', /step 1 of/.test(await p.locator('#timer-guide .guide-count').textContent()));
+    const helpSmall = await p.evaluate(() => [...document.querySelectorAll('#screen-timer button')]
+      .filter((b) => b.offsetParent !== null)
+      .map((b) => ({ t: b.textContent.trim().slice(0, 16), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) }))
+      .filter((b) => b.w < 44 || b.h < 44));
+    ck('Timer: with the steps open, every control is still 44pt', helpSmall.length === 0, JSON.stringify(helpSmall).slice(0, 160));
+    // a second time makes a chart, which has to fit the screen
+    await p.locator('#timer-pad').scrollIntoViewIfNeeded();
+    const pb2 = await p.locator('#timer-pad').boundingBox();
+    const at2 = [{ x: Math.round(pb2.x + pb2.width / 2), y: Math.round(pb2.y + pb2.height / 2) }];
+    const touch2 = (type) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : at2 });
+    await touch2('touchStart'); await p.waitForTimeout(420); await touch2('touchEnd');
+    await p.waitForTimeout(500);
+    await touch2('touchStart'); await touch2('touchEnd'); await p.waitForTimeout(250);
+    ck('Timer: two times draw a chart', (await p.locator('#timer-chart svg.chart').count()) === 1);
+    ck('Timer: the chart fits the screen', await p.evaluate(() => {
+      const c = document.querySelector('#timer-chart svg').getBoundingClientRect();
+      return c.right <= document.documentElement.clientWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth;
+    }));
     await p.evaluate(() => localStorage.removeItem('cubeclubhouse.timer'));
 
     ck('no page errors', errs.length === 0, errs.join(' | ') || 'none');

@@ -157,6 +157,18 @@ the best in the list. A new best says what the old one was, with confetti. Leavi
 screen mid-solve throws that solve away. Times are stored on the device only when the
 child records one, with nothing but the time and its penalty — no dates.
 
+Each turn of the mix is a button: tap it once it is done, and it turns green while the
+picture makes that turn, so a child never loses their place in a long mix (a 6×6 has 80
+turns). Tapping a done turn steps back to just before it. **Help me solve this mix** walks
+the child from that exact mix to solved on any size, with the same guided steps, speeds,
+Pause and Stop as Play; a note says the steps assume the cube has not been turned since,
+and offers My real cube for one that has. Starting the clock, ticking a turn or a new mix
+puts the steps away: a timed solve is the child's own. During the 15 seconds to look, the
+app calls out "Eight seconds" and "Twelve seconds" as a competition judge would, since
+the child is looking at the cube, not the screen. A chart of the last 50 solves (lower is
+faster) labels only the best and the latest; touching the line or using the arrow keys
+reads any point, and **Show all** lists every time, so nothing is only in the chart.
+
 The walkthrough plays at a speed the child picks — 🐢 Slow, 🚶 Steady or 🐇 Fast, also
 remembered — and while *Watch the whole solve* is running, the step buttons give way to
 **Pause** (which becomes *Carry on*) and **Stop here**. The run plays one move at a
@@ -398,10 +410,12 @@ same reason.
   one DNF and fail on two, and round to the nearest hundredth; bests found anywhere in
   the history; inspection at exactly 15 and 17 seconds; and a mix of the right length for
   every size.
+* the progress chart's axis: round whole-second ticks, evenly spaced, never below zero,
+  that always cover every time plotted.
 
-48 groups in all.
+49 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 219 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 266 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -441,13 +455,17 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R35 | Leaving the screen mid-solve throws the solve away; Escape cancels the looking time. |
 | R36 | The Privacy and For parents pages describe the times; Clear saved progress erases them at once; opening the Timer stores nothing; damaged saved data is skipped, not fatal. |
 | R37 | Cube Clubhouse® carries its ® in the header on every screen, the footer (with the ownership notice), the first mention on the grown-ups pages, the licence and the trademark note, without making the header taller; the page title stays plain. |
+| R38 | Help me solve this mix opens guided steps for that exact mix (every turn ticked, the picture mixed), a whole watched solve ends solved, the steps close on a tick, a new mix or a started clock, a 5×5 holds the controls while it thinks and plans centres and edges, and a 3×3 note links to My real cube. |
+| R39 | Ticking the mix: one tap turns the picture by one move, a later tap ticks everything up to it, a done turn steps back, the last turn says it is time to solve, and turns cannot be ticked while the clock runs. |
+| R40 | Inspection says "Eight seconds" and "Twelve seconds", once each, and nothing during the solve. |
+| R41 | The progress chart: one point per timed solve (a DNF left out, and said so), round-second ticks, only the best and the latest labelled (one label when they are the same solve), a readout by touch and by arrow keys, a Show all list, a redraw on resize, its own dark-mode blue, no chart for a single time, and the last 50 of a longer history. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
 the build phases, both configurations on iOS 17.0, no `#available` check the target
 already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
-produces, by touch, on an iPhone and an iPad profile: 110 checks, including the launch
+produces, by touch, on an iPhone and an iPad profile: 120 checks, including the launch
 screen (Info.plist wired into both configurations, a background colour identical to the
 page's in light and dark, the logo at every scale and appearance and narrow enough for
 the smallest iPhone, and a cover that lifts on load, on failure and after a timeout), a whole
