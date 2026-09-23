@@ -126,7 +126,7 @@ tips on the right.
 
 **For grown-ups** – reached from the three footer links, never from the child's nav:
 what the app teaches and how to sit with a child through it; a privacy page naming the
-three things kept on the device and the fact that the app makes no network requests at
+four things kept on the device and the fact that the app makes no network requests at
 all, with a two-press button that erases the lot; and the licence conditions in full - the app is
 proprietary, owned by Ira Learning LLC - with the typeface's own licence and the
 trademark notes. `#parents`, `#privacy` and `#licence` open it at the right
@@ -137,6 +137,20 @@ that starts on the first move and a move counter. Bigger cubes get a row of butt
 inner layer ("2U" is the second layer from the top). *Help me solve it* opens the guided
 walkthrough on every size; making a manual move clears the (now stale) guide. The
 chosen size is remembered on the device.
+
+**Timer** – a speedcubing timer for the child's real cube, for once they can solve. It
+shows a mix in standard notation (11 turns for a 2×2, 25 for a 3×3, then 40, 60 and 80),
+held yellow-up green-front like the rest of the app, with a picture of how the cube should
+look afterwards. Hold the big pad (or the space bar) until it turns green, let go to start,
+and touch anywhere or press any key to stop; letting go too soon starts nothing. Times
+read to the hundredth. An optional 15 seconds to look first follows competition rules:
+starting after 15 seconds adds two, after 17 is a DNF. The last solve can be marked +2 or
+DNF, or deleted with a second tap. For each size it keeps the best time, the best average
+of 5, and the current averages of 5 and 12, worked out the way the World Cube Association
+does (drop the best and worst, average the rest; two DNFs make a DNF average), and stars
+the best in the list. A new best says what the old one was, with confetti. Leaving the
+screen mid-solve throws that solve away. Times are stored on the device only when the
+child records one, with nothing but the time and its penalty — no dates.
 
 The walkthrough plays at a speed the child picks — 🐢 Slow, 🚶 Steady or 🐇 Fast, also
 remembered — and while *Watch the whole solve* is running, the step buttons give way to
@@ -307,6 +321,12 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
 * Drag to orbit; highlights pulse the stickers a step talks about.
 * `NetView` draws the unfolded cube; in editable mode each sticker is a button.
 
+### Timer (`js/timer.js`)
+* The timer's arithmetic, with no page in it: clock readings cut to hundredths, formatting
+  (9.87, 1:02.35, DNF), WCA averages of 5 and 12, bests anywhere in the history, and the
+  inspection penalties. The Timer screen in `js/app.js` is a small state machine around
+  it: idle, holding, ready, running, plus inspecting.
+
 ### App (`js/app.js`)
 * `Station` couples a view with the state the app trusts and a move history (undo).
 * `Guide` drives solver steps on a station.
@@ -368,10 +388,15 @@ same reason.
   `Content-Security-Policy` allows no http(s) source anywhere and sets `connect-src
   'none'`, the typeface and its licence are really in `fonts/`, and the iOS shell
   both blocks http(s) inside the web view and refuses navigation off the bundle.
+* the speed timer's arithmetic: times cut to hundredths and printed as a competition
+  timer prints them; averages of 5 and 12 that drop the best and worst, count a +2, drop
+  one DNF and fail on two, and round to the nearest hundredth; bests found anywhere in
+  the history; inspection at exactly 15 and 17 seconds; and a mix of the right length for
+  every size.
 
-42 groups in all.
+48 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 164 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 212 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -405,14 +430,20 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R29 | Swapping cube size with a mixed cube on screen takes a second tap, and the first tap says what will be lost. A solved cube swaps on one tap. |
 | R30 | The keyboard reaches every layer: X, Y and Z turn the whole cube, and a digit typed first picks an inner layer on a big cube (2 then R is 2R). A layer the cube has not got is ignored. |
 | R31 | Clear my colours really clears: every sticker but the centres goes grey, and Check asks for the grey ones before it says anything about the cube. |
+| R32 | The speed timer: holding turns the pad amber, then green; letting go too soon starts nothing; it counts in hundredths; any key or a touch anywhere stops it and keeps the time; a fresh mix follows; and the space bar never presses a focused button. |
+| R33 | Best time, best average of 5 and the averages of 5 and 12 match the WCA arithmetic; a faster solve is announced as a new best with the old one named; each size keeps its own times and mix length; everything survives a reload. |
+| R34 | +2 and DNF toggle on the last solve (a DNF is never the best), delete takes two taps, and the 15 seconds to look count down, then give +2, then DNF. The clock is fast-forwarded rather than waited for. |
+| R35 | Leaving the screen mid-solve throws the solve away; Escape cancels the looking time. |
+| R36 | The Privacy and For parents pages describe the times; Clear saved progress erases them at once; opening the Timer stores nothing; damaged saved data is skipped, not fatal. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
 the build phases, both configurations on iOS 17.0, no `#available` check the target
 already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
-produces, by touch, on an iPhone and an iPad profile: 79 checks, including a whole
-4×4 solved by tapping, that the app keeps painting and holds its controls while it
+produces, by touch, on an iPhone and an iPad profile: 94 checks, including a whole
+4×4 solved by tapping, a timed solve by real touch events (hold, let go, tap to stop),
+the tab bar staying on one row, that the app keeps painting and holds its controls while it
 works a big cube out, that the bundled typeface really loads and nothing is fetched
 from off the device, and that no control is smaller than 44pt.
 

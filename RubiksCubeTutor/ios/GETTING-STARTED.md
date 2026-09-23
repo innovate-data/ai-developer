@@ -88,6 +88,10 @@ Kids category, note that it also has no external links, so no parental gate is n
 ## Known scope
 
 Every part of the app is free to use, with nothing held back and nothing to buy.
+The **Timer** tab is a speedcubing timer for the child's real cube: hold the pad until it
+turns green, let go to start, tap anywhere to stop. It works with an iPad keyboard's space
+bar too. Its times stay on the device, which App Privacy does not count as collection:
+"Data Not Collected" still holds.
 Every size from 2×2 to 6×6 has a guided solve on the Play screen. The 4×4, 5×5 and
 6×6 use the reduction method (centres, then edge pairing, then the 3×3 method), so a
 6×6 solve is long, around 95 cards. Working one out is real arithmetic: about a

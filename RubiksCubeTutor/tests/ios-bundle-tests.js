@@ -104,7 +104,7 @@ function runCopyPhase() {
 
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
-  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/app.js',
+  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/timer.js', 'js/app.js',
                    'fonts/fredoka-latin-var.woff2', 'fonts/OFL.txt']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));
   }
@@ -270,6 +270,34 @@ function runCopyPhase() {
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-count'), null, { timeout: 60000 });
     ck('3x3: the guide opens with nothing to pay', (await p.locator('#play-guide .guide-count').count()) === 1
       && (await p.locator('#play-guide .paywall').count()) === 0);
+
+    // The speed timer, by real touches: hold the pad, let go, then tap to stop.
+    await p.locator('nav button[data-screen="timer"]').tap();
+    await p.waitForTimeout(250);
+    ck('the tab bar is one row', await p.evaluate(() => {
+      const tops = [...document.querySelectorAll('nav button')].map((b) => Math.round(b.getBoundingClientRect().top));
+      return tops.every((t) => t === tops[0]);
+    }));
+    ck('the Timer fits the screen', await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
+    await p.locator('#timer-pad').scrollIntoViewIfNeeded();
+    const pb = await p.locator('#timer-pad').boundingBox();
+    const cdp = await ctx.newCDPSession(p);
+    const at = [{ x: Math.round(pb.x + pb.width / 2), y: Math.round(pb.y + pb.height / 2) }];
+    const touch = (type) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : at });
+    await touch('touchStart'); await p.waitForTimeout(420);
+    ck('Timer: holding the pad makes it ready', (await p.locator('#timer-pad').getAttribute('data-phase')) === 'ready');
+    await touch('touchEnd'); await p.waitForTimeout(700);
+    ck('Timer: letting go starts it', (await p.locator('#timer-pad').getAttribute('data-phase')) === 'running');
+    await touch('touchStart'); await touch('touchEnd'); await p.waitForTimeout(200);
+    const got = await p.$$eval('#timer-list .timer-t', (l) => l.map((x) => x.textContent.trim()));
+    ck('Timer: a tap stops it and keeps the time', got.length === 1 && /^0\.[5-9]\d$|^1\.\d\d$/.test(got[0]), got.join(','));
+    ck('Timer: the page did not scroll or zoom under the finger', await p.evaluate(() => window.visualViewport ? window.visualViewport.scale === 1 : true));
+    const timerSmall = await p.evaluate(() => [...document.querySelectorAll('#screen-timer button')]
+      .filter((b) => b.offsetParent !== null)
+      .map((b) => ({ t: b.textContent.trim().slice(0, 16), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) }))
+      .filter((b) => b.w < 44 || b.h < 44));
+    ck('Timer: every control is at least 44pt', timerSmall.length === 0, JSON.stringify(timerSmall).slice(0, 160));
+    await p.evaluate(() => localStorage.removeItem('cubeclubhouse.timer'));
 
     ck('no page errors', errs.length === 0, errs.join(' | ') || 'none');
     await ctx.close();

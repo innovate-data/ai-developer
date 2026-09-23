@@ -11,7 +11,7 @@ export default [
         Event: 'readonly', SpeechSynthesisUtterance: 'readonly', speechSynthesis: 'readonly',
         Promise: 'readonly', Set: 'readonly', Map: 'readonly', process: 'readonly', __dirname: 'readonly',
         getComputedStyle: 'readonly', PointerEvent: 'readonly', KeyboardEvent: 'readonly', MessageChannel: 'readonly',
-        requestAnimationFrame: 'readonly', MutationObserver: 'readonly', performance: 'readonly',
+        requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly', MutationObserver: 'readonly', performance: 'readonly',
         // in the tests only: Node 18+ and every target browser both provide it
         fetch: 'readonly',
         // the app's own global, reached from inside page.evaluate() in the browser tests

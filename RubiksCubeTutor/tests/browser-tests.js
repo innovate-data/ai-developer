@@ -914,6 +914,171 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('painting one counts down', /47 stickers are still grey/.test(await p.locator('#solve-msg').textContent()));
     await p.close(); }
 
+  // ---- R32-R36: the speed timer ----
+  const TKEY = 'cubeclubhouse.timer';
+  const timerPage = async (seed) => {
+    const p = await newPage();
+    await p.evaluate(([k, v]) => { localStorage.clear(); if (v) localStorage.setItem(k, JSON.stringify(v)); }, [TKEY, seed || null]);
+    await p.reload(); await p.waitForTimeout(250);
+    await p.locator('nav button[data-screen="timer"]').click();
+    await p.waitForTimeout(150);
+    // Fast-forward the clock without waiting: the page reads performance.now().
+    await p.evaluate(() => { const real = performance.now.bind(performance); let off = 0; performance.now = () => real() + off; window.__skip = (ms) => { off += ms; }; });
+    return p;
+  };
+  const phase = (p) => p.locator('#timer-pad').getAttribute('data-phase');
+  const times = (p) => p.$$eval('#timer-list li:not(.timer-empty):not(.timer-more) .timer-t', (l) => l.map((x) => x.textContent.trim()));
+  const stat = (p, label) => p.evaluate((l) => [...document.querySelectorAll('#timer-stats .stat')]
+    .find((t) => t.querySelector('.stat-label').textContent === l).querySelector('.stat-value').textContent, label);
+  // hold the space bar until ready, let go, "solve" for ms, then stop with a key
+  const spaceSolve = async (p, ms, stopKey = ' ') => {
+    await p.keyboard.down(' '); await p.waitForTimeout(380);
+    await p.keyboard.up(' ');
+    await p.evaluate((t) => window.__skip(t), ms);
+    await p.waitForTimeout(60);
+    await p.keyboard.down(stopKey); await p.keyboard.up(stopKey);
+    await p.waitForTimeout(120);
+  };
+
+  console.log('R32 the speed timer: hold, let go, stop');
+  { const p = await timerPage();
+    ck('it starts empty', (await times(p)).length === 0 && /No times yet for the 3×3/.test(await p.locator('#timer-list').textContent()));
+    ck('a 3x3 mix is 25 turns', (await p.locator('#timer-scramble').textContent()).trim().split(/\s+/).length === 25);
+    // let go too soon and nothing starts
+    await p.keyboard.down(' '); await p.waitForTimeout(80);
+    ck('holding turns the pad amber first', (await phase(p)) === 'holding');
+    await p.keyboard.up(' '); await p.waitForTimeout(60);
+    ck('letting go too soon does not start the clock', (await phase(p)) === 'idle');
+    await p.keyboard.down(' '); await p.waitForTimeout(380);
+    ck('after a moment it is ready (green)', (await phase(p)) === 'ready');
+    await p.keyboard.up(' '); await p.waitForTimeout(60);
+    ck('letting go starts it', (await phase(p)) === 'running');
+    ck('the size buttons are held while it runs', await p.locator('#timer-size .size-btn').first().isDisabled());
+    await p.evaluate(() => window.__skip(12340));
+    await p.waitForTimeout(80);
+    ck('it counts in hundredths as it runs', /^1[23]\.\d\d$/.test((await p.locator('#timer-display').textContent()).trim()), await p.locator('#timer-display').textContent());
+    const mixBefore = await p.locator('#timer-scramble').textContent();
+    await p.keyboard.down('a'); await p.keyboard.up('a');           // any key stops it
+    await p.waitForTimeout(120);
+    const t = await times(p);
+    ck('any key stops it, and the time is kept', t.length === 1 && /^12\.\d\d$/.test(t[0]), t.join(','));
+    ck('the first time is welcomed', /first time on the board/.test(await p.locator('#timer-said').textContent()));
+    ck('and a fresh mix is ready for the next go', (await p.locator('#timer-scramble').textContent()) !== mixBefore);
+    // the space bar belongs to the timer: it never presses a focused button
+    await p.locator('#timer-new-mix').focus();
+    const mix = await p.locator('#timer-scramble').textContent();
+    await p.keyboard.down(' '); await p.waitForTimeout(60); await p.keyboard.up(' ');
+    await p.waitForTimeout(100);
+    ck('space never presses the focused button', (await p.locator('#timer-scramble').textContent()) === mix);
+    // and it stops on a touch anywhere, too
+    await p.keyboard.down(' '); await p.waitForTimeout(380); await p.keyboard.up(' ');
+    await p.evaluate(() => window.__skip(8000));
+    await p.mouse.click(5, 400);
+    await p.waitForTimeout(120);
+    ck('a tap anywhere stops it', (await times(p)).length === 2 && (await phase(p)) === 'idle');
+    await p.close(); }
+
+  console.log('R33 best times and averages, per size, kept after a reload');
+  { const seed = { size: 3, inspect: false, solves: { 3: [10000, 12000, 11000, 9000, 13000].map((ms) => ({ ms, pen: 0 })) } };
+    const p = await timerPage(seed);
+    ck('best time', (await stat(p, 'Best time')) === '9.00');
+    ck('best average of 5', (await stat(p, 'Best average of 5')) === '11.00');
+    ck('average of last 5', (await stat(p, 'Average of last 5')) === '11.00');
+    ck('average of last 12 waits for 12 solves', (await stat(p, 'Average of last 12')) === '–');
+    ck('the best is starred in the list', /9\.00\s*⭐/.test(await p.locator('#timer-list').textContent())
+      && (await p.locator('#timer-list li.best .timer-star').getAttribute('aria-label')) === 'your best');
+    // beat it
+    await spaceSolve(p, 7500);
+    const said = await p.locator('#timer-said').textContent();
+    ck('a faster solve is a new best, and says the old one', /New best time! Your old best was 9\.00/.test(said), said);
+    ck('with confetti', (await p.locator('.confetti').count()) === 1);
+    ck('the tiles follow', /^7\.\d\d$/.test(await stat(p, 'Best time')) && (await stat(p, 'Solves')) === '6');
+    // every size keeps its own
+    await p.locator('#timer-size .size-btn', { hasText: '2×2' }).click(); await p.waitForTimeout(150);
+    ck('a 2x2 has its own (empty) list', (await times(p)).length === 0 && (await stat(p, 'Best time')) === '–');
+    ck('and an 11-turn mix', (await p.locator('#timer-scramble').textContent()).trim().split(/\s+/).length === 11);
+    await p.locator('#timer-size .size-btn', { hasText: '6×6' }).click(); await p.waitForTimeout(150);
+    const six = (await p.locator('#timer-scramble').textContent()).trim().split(/\s+/);
+    ck('a 6x6 mix is 80 turns, inner layers included', six.length === 80 && six.some((m) => /^[23]/.test(m)));
+    await p.locator('#timer-size .size-btn', { hasText: '3×3' }).click(); await p.waitForTimeout(150);
+    await p.reload(); await p.waitForTimeout(250);
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    ck('everything is still there after a reload', (await times(p)).length === 6 && (await p.locator('#timer-size .size-btn.active').textContent()) === '3×3');
+    await p.close(); }
+
+  console.log('R34 +2, DNF and delete, and the 15 seconds to look');
+  { const p = await timerPage();
+    await spaceSolve(p, 10000);
+    await p.locator('#timer-plus2').click();
+    ck('+2 adds two seconds', /^12\.\d\d \(\+2\)$/.test((await times(p))[0]) && (await p.locator('#timer-plus2').getAttribute('aria-pressed')) === 'true');
+    await p.locator('#timer-dnf').click();
+    ck('DNF replaces it', /^DNF \(10\.\d\d\)$/.test((await times(p))[0]) && (await p.locator('#timer-plus2').getAttribute('aria-pressed')) === 'false');
+    ck('a DNF is never the best time', (await stat(p, 'Best time')) === '–');
+    await p.locator('#timer-dnf').click();
+    ck('tapping DNF again takes it off', /^10\.\d\d$/.test((await times(p))[0]));
+    await p.locator('#timer-delete').click();
+    ck('delete asks for a second tap', (await times(p)).length === 1 && /Tap again/.test(await p.locator('#timer-delete').textContent()));
+    await p.locator('#timer-delete').click();
+    ck('the second tap deletes it', (await times(p)).length === 0);
+
+    // inspection: a tap starts 15 seconds of looking, counted down
+    await p.locator('#timer-inspect').click();
+    ck('inspection can be switched on', (await p.locator('#timer-inspect').getAttribute('aria-pressed')) === 'true');
+    await p.keyboard.down(' '); await p.keyboard.up(' '); await p.waitForTimeout(100);
+    ck('a tap starts the looking time', (await phase(p)) === 'inspecting' && (await p.locator('#timer-display').textContent()) === '15');
+    await p.evaluate(() => window.__skip(5200)); await p.waitForTimeout(100);
+    ck('it counts down', (await p.locator('#timer-display').textContent()) === '10');
+    await spaceSolve(p, 9000);
+    ck('starting within 15 seconds costs nothing', /^9\.\d\d$/.test((await times(p))[0]));
+    await p.keyboard.down(' '); await p.keyboard.up(' '); await p.waitForTimeout(60);
+    await p.evaluate(() => window.__skip(15800)); await p.waitForTimeout(100);
+    ck('after 15 seconds it shows +2', (await p.locator('#timer-display').textContent()) === '+2');
+    await spaceSolve(p, 9000);
+    ck('and the solve gets the +2', /\(\+2\)$/.test((await times(p))[0]) && /2 seconds were added/.test(await p.locator('#timer-said').textContent()));
+    await p.keyboard.down(' '); await p.keyboard.up(' '); await p.waitForTimeout(60);
+    await p.evaluate(() => window.__skip(17600)); await p.waitForTimeout(100);
+    await spaceSolve(p, 9000);
+    ck('after 17 seconds the solve is a DNF', /^DNF/.test((await times(p))[0]));
+    ck('the setting is remembered', await p.evaluate((k) => JSON.parse(localStorage.getItem(k)).inspect === true, TKEY));
+    await p.close(); }
+
+  console.log('R35 a solve cut short is not a time');
+  { const p = await timerPage();
+    await p.keyboard.down(' '); await p.waitForTimeout(380); await p.keyboard.up(' ');
+    await p.evaluate(() => { location.hash = 'learn'; });           // left the screen mid-solve
+    await p.waitForTimeout(200);
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    ck('leaving the screen throws the running solve away', (await times(p)).length === 0 && (await phase(p)) === 'idle');
+    await p.keyboard.down(' '); await p.waitForTimeout(380); await p.keyboard.up(' ');
+    await p.keyboard.press('Escape');
+    ck('Escape does not throw it away; it stops it, like any key', (await times(p)).length === 1);
+    await p.locator('#timer-inspect').click();
+    await p.keyboard.down(' '); await p.keyboard.up(' '); await p.waitForTimeout(60);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(60);
+    ck('Escape cancels the looking time', (await phase(p)) === 'idle' && (await times(p)).length === 1);
+    await p.close(); }
+
+  console.log('R36 the grown-ups pages know about the times');
+  { const seed = { size: 3, inspect: false, solves: { 3: [{ ms: 9000, pen: 0 }] } };
+    const p = await timerPage(seed);
+    await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(200);
+    ck('privacy lists the times', /times from the Timer screen/.test(await p.locator('#privacy').textContent()));
+    ck('for parents describes the Timer', /speedcubing timer/.test(await p.locator('#parents').textContent()));
+    await p.locator('#clear-progress').click(); await p.locator('#clear-progress').click();
+    await p.waitForTimeout(150);
+    ck('Clear saved progress erases the times', await p.evaluate((k) => localStorage.getItem(k) === null, TKEY));
+    // opening the Timer on a fresh device leaves storage alone until the child does something
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    ck('just opening the Timer stores nothing', await p.evaluate((k) => localStorage.getItem(k) === null, TKEY));
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    ck('and the Timer shows none straight away', (await times(p)).length === 0);
+    // a damaged entry cannot break the page
+    await p.evaluate((k) => localStorage.setItem(k, '{"size":9,"solves":{"3":[{"ms":"x"},{"ms":5000,"pen":0},null]}}'), TKEY);
+    await p.reload(); await p.waitForTimeout(250);
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    ck('bad saved data is skipped, good data kept', (await times(p)).length === 1 && (await p.locator('#timer-size .size-btn.active').textContent()) === '3×3');
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

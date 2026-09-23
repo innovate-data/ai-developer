@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES } = root.RC;
+  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES, Timer } = root.RC;
   // The biggest cube knows every move token the app can show, so it does the describing.
   const ANY = NCube.make(NCube.SIZES[NCube.SIZES.length - 1]);
 
@@ -205,6 +205,7 @@
   const PROGRESS_KEY = 'cubeclubhouse.progress';
   const LEGACY_PROGRESS_KEY = 'cubebuddy.progress';   // the app's earlier name
   const SIZE_KEY = 'cubeclubhouse.size';
+  const TIMER_KEY = 'cubeclubhouse.timer';        // the Timer screen's times, per cube size
   function loadProgress() {
     try {
       const raw = localStorage.getItem(PROGRESS_KEY) || localStorage.getItem(LEGACY_PROGRESS_KEY);
@@ -575,6 +576,7 @@
   function showScreen(name) {
     hush();
     for (const k of Object.keys(screens)) {
+      if (k !== name && !screens[k].section.hidden && screens[k].onHide) screens[k].onHide();
       screens[k].section.hidden = k !== name;
       // The grown-ups screen has no button in the child's nav; it is reached from the
       // footer, so there is nothing to mark as active.
@@ -1074,6 +1076,327 @@
     screens.play = { section, station, userMove };
   }
 
+  // ================================================================ TIMER
+  // A speedcubing timer for the child's real cube: a mix to copy, hold-and-release to
+  // start, any touch or key to stop, optional competition inspection, and personal bests
+  // for each size. The arithmetic lives in js/timer.js; this is the page around it.
+  function buildTimer() {
+    const section = $('#screen-timer');
+    const pad = $('#timer-pad', section);
+    const display = $('#timer-display', section);
+    const help = $('#timer-help', section);
+    const sizeBox = $('#timer-size', section);
+    const scrambleEl = $('#timer-scramble', section);
+    const inspectBtn = $('#timer-inspect', section);
+    const lastBox = $('#timer-last', section);
+    const said = $('#timer-said', section);
+    const plus2 = $('#timer-plus2', section);
+    const dnf = $('#timer-dnf', section);
+    const del = $('#timer-delete', section);
+    const statsBox = $('#timer-stats', section);
+    const list = $('#timer-list', section);
+    const KEEP = 1000;                 // times kept per size; the oldest go first
+    const HOLD_MS = 300;               // how long to hold before the clock is ready
+    const SHOWN = 12;                  // times listed on screen
+
+    // Storage is the child's own device. Anything that is not a well-formed time is
+    // dropped on the way in, so a damaged entry cannot break the page.
+    const good = (x) => !!x && Number.isFinite(x.ms) && x.ms >= 0 && (x.pen === 0 || x.pen === 2 || x.pen === Timer.DNF);
+    function load() {
+      let d = null;
+      try { d = JSON.parse(localStorage.getItem(TIMER_KEY)); } catch { /* no storage, or not ours */ }
+      if (!d || typeof d !== 'object') d = {};
+      const out = { size: NCube.SIZES.includes(d.size) ? d.size : 3, inspect: d.inspect === true, solves: {} };
+      if (d.solves && typeof d.solves === 'object') {
+        for (const n of NCube.SIZES) {
+          if (Array.isArray(d.solves[n])) out.solves[n] = d.solves[n].filter(good).map((x) => ({ ms: x.ms, pen: x.pen }));
+        }
+      }
+      return out;
+    }
+    let data = load();
+    const save = () => { try { localStorage.setItem(TIMER_KEY, JSON.stringify(data)); } catch { /* private mode, or full */ } };
+    const solves = () => (data.solves[data.size] = data.solves[data.size] || []);
+
+    const station = Station($('#timer-cube', section), { size: 40 }, NCube.make(data.size));
+    let mix = [];
+    function newMix() {
+      const M = station.model;
+      mix = M.scramble(Timer.SCRAMBLE_LENGTH[M.N] || 25);
+      scrambleEl.textContent = mix.join(' ');
+      station.view.resetView();
+      station.set(M.applyAlg(M.solved(), mix));
+    }
+
+    // ---- the clock
+    // idle -> hold -> ready -> (let go) running -> (any touch or key) idle.
+    // With inspection on, a first tap starts 15 seconds of looking; the hold, ready and
+    // let-go that start the solve then happen while the looking time runs on.
+    let phase = 'idle';
+    let inspecting = false, inspectStart = 0, startAt = 0, startPen = 0;
+    let holdTimer = null, raf = 0;
+    let justStopped = false;    // the touch or key that stopped the clock is still down
+    let tapToInspect = false;   // a press that will start inspection when it lets go
+
+    const HELP = {
+      idle: () => (data.inspect
+        ? 'Tap here, or press the space bar, to start your 15 seconds of looking.'
+        : 'Hold here, or hold the space bar, until the numbers turn green. Let go to start. Tap to stop.'),
+      inspecting: () => 'Look at your cube, but do not turn it yet. Hold here when you are ready, and let go to start.',
+      holding: () => 'Keep holding…',
+      ready: () => 'Let go to start!',
+      running: () => 'Tap anywhere, or press any key, to stop.',
+    };
+    function setPhase(p) {
+      phase = p;
+      const shown = p === 'idle' && inspecting ? 'inspecting' : p;
+      pad.dataset.phase = shown;
+      help.textContent = HELP[shown]();
+      const busy = p !== 'idle' || inspecting;
+      section.classList.toggle('timing', busy);
+      sizeBox.querySelectorAll('.size-btn').forEach((b) => { b.disabled = busy; });
+      for (const b of [inspectBtn, $('#timer-new-mix', section), plus2, dnf, del]) b.disabled = busy;
+    }
+    function frame() {
+      const now = performance.now();
+      if (phase === 'running') display.textContent = Timer.format(Timer.clockTime(now - startAt));
+      else if (inspecting) {
+        const t = now - inspectStart;
+        display.textContent = t < Timer.INSPECTION_MS ? String(Math.ceil((Timer.INSPECTION_MS - t) / 1000))
+          : t <= Timer.INSPECTION_DNF_MS ? '+2' : 'DNF';
+      } else { raf = 0; return; }
+      raf = requestAnimationFrame(frame);
+    }
+    const run = () => { if (!raf) raf = requestAnimationFrame(frame); };
+
+    function press() {
+      if (justStopped) return;
+      if (phase === 'running') { stop(); return; }
+      if (phase !== 'idle') return;
+      if (data.inspect && !inspecting) { tapToInspect = true; return; }
+      setPhase('holding');
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => { if (phase === 'holding') setPhase('ready'); }, HOLD_MS);
+    }
+    function release() {
+      if (justStopped) { justStopped = false; return; }
+      if (tapToInspect) {
+        tapToInspect = false;
+        inspecting = true;
+        inspectStart = performance.now();
+        setPhase('idle');
+        run();
+        return;
+      }
+      clearTimeout(holdTimer);
+      if (phase === 'ready') start();
+      else if (phase === 'holding') setPhase('idle');      // let go too soon: try again
+    }
+    function start() {
+      startPen = inspecting ? Timer.inspectionPenalty(performance.now() - inspectStart) : 0;
+      inspecting = false;
+      startAt = performance.now();
+      setPhase('running');
+      lastBox.hidden = true;
+      run();
+    }
+    function stop() {
+      const ms = Timer.clockTime(performance.now() - startAt);
+      justStopped = true;
+      cancelAnimationFrame(raf); raf = 0;
+      display.textContent = Timer.format(ms);
+      setPhase('idle');
+      record({ ms, pen: startPen });
+    }
+    // Leaving the screen, hiding the app or changing size throws a running solve away:
+    // a time that nobody stopped is not a time.
+    function abort() {
+      const busy = phase !== 'idle' || inspecting;
+      clearTimeout(holdTimer);
+      cancelAnimationFrame(raf); raf = 0;
+      inspecting = false; tapToInspect = false; justStopped = false;
+      if (busy) display.textContent = '0.00';
+      setPhase('idle');
+    }
+
+    // ---- times and bests
+    function record(solve) {
+      const before = Timer.stats(solves());
+      solves().push(solve);
+      if (solves().length > KEEP) solves().splice(0, solves().length - KEEP);
+      save();
+      const after = Timer.stats(solves());
+      const lines = [];
+      if (solve.pen === 2) lines.push('You started after 15 seconds of looking, so 2 seconds were added.');
+      if (solve.pen === Timer.DNF) lines.push('You looked for more than 17 seconds, so this one counts as DNF (did not finish).');
+      let party = false;
+      if (after.best !== null && (before.best === null || after.best < before.best)) {
+        lines.push(before.best === null ? '⏱️ Your first time on the board!' : '🎉 New best time! Your old best was ' + Timer.format(before.best) + '.');
+        party = before.best !== null;
+      }
+      if (Number.isFinite(after.bestAo5) && (before.bestAo5 === null || !Number.isFinite(before.bestAo5) || after.bestAo5 < before.bestAo5)) {
+        lines.push(before.bestAo5 === null || !Number.isFinite(before.bestAo5) ? '🏅 Your first average of 5: ' + Timer.format(after.bestAo5) + '!' : '🏆 New best average of 5: ' + Timer.format(after.bestAo5) + '!');
+        party = true;
+      }
+      said.textContent = lines.join(' ') || 'Nice solve! Mix it again for another go.';
+      showLast();
+      render();
+      newMix();
+      if (party) confetti();
+    }
+    function showLast() {
+      const s = solves()[solves().length - 1];
+      lastBox.hidden = !s;
+      if (!s) return;
+      plus2.setAttribute('aria-pressed', String(s.pen === 2));
+      dnf.setAttribute('aria-pressed', String(s.pen === Timer.DNF));
+      plus2.classList.toggle('on', s.pen === 2);
+      dnf.classList.toggle('on', s.pen === Timer.DNF);
+    }
+    // +2 and DNF are for the child (or a grown-up judging) to mark the last solve: a
+    // piece a quarter-turn off at the end is +2, a cube left unsolved is DNF.
+    function penalise(pen) {
+      const s = solves()[solves().length - 1];
+      if (!s) return;
+      s.pen = s.pen === pen ? 0 : pen;
+      save();
+      showLast();
+      render();
+      said.textContent = 'That time is now ' + Timer.formatSolve(s) + '.';
+      display.textContent = Timer.format(Timer.value(s));
+    }
+    plus2.addEventListener('click', () => penalise(2));
+    dnf.addEventListener('click', () => penalise(Timer.DNF));
+    let delArmed = 0;
+    del.addEventListener('click', () => {
+      if (Date.now() > delArmed) {
+        delArmed = Date.now() + 4000;
+        del.textContent = 'Tap again to delete';
+        setTimeout(() => { if (Date.now() > delArmed) del.textContent = '🗑️ Delete this time'; }, 4100);
+        return;
+      }
+      delArmed = 0;
+      del.textContent = '🗑️ Delete this time';
+      solves().pop();
+      save();
+      lastBox.hidden = true;
+      display.textContent = '0.00';
+      render();
+    });
+
+    function render() {
+      const all = solves();
+      const st = Timer.stats(all);
+      const tiles = [
+        ['Best time', st.best], ['Best average of 5', st.bestAo5],
+        ['Average of last 5', st.ao5], ['Average of last 12', st.ao12],
+      ];
+      statsBox.innerHTML = '';
+      for (const [label, v] of tiles) {
+        const t = el('div', 'stat');
+        t.appendChild(el('span', 'stat-value', Timer.format(v)));
+        t.appendChild(el('span', 'stat-label', label));
+        statsBox.appendChild(t);
+      }
+      const count = el('div', 'stat');
+      count.appendChild(el('span', 'stat-value', String(st.count)));
+      count.appendChild(el('span', 'stat-label', st.count === 1 ? 'Solve' : 'Solves'));
+      statsBox.appendChild(count);
+
+      list.innerHTML = '';
+      if (!all.length) {
+        list.appendChild(el('li', 'timer-empty', 'No times yet for the ' + data.size + '×' + data.size + '. Mix your cube and go!'));
+        return;
+      }
+      const bestAt = all.findIndex((x) => Timer.value(x) === st.best);
+      for (let i = all.length - 1; i >= Math.max(0, all.length - SHOWN); i--) {
+        const li = el('li', i === bestAt ? 'best' : '');
+        li.appendChild(el('span', 'timer-n', String(i + 1) + '.'));
+        li.appendChild(el('span', 'timer-t', Timer.formatSolve(all[i])));
+        if (i === bestAt) {
+          const star = el('span', 'timer-star', '⭐');
+          star.setAttribute('aria-label', 'your best');
+          star.title = 'Your best';
+          li.appendChild(star);
+        }
+        list.appendChild(li);
+      }
+      if (all.length > SHOWN) list.appendChild(el('li', 'timer-more', 'and ' + (all.length - SHOWN) + ' earlier ' + (all.length - SHOWN === 1 ? 'time' : 'times')));
+    }
+
+    // ---- controls
+    // Only a choice the child makes is saved: opening the Timer, or the grown-ups
+    // clearing it, writes nothing to the device.
+    function applySize(n, chosen) {
+      data.size = n;
+      if (chosen) save();
+      sizeBox.querySelectorAll('.size-btn').forEach((b) => {
+        b.classList.toggle('active', +b.dataset.size === n);
+        b.setAttribute('aria-pressed', String(+b.dataset.size === n));
+      });
+      if (station.model.N !== n) station.setModel(NCube.make(n));
+      lastBox.hidden = true;
+      display.textContent = '0.00';
+      newMix();
+      render();
+    }
+    for (const n of NCube.SIZES) {
+      const b = el('button', 'size-btn', n + '×' + n);
+      b.type = 'button';
+      b.dataset.size = n;
+      b.setAttribute('aria-label', n + ' by ' + n + ' cube');
+      b.addEventListener('click', () => { if (n !== data.size) applySize(n, true); });
+      sizeBox.appendChild(b);
+    }
+    function showInspect() {
+      inspectBtn.textContent = '👀 15 seconds to look first: ' + (data.inspect ? 'On' : 'Off');
+      inspectBtn.setAttribute('aria-pressed', String(data.inspect));
+    }
+    inspectBtn.addEventListener('click', () => { data.inspect = !data.inspect; save(); showInspect(); abort(); });
+    $('#timer-new-mix', section).addEventListener('click', newMix);
+
+    // Touch: hold on the pad; the pointer is captured so letting go off the pad still
+    // counts. Any touch anywhere stops a running clock, so a child need not aim.
+    pad.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (pad.setPointerCapture) { try { pad.setPointerCapture(e.pointerId); } catch { /* synthetic event */ } }
+      press();
+    });
+    pad.addEventListener('pointerup', () => release());
+    pad.addEventListener('pointercancel', () => { clearTimeout(holdTimer); tapToInspect = false; if (phase === 'holding' || phase === 'ready') setPhase('idle'); });
+    document.addEventListener('pointerdown', () => { if (!section.hidden && phase === 'running') stop(); }, true);
+    document.addEventListener('pointerup', (e) => { if (!section.hidden && justStopped && e.target !== pad && !pad.contains(e.target)) justStopped = false; }, true);
+
+    // Keyboard: the space bar is the timer here, as on every speedcubing timer. It never
+    // reaches a focused button, which would otherwise be pressed by it.
+    document.addEventListener('keydown', (e) => {
+      if (section.hidden) return;
+      if (phase === 'running') { e.preventDefault(); if (!e.repeat) stop(); return; }
+      if (e.key === 'Escape') { abort(); return; }
+      if (e.key !== ' ') return;
+      e.preventDefault();
+      if (e.repeat) return;
+      if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
+      press();
+    });
+    document.addEventListener('keyup', (e) => {
+      if (section.hidden) return;
+      if (e.key === ' ') { e.preventDefault(); release(); }
+      else if (justStopped) justStopped = false;
+    });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) abort(); });
+
+    showInspect();
+    applySize(data.size, false);
+    setPhase('idle');
+    screens.timer = {
+      section,
+      onHide: abort,
+      // after Clear saved progress on the grown-ups screen
+      reload() { abort(); data = load(); showInspect(); applySize(data.size, false); },
+    };
+  }
+
   // ============================================================ GROWN-UPS
   // Not in the child's nav: the footer links lead here, one per section.
   function buildGrownUps() {
@@ -1098,8 +1421,9 @@
       armed = 0;
       clearBtn.textContent = 'Clear saved progress';
       try {
-        for (const key of [PROGRESS_KEY, LEGACY_PROGRESS_KEY, SIZE_KEY, SPEED_KEY]) localStorage.removeItem(key);
-        msg.textContent = 'Erased. The lessons start fresh next time.';
+        for (const key of [PROGRESS_KEY, LEGACY_PROGRESS_KEY, SIZE_KEY, SPEED_KEY, TIMER_KEY]) localStorage.removeItem(key);
+        if (screens.timer) screens.timer.reload();
+        msg.textContent = 'Erased. The lessons start fresh next time, and the Timer has no times.';
       } catch {
         msg.textContent = 'This browser will not let the app save or erase anything, so there was nothing stored.';
       }
@@ -1256,6 +1580,7 @@
     buildLearn();
     buildPlay();
     buildSolve();
+    buildTimer();
     buildGrownUps();
     keyboard();
     stopSpeakingWhenHidden();

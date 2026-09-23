@@ -708,6 +708,79 @@ test('the iOS shell refuses the network too', () => {
 });
 
 
+/* ------------------------------------------------------------------ timer ----
+ * The speed timer's arithmetic, against the World Cube Association rules a
+ * speedcuber will check it by.
+ */
+const Timer = require('../js/timer.js');
+const solve = (ms, pen = 0) => ({ ms, pen });
+
+test('timer: times read like a competition timer', () => {
+  assert.strictEqual(Timer.format(9870), '9.87');
+  assert.strictEqual(Timer.format(59990), '59.99');
+  assert.strictEqual(Timer.format(62350), '1:02.35');
+  assert.strictEqual(Timer.format(600000), '10:00.00');
+  assert.strictEqual(Timer.format(null), '–');
+  assert.strictEqual(Timer.format(Infinity), 'DNF');
+  // a clock reading is cut to hundredths, never rounded up
+  assert.strictEqual(Timer.clockTime(12349.99), 12340);
+  assert.strictEqual(Timer.formatSolve(solve(12340, 2)), '14.34 (+2)');
+  assert.strictEqual(Timer.formatSolve(solve(12340, 'DNF')), 'DNF (12.34)');
+});
+
+test('timer: an average of 5 drops the best and the worst', () => {
+  const five = [10000, 12000, 11000, 9000, 13000].map((t) => solve(t));
+  assert.strictEqual(Timer.average(five, 5), 11000);
+  assert.strictEqual(Timer.average(five.slice(1), 5), null, 'four solves are not an average of 5');
+  // a +2 counts in the time; one DNF is the worst and is dropped; two DNFs sink it
+  assert.strictEqual(Timer.average([solve(10000, 2), solve(12000), solve(11000), solve(9000), solve(13000)], 5), 11670);   // 12, 12, 11 remain
+  assert.strictEqual(Timer.average([solve(10000), solve(12000, 'DNF'), solve(11000), solve(9000), solve(13000)], 5), 11330);
+  assert.strictEqual(Timer.average([solve(10000, 'DNF'), solve(12000, 'DNF'), solve(11000), solve(9000), solve(13000)], 5), Infinity);
+  // only the last five count
+  assert.strictEqual(Timer.average([solve(1000)].concat(five), 5), 11000);
+  // rounded to the nearest hundredth: (10.00 + 10.01 + 10.01) / 3 = 10.0067
+  assert.strictEqual(Timer.average([10000, 10010, 10010, 5000, 20000].map((t) => solve(t)), 5), 10010);
+});
+
+test('timer: an average of 12 drops one of each and averages ten', () => {
+  const twelve = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((s) => solve(s * 1000));
+  assert.strictEqual(Timer.average(twelve, 12), 6500);          // mean of 2..11
+  twelve[3] = solve(4000, 'DNF');
+  assert.strictEqual(Timer.average(twelve, 12), 7300);          // 1 and the DNF go: mean of 2,3,5..12 = 73/10
+});
+
+test('timer: bests are found anywhere in the history', () => {
+  const times = [20000, 15000, 18000, 16000, 17000, 30000, 9000, 25000].map((t) => solve(t));
+  assert.strictEqual(Timer.best(times), 9000);
+  // windows: [20,15,18,16,17]=17.00  [15,18,16,17,30]=17.00  [18,16,17,30,9]=17.00  [16,17,30,9,25]=19.33
+  assert.strictEqual(Timer.bestAverage(times, 5), 17000);
+  assert.strictEqual(Timer.bestAverage(times.slice(0, 4), 5), null);
+  assert.strictEqual(Timer.best([solve(9000, 'DNF')]), null, 'a DNF is never a best');
+  assert.strictEqual(Timer.best([]), null);
+  const st = Timer.stats(times);
+  assert.deepStrictEqual([st.count, st.best, st.ao5, st.ao12, st.bestAo5], [8, 9000, 19330, null, 17000]);
+});
+
+test('timer: inspection is 15 seconds, then +2, then DNF', () => {
+  assert.strictEqual(Timer.inspectionPenalty(0), 0);
+  assert.strictEqual(Timer.inspectionPenalty(15000), 0);
+  assert.strictEqual(Timer.inspectionPenalty(15001), 2);
+  assert.strictEqual(Timer.inspectionPenalty(17000), 2);
+  assert.strictEqual(Timer.inspectionPenalty(17001), 'DNF');
+});
+
+test('timer: every cube size has a mix of the right length that the cube accepts', () => {
+  for (const n of NCube.SIZES) {
+    const M = NCube.make(n);
+    const len = Timer.SCRAMBLE_LENGTH[n];
+    assert(len >= 10, n + 'x' + n + ' has no mix length');
+    const mix = M.scramble(len, rng(n));
+    assert.strictEqual(mix.length, len);
+    assert(!M.isSolved(M.applyAlg(M.solved(), mix)), n + 'x' + n + ' mix leaves it solved');
+  }
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

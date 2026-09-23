@@ -25,9 +25,10 @@
   <header class="topbar">
     <div class="brand"><span class="brand-cube" aria-hidden="true"></span> Cube Clubhouse</div>
     <nav aria-label="Main">
-      <button type="button" data-screen="learn">📚 Learn</button>
-      <button type="button" data-screen="play">🎮 Play</button>
-      <button type="button" data-screen="solve">🔍 My real cube</button>
+      <button type="button" data-screen="learn"><span class="nav-ico" aria-hidden="true">📚</span> Learn</button>
+      <button type="button" data-screen="play"><span class="nav-ico" aria-hidden="true">🎮</span> Play</button>
+      <button type="button" data-screen="timer"><span class="nav-ico" aria-hidden="true">⏱️</span> Timer</button>
+      <button type="button" data-screen="solve"><span class="nav-ico" aria-hidden="true">🔍</span> My<span class="nav-long"> real</span> cube</button>
     </nav>
   </header>
 
@@ -119,6 +120,51 @@
         </div>
       </div>
     </section>
+    <!-- ============================================================ TIMER -->
+    <section id="screen-timer" class="screen" hidden>
+      <div class="two-col">
+        <div class="col-text">
+          <h2>⏱️ Speed timer</h2>
+          <p class="subtitle">Time yourself solving your real cube, and beat your own best.</p>
+          <div id="timer-size" class="size-pick" role="group" aria-label="Cube size"></div>
+          <div class="scramble-card">
+            <div class="scramble-top">
+              <h3>1. Mix your cube like this</h3>
+              <button type="button" id="timer-new-mix" class="btn small ghost">🎲 New mix</button>
+            </div>
+            <p class="fact">Hold it with the <b>yellow centre on top</b> and the <b>green centre facing you</b>.</p>
+            <p id="timer-scramble" class="scramble-text" aria-label="Turns to mix your cube"></p>
+          </div>
+          <h3 class="timer-step">2. Put the cube down, then time your solve</h3>
+          <div id="timer-pad" class="timer-pad" role="button" aria-describedby="timer-help">
+            <span id="timer-display" class="timer-display" aria-live="off">0.00</span>
+            <span id="timer-help" class="timer-help"></span>
+          </div>
+          <div class="btn-row timer-options">
+            <button type="button" id="timer-inspect" class="btn small ghost" aria-pressed="false">👀 15 seconds to look first: Off</button>
+          </div>
+          <div id="timer-last" class="timer-last" hidden>
+            <p id="timer-said" class="timer-said" aria-live="polite"></p>
+            <div class="btn-row">
+              <button type="button" id="timer-plus2" class="btn small ghost" aria-pressed="false">+2</button>
+              <button type="button" id="timer-dnf" class="btn small ghost" aria-pressed="false">DNF</button>
+              <button type="button" id="timer-delete" class="btn small ghost">🗑️ Delete this time</button>
+            </div>
+          </div>
+        </div>
+        <div class="col-cube">
+          <div class="cube-card small">
+            <div id="timer-cube" class="cube-box short" aria-label="What your cube should look like after the mix"></div>
+          </div>
+          <p class="fact timer-check">Your cube should look like this after the mix.</p>
+          <div id="timer-stats" class="timer-stats"></div>
+          <p class="fact timer-avg-note">An <b>average of 5</b> leaves out your best and worst time and averages the middle three, just like in a real competition.</p>
+          <h3 class="timer-list-title">Your times</h3>
+          <ol id="timer-list" class="timer-list"></ol>
+        </div>
+      </div>
+    </section>
+
     <!-- ====================================================== GROWN-UPS -->
     <section id="screen-grownups" class="screen">
       <div class="info-page">
@@ -138,7 +184,9 @@
           <h3>What this is</h3>
           <p>Cube Clubhouse teaches a child to solve a Cube on their own, using the
             beginner "layer by layer" method that most people learn first. It is a teaching app, not
-            a game: there is no score to chase, no timer pressure, nothing to buy and nobody to talk to.</p>
+            a game: no lesson is ever timed, there is nothing to buy and nobody to talk to. The one
+            clock that keeps score is the optional Timer, and the only person it compares a child with
+            is themselves.</p>
 
           <h3>What is in it</h3>
           <ul>
@@ -148,6 +196,10 @@
             <li><b>Play</b> — a free-play cube from 2×2 up to 6×6, with mix-up, undo and a timer.
               <b>Help me solve it</b> walks any mixed cube back to solved, one card at a time, at a
               speed you pick, with pause and stop.</li>
+            <li><b>Timer</b> — for a child who can already solve: a speedcubing timer for the
+              real cube. It shows the turns to mix the cube with, times the solve to a hundredth of a
+              second, and keeps their best time and best average for each size. Hold to get ready, let
+              go to start, tap to stop — on the screen, or with the space bar.</li>
             <li><b>My real cube</b> — the child paints in the colours of the cube in their hand and
               the app works out the steps for that exact cube.</li>
           </ul>
@@ -208,12 +260,14 @@
             of any kind.</p>
 
           <h3>What is saved, and where</h3>
-          <p>Three small things are kept in this browser's own storage, on this device, so the app is
+          <p>Four small things are kept in this browser's own storage, on this device, so the app is
             where the child left it:</p>
           <ul>
             <li>which lessons have been practised, and their stars;</li>
             <li>the cube size last chosen on the Play screen;</li>
-            <li>the speed chosen for the guided solve.</li>
+            <li>the speed chosen for the guided solve;</li>
+            <li>the times from the Timer screen, with the cube size of each and nothing else —
+              no dates, no names — so it can show the child's best.</li>
           </ul>
           <p>That is all of it. No names, no ages, no messages, no photos, no location, no identifiers.
             Nothing is sent off the device, and nothing is shared between devices. Removing the app,
@@ -371,6 +425,7 @@ open source: the licence below grants permission to use it and nothing more.
   <script src="js/bigsolver.js"></script>
   <script src="js/view.js"></script>
   <script src="js/lessons.js"></script>
+  <script src="js/timer.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
