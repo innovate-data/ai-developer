@@ -28,7 +28,7 @@
       <button type="button" data-screen="learn"><span class="nav-ico" aria-hidden="true">📚</span> Learn</button>
       <button type="button" data-screen="play"><span class="nav-ico" aria-hidden="true">🎮</span> Play</button>
       <button type="button" data-screen="timer"><span class="nav-ico" aria-hidden="true">⏱️</span> Timer</button>
-      <button type="button" data-screen="solve"><span class="nav-ico" aria-hidden="true">🔍</span> My<span class="nav-long"> real</span> cube</button>
+      <button type="button" data-screen="solve"><span class="nav-ico" aria-hidden="true">🔍</span> My<span class="nav-long"> Real</span> Cube</button>
     </nav>
   </header>
 
@@ -42,7 +42,7 @@
           <div class="col-cube">
             <div class="cube-card">
               <div id="lesson-cube" class="cube-box"></div>
-              <button type="button" id="lesson-reset-view" class="btn tiny ghost" aria-label="Straighten the picture">🔄<span class="btn-words"> Straighten the picture</span></button>
+              <button type="button" id="lesson-reset-view" class="btn tiny ghost" aria-label="Straighten the Picture">🔄<span class="btn-words"> Straighten the Picture</span></button>
             </div>
             <div id="lesson-controls"></div>
           </div>
@@ -57,7 +57,7 @@
             <div id="lesson-tips" class="tips"></div>
             <div class="lesson-nav">
               <button type="button" id="lesson-prev" class="btn ghost">◀ Back</button>
-              <button type="button" id="lesson-next" class="btn primary">Next lesson ▶</button>
+              <button type="button" id="lesson-next" class="btn primary">Next Lesson ▶</button>
             </div>
           </div>
         </div>
@@ -70,7 +70,7 @@
         <div class="col-cube">
           <div class="cube-card">
             <div id="play-cube" class="cube-box tall"></div>
-            <button type="button" id="play-reset-view" class="btn tiny ghost" aria-label="Straighten the picture">🔄<span class="btn-words"> Straighten the picture</span></button>
+            <button type="button" id="play-reset-view" class="btn tiny ghost" aria-label="Straighten the Picture">🔄<span class="btn-words"> Straighten the Picture</span></button>
           </div>
           <div id="play-controls"></div>
         </div>
@@ -81,12 +81,12 @@
           <p id="play-size-note" class="fact"></p>
           <div class="timer" id="play-timer" aria-live="polite">00:00</div>
           <div class="btn-row">
-            <button type="button" id="play-scramble" class="btn primary">🎲 Mix it up</button>
+            <button type="button" id="play-scramble" class="btn primary">🎲 Mix It Up</button>
             <button type="button" id="play-undo" class="btn ghost">↩ Undo</button>
-            <button type="button" id="play-reset" class="btn ghost">✨ Make it solved</button>
-            <button type="button" id="play-help" class="btn">🦸 Help me solve it</button>
+            <button type="button" id="play-reset" class="btn ghost">✨ Make It Solved</button>
+            <button type="button" id="play-help" class="btn">🦸 Help Me Solve It</button>
           </div>
-          <p id="play-status" class="fact">The cube is solved. Press Mix it up to start.</p>
+          <p id="play-status" class="fact">The cube is solved. Tap Mix It Up to start.</p>
           <div id="play-guide"></div>
         </div>
       </div>
@@ -96,19 +96,19 @@
     <section id="screen-solve" class="screen" hidden>
       <div class="two-col">
         <div class="col-cube">
-          <h2>🔍 My real cube</h2>
+          <h2>🔍 My Real Cube</h2>
           <ol class="howto">
             <li>Hold your cube with the <b>yellow centre on top</b> and the <b>green centre facing you</b>. The centre is the middle square of a side.</li>
             <li>The picture is your cube opened out flat, like a box. Each face has a name. Pick a colour, then tap the stickers until the picture matches your cube. The centres are already done. Ask a grown-up to help with this part.</li>
-            <li>Press <b>Check my cube</b> and follow the steps.</li>
+            <li>Tap <b>Check My Cube</b> and follow the steps.</li>
           </ol>
           <div id="solve-palette" class="palette" aria-label="Colours"></div>
           <div id="solve-net"></div>
           <div class="btn-row">
-            <button type="button" id="solve-check" class="btn primary">✅ Check my cube</button>
-            <button type="button" id="solve-clear" class="btn ghost">Clear my colours</button>
-            <button type="button" id="solve-random" class="btn ghost">🎲 Try a pretend cube</button>
-            <button type="button" id="solve-from-play" class="btn ghost">Use the cube from Play</button>
+            <button type="button" id="solve-check" class="btn primary">✅ Check My Cube</button>
+            <button type="button" id="solve-clear" class="btn ghost">Clear My Colours</button>
+            <button type="button" id="solve-random" class="btn ghost">🎲 Try a Pretend Cube</button>
+            <button type="button" id="solve-from-play" class="btn ghost">Use the Cube from Play</button>
           </div>
           <p id="solve-msg" class="msg" aria-live="polite"></p>
         </div>
@@ -124,20 +124,20 @@
     <section id="screen-timer" class="screen" hidden>
       <div class="two-col">
         <div class="col-text">
-          <h2>⏱️ Speed timer</h2>
+          <h2>⏱️ Speed Timer</h2>
           <p class="subtitle">Time yourself solving your real cube, and beat your own best.</p>
           <div id="timer-size" class="size-pick" role="group" aria-label="Cube size"></div>
           <div class="scramble-card">
             <div class="scramble-top">
               <h3>1. Mix your cube like this</h3>
-              <button type="button" id="timer-new-mix" class="btn small ghost">🎲 New mix</button>
+              <button type="button" id="timer-new-mix" class="btn small ghost">🎲 New Mix</button>
             </div>
             <p class="fact">Hold it with the <b>yellow centre on top</b> and the <b>green centre facing you</b>.
               Tap each turn once you have done it, so you never lose your place.</p>
             <div id="timer-scramble" class="scramble-turns" role="group" aria-label="Turns to mix your cube"></div>
             <p id="timer-mix-progress" class="fact mix-progress" aria-live="polite"></p>
             <div class="btn-row">
-              <button type="button" id="timer-solve-help" class="btn">🦸 Help me solve this mix</button>
+              <button type="button" id="timer-solve-help" class="btn">🦸 Help Me Solve This Mix</button>
             </div>
           </div>
           <h3 class="timer-step">2. Put the cube down, then time your solve</h3>
@@ -146,14 +146,14 @@
             <span id="timer-help" class="timer-help"></span>
           </div>
           <div class="btn-row timer-options">
-            <button type="button" id="timer-inspect" class="btn small ghost" aria-pressed="false">👀 15 seconds to look first: Off</button>
+            <button type="button" id="timer-inspect" class="switch-row" role="switch" aria-checked="false"><span class="switch-label">👀 15 Seconds to Look First</span><span class="switch" aria-hidden="true"><span class="switch-knob"></span></span></button>
           </div>
           <div id="timer-last" class="timer-last" hidden>
             <p id="timer-said" class="timer-said" aria-live="polite"></p>
             <div class="btn-row">
               <button type="button" id="timer-plus2" class="btn small ghost" aria-pressed="false">+2</button>
               <button type="button" id="timer-dnf" class="btn small ghost" aria-pressed="false">DNF</button>
-              <button type="button" id="timer-delete" class="btn small ghost">🗑️ Delete this time</button>
+              <button type="button" id="timer-delete" class="btn small ghost">🗑️ Delete This Time</button>
             </div>
           </div>
         </div>
@@ -167,7 +167,7 @@
           <div id="timer-stats" class="timer-stats"></div>
           <div id="timer-chart" class="timer-chart"></div>
           <p class="fact timer-avg-note">An <b>average of 5</b> leaves out your best and worst time and averages the middle three, just like in a real competition.</p>
-          <h3 class="timer-list-title">Your times</h3>
+          <h3 class="timer-list-title">Your Times</h3>
           <ol id="timer-list" class="timer-list"></ol>
           <button type="button" id="timer-show-all" class="btn small ghost timer-show-all" hidden></button>
         </div>
@@ -177,8 +177,8 @@
     <!-- ====================================================== GROWN-UPS -->
     <section id="screen-grownups" class="screen">
       <div class="info-page">
-        <button type="button" class="btn ghost back-to-app">◀ Back to the app</button>
-        <h1>For grown-ups</h1>
+        <button type="button" class="btn ghost back-to-app">◀ Back to the App</button>
+        <h1>For Grown-Ups</h1>
         <p class="info-lede">Everything a parent, carer or teacher might want to know about Cube Clubhouse<sup class="reg">®</sup>:
           what it teaches, what it stores, and what you are allowed to do with it.</p>
         <nav class="info-nav" aria-label="Sections for grown-ups">
@@ -188,7 +188,7 @@
         </nav>
 
         <article id="parents" class="info-card">
-          <h2>For parents</h2>
+          <h2>For Parents</h2>
 
           <h3>What this is</h3>
           <p>Cube Clubhouse teaches a child to solve a Cube on their own, using the
@@ -203,15 +203,15 @@
               Each one has a cube the child can turn, the trick written in words they can say out loud,
               and a practice cube that checks their work and awards up to three stars.</li>
             <li><b>Play</b> — a free-play cube from 2×2 up to 6×6, with mix-up, undo and a timer.
-              <b>Help me solve it</b> walks any mixed cube back to solved, one card at a time, at a
+              <b>Help Me Solve It</b> walks any mixed cube back to solved, one card at a time, at a
               speed you pick, with pause and stop.</li>
             <li><b>Timer</b> — for a child who can already solve: a speedcubing timer for the
               real cube. It shows the turns to mix the cube with (tap each one off as it is done),
               times the solve to a hundredth of a second, and keeps their best time and best average
-              for each size, with a chart of how they are getting on. Hold to get ready, let go to
-              start, tap to stop — on the screen, or with the space bar. Stuck on a mix?
-              <b>Help me solve this mix</b> walks through it step by step.</li>
-            <li><b>My real cube</b> — the child paints in the colours of the cube in their hand and
+              for each size, with a chart of how they are getting on. Touch and hold to get ready,
+              let go to start, tap to stop — on the screen, or with the space bar. Stuck on a mix?
+              <b>Help Me Solve This Mix</b> walks through it step by step.</li>
+            <li><b>My Real Cube</b> — the child paints in the colours of the cube in their hand and
               the app works out the steps for that exact cube.</li>
           </ul>
 
@@ -229,8 +229,8 @@
           <ul>
             <li>A real cube in their hands makes it click. Any standard 3×3 will do; the app assumes
               white is opposite yellow, which is true of nearly all of them.</li>
-            <li>Press <b>Watch</b> to see a step, then do the same on the real cube, then press
-              <b>I did it</b>. Going one step at a time beats watching the whole solve.</li>
+            <li>Tap <b>Watch</b> to see a step, then do the same on the real cube, then tap
+              <b>I Did It</b>. Going one step at a time beats watching the whole solve.</li>
             <li>Halfway through some tricks the bottom of the cube looks wrecked. That is normal and
               the app says so. Finish the trick and it comes back.</li>
             <li>The middle squares never move. If a child is stuck, it is almost always because the
@@ -240,27 +240,40 @@
           <h3>What it costs</h3>
           <p class="info-strong">Nothing. Every part of Cube Clubhouse is free to use.</p>
           <p>All ten lessons and their practice, the stars, every cube from 2×2 to 6×6, mixing, undo,
-            the timer, My real cube, and <b>Help me solve it</b> on every size. There is nothing to
+            the timer, My Real Cube, and <b>Help Me Solve It</b> on every size. There is nothing to
             buy, nothing to subscribe to, no adverts, and no part of it held back for later.</p>
 
           <h3>Stars and progress</h3>
           <p>Stars mark lessons a child has practised: one for finishing, more for doing it without
-            hints. They are kept on this device only, and there is no account, no leaderboard and no
+            hints. They are kept on this <span class="device-name">device</span> only, and there is no account, no leaderboard and no
             way for anyone else to see them. You can wipe them here:</p>
-          <p><button type="button" id="clear-progress" class="btn ghost">Clear saved progress</button>
+          <p><button type="button" id="clear-progress" class="btn ghost">Clear Saved Progress</button>
             <span id="clear-progress-msg" class="msg" aria-live="polite"></span></p>
 
           <h3>Getting on with it</h3>
           <ul>
-            <li><b>Read</b> speaks the current step; pressing it again stops it.</li>
+            <li><b>Read</b> speaks the current step; tapping it again stops it.</li>
             <li>The guided solve plays at 🐢 Slow, 🚶 Steady or 🐇 Fast, and can be paused or stopped
               at any point.</li>
-            <li>If your device is set to reduce motion, the cube changes without the spinning
-              animation.</li>
+            <li>With Reduce Motion turned on, the cube changes without the spinning animation.</li>
             <li>Every colour is also named in words in every step, which helps a child who finds
               red and green hard to tell apart.</li>
             <li>Buttons are sized for a finger, and the app works with a keyboard as well: U, D, L,
               R, F and B turn a side, with Shift for the other direction.</li>
+          </ul>
+
+          <h3>On iPad and iPhone</h3>
+          <ul>
+            <li><b>Keep a young child in the app</b> with Guided Access: turn it on in Settings ›
+              Accessibility › Guided Access, open Cube Clubhouse, then triple-click the side button
+              (or the Home button) to start it.</li>
+            <li><b>Set a time limit</b> with Screen Time, in Settings › Screen Time.</li>
+            <li><b>Bigger words</b>: the app follows Settings › Display &amp; Brightness › Text Size,
+              and the larger Accessibility sizes too.</li>
+            <li><b>A clearer reading voice</b>: the Read buttons use the voice chosen in Settings ›
+              Accessibility › Spoken Content › Voices, where you can download an enhanced one.</li>
+            <li><b>Dark Mode</b>: the app changes with the device, in Settings › Display &amp;
+              Brightness.</li>
           </ul>
         </article>
 
@@ -271,8 +284,8 @@
             of any kind.</p>
 
           <h3>What is saved, and where</h3>
-          <p>Four small things are kept in this browser's own storage, on this device, so the app is
-            where the child left it:</p>
+          <p>Four small things are kept <span class="w-web">in this browser's own storage, </span>on this
+            <span class="device-name">device</span><span class="w-ios">, inside the app</span>, so the app is where the child left it:</p>
           <ul>
             <li>which lessons have been practised, and their stars;</li>
             <li>the cube size last chosen on the Play screen;</li>
@@ -281,13 +294,13 @@
               no dates, no names — so it can show the child's best.</li>
           </ul>
           <p>That is all of it. No names, no ages, no messages, no photos, no location, no identifiers.
-            Nothing is sent off the device, and nothing is shared between devices. Removing the app,
-            or pressing <b>Clear saved progress</b> above, erases it.</p>
+            Nothing is sent off the <span class="device-name">device</span>, and nothing is shared between devices. Deleting the app,
+            or tapping <b>Clear Saved Progress</b> above, erases it.</p>
 
           <h3>What the app asks the internet for</h3>
           <p><strong>Nothing.</strong> Not one request, not even for the typeface it is drawn in —
-            that is stored inside the app like the lessons are. You can put the device in aeroplane
-            mode before your child ever opens it and every part of the app still works.</p>
+            that is stored inside the app like the lessons are. You can turn on Aeroplane Mode before
+            your child ever opens it and every part of the app still works.</p>
           <p>We did not simply leave the requests out; we made them impossible. The page carries a
             rule that forbids it from loading anything from the web, and on iPhone and iPad the app
             tells the system to refuse any web address on its behalf as well. If a future version of
@@ -299,10 +312,10 @@
             account, nothing at all of that kind passing through the app.</p>
 
           <h3>Reading aloud</h3>
-          <p>The <b>Read</b> button uses the voice built into your device or browser, and only ever
-            reads the app's own instructions. On iPhone and iPad that voice runs on the device. Some
-            desktop browsers offer voices that are produced online; if that matters to you, simply
-            leave the button alone.</p>
+          <p>The <b>Read</b> buttons use the voice built into your <span class="device-name">device</span><span class="w-web"> or
+            browser</span>, and only ever read the app's own instructions. On iPad and iPhone that
+            voice runs on the device itself.<span class="w-web"> Some desktop browsers offer voices
+            that are produced online; if that matters to you, simply leave the button alone.</span></p>
 
           <h3>What the app never touches</h3>
           <p>No camera, microphone, location, contacts, photos or notifications. No cookies. No
@@ -316,7 +329,7 @@
         </article>
 
         <article id="licence" class="info-card">
-          <h2>Licence conditions</h2>
+          <h2>Licence Conditions</h2>
           <p class="info-strong">Cube Clubhouse is free to use — every part of it, for as long as you
             like, with no payment and nothing held back. It is also proprietary software: Ira Learning
             LLC owns it, and it is not open source. Free to use is not the same as free to take.</p>
@@ -415,16 +428,16 @@ open source: the licence below grants permission to use it and nothing more.
             not included.</p>
         </article>
 
-        <button type="button" class="btn ghost back-to-app">◀ Back to the app</button>
+        <button type="button" class="btn ghost back-to-app">◀ Back to the App</button>
       </div>
     </section>
   </main>
 
   <footer class="foot">
-    <span>Cube Clubhouse<sup class="reg">®</sup> · a kid-friendly Cube tutor · everything runs in your browser, and nothing is sent anywhere.</span>
+    <span>Cube Clubhouse<sup class="reg">®</sup> · a kid-friendly Cube tutor · <span class="w-web">everything runs in your browser</span><span class="w-ios">everything stays on this <span class="device-name">device</span></span>, and nothing is sent anywhere.</span>
     <span class="foot-copy">© 2026 Ira Learning LLC. All rights reserved. Cube Clubhouse® is a registered trademark of Ira Learning LLC.</span>
     <span class="foot-links">
-      <button type="button" class="linkish" data-info="parents">For parents</button>
+      <button type="button" class="linkish" data-info="parents">For Parents</button>
       <button type="button" class="linkish" data-info="privacy">Privacy</button>
       <button type="button" class="linkish" data-info="licence">Licence</button>
     </span>

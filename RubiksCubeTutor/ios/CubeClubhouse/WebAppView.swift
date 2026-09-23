@@ -47,6 +47,17 @@ struct WebAppView: UIViewRepresentable {
         config.userContentController.addUserScript(
             WKUserScript(source: pinViewport, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
 
+        // Tell the page it is the iOS app, and on which device, so it can say "this iPad"
+        // rather than "this browser" and speak the platform's own words.
+        let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+        let host = "window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: '\(device)' });"
+        config.userContentController.addUserScript(
+            WKUserScript(source: host, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+
+        // Haptics: the page asks, the device answers. iPad has no haptic engine, so there
+        // the generators simply do nothing.
+        config.userContentController.add(context.coordinator, name: "haptic")
+
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.scrollView.contentInsetAdjustmentBehavior = .never
@@ -56,6 +67,8 @@ struct WebAppView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        context.coordinator.webView = webView
+        context.coordinator.followTextSize()
         #if DEBUG
         webView.isInspectable = true                             // Safari > Develop > device
         #endif
@@ -82,13 +95,52 @@ struct WebAppView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let schemeHandler = BundleSchemeHandler()
         let onReady: () -> Void
+        weak var webView: WKWebView?
+        private var textSizeObserver: NSObjectProtocol?
 
         init(onReady: @escaping () -> Void) {
             self.onReady = onReady
             super.init()
+        }
+
+        deinit {
+            if let textSizeObserver = textSizeObserver {
+                NotificationCenter.default.removeObserver(textSizeObserver)
+            }
+        }
+
+        /// Settings > Display & Brightness > Text Size (and the larger Accessibility sizes)
+        /// makes every iOS app's text bigger; this makes the page follow. The page is laid
+        /// out for the standard size, so it only ever grows, and by at most a quarter,
+        /// which keeps every screen inside the width of the smallest iPhone.
+        func followTextSize() {
+            apply()
+            if textSizeObserver == nil {
+                textSizeObserver = NotificationCenter.default.addObserver(
+                    forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: .main
+                ) { [weak self] _ in self?.apply() }
+            }
+        }
+
+        private func apply() {
+            let scale = UIFont.preferredFont(forTextStyle: .body).pointSize / 17
+            webView?.pageZoom = min(max(scale, 1), 1.25)
+        }
+
+        /// window.webkit.messageHandlers.haptic.postMessage("light" | "medium" | "success" | "warning")
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            guard message.name == "haptic", let kind = message.body as? String else { return }
+            switch kind {
+            case "light": UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            case "medium": UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            case "success": UINotificationFeedbackGenerator().notificationOccurred(.success)
+            case "warning": UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            default: break
+            }
         }
 
         /// Keep in-app navigation inside the bundle; send real links to Safari.

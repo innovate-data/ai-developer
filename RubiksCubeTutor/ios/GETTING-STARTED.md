@@ -51,6 +51,16 @@ web app then pressing Run is enough.
 If you move `CubeClubhouse.xcodeproj` somewhere else on its own, the build stops with
 a message telling you so.
 
+## Feels like iOS
+
+The app speaks and behaves like an iOS app: tap and touch and hold, Title Case buttons,
+a bottom tab bar on iPhone and a top capsule on iPad, segmented controls, a switch, iOS
+alerts before anything is lost, haptics on iPhone, and it follows the device's Text Size.
+`WebAppView.swift` does the native half: it tells the page it is the iOS app and on which
+device (so the page says "this iPad", not "this browser"), plays haptics when the page
+asks through the `haptic` message handler, and sets `pageZoom` from the Text Size
+setting (up to 125%). See "Speaking and feeling like iOS" in the main README.
+
 ## The launch screen
 
 While the app starts, iOS shows the Cube Clubhouse® logo (the cube face from the icon,

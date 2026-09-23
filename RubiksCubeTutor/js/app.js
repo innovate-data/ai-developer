@@ -22,6 +22,77 @@
     return e;
   };
   const speakable = (text) => text.replace(/\b([UDLRFBxyz])'/g, '$1 prime').replace(/\b([UDLRFBxyz])2\b/g, '$1 two');
+
+  // ---- the platform the app is running on
+  // The iOS app tells the page, before anything else runs, that it is the iOS app and
+  // whether it is on an iPad or an iPhone (WebAppView.swift). In a browser there is no
+  // such note, and the words fall back to the browser's.
+  const HOST = root.CubeClubhouseHost || null;
+  const IOS_APP = !!HOST && HOST.platform === 'ios';
+  const DEVICE = IOS_APP && (HOST.device === 'iPad' || HOST.device === 'iPhone') ? HOST.device : null;
+  // "this iPad", "this iPhone", or "this browser"
+  const here = () => (DEVICE ? 'this ' + DEVICE : 'this browser');
+  // A small tap on the hand, where the device has a haptic engine (iPhone). Anywhere
+  // else there is nobody listening, and nothing happens.
+  if (IOS_APP) {
+    document.documentElement.classList.add('ios-app');
+    document.documentElement.dataset.device = DEVICE || '';
+    // "this device" in the grown-ups pages becomes "this iPad" or "this iPhone"
+    if (DEVICE) document.querySelectorAll('.device-name').forEach((e) => { e.textContent = DEVICE; });
+  }
+  function haptic(kind) {
+    try { root.webkit.messageHandlers.haptic.postMessage(kind); } catch { /* not the iOS app */ }
+  }
+
+  // ---- an iOS alert, drawn by the page
+  // A question that needs a deliberate answer before something is lost: a title, a line
+  // of explanation, Cancel, and the action in red. Cancel is the safe choice, so it has
+  // the focus and Escape means Cancel; tapping outside the alert does nothing, as on iOS.
+  // Drawn in the page rather than with confirm(), because WKWebView shows no confirm()
+  // unless the app implements it, and a browser's confirm() looks nothing like iOS.
+  function askFirst({ title, message, action, cancel = 'Cancel' }) {
+    return new Promise((answer) => {
+      const back = el('div', 'ios-alert-backdrop');
+      const box = el('div', 'ios-alert');
+      box.setAttribute('role', 'alertdialog');
+      box.setAttribute('aria-modal', 'true');
+      box.setAttribute('aria-labelledby', 'ios-alert-title');
+      box.setAttribute('aria-describedby', 'ios-alert-message');
+      const head = el('div', 'ios-alert-text');
+      const t = el('h2', 'ios-alert-title'); t.id = 'ios-alert-title'; t.textContent = title;
+      const m = el('p', 'ios-alert-message'); m.id = 'ios-alert-message'; m.textContent = message;
+      head.append(t, m);
+      const row = el('div', 'ios-alert-buttons');
+      const no = el('button', 'ios-alert-cancel'); no.type = 'button'; no.textContent = cancel;
+      const yes = el('button', 'ios-alert-action'); yes.type = 'button'; yes.textContent = action;
+      row.append(no, yes);
+      box.append(head, row);
+      back.appendChild(box);
+      const before = document.activeElement;
+      const done = (ok) => {
+        document.removeEventListener('keydown', keys, true);
+        back.remove();
+        if (before && before.focus) { try { before.focus({ preventScroll: true }); } catch { /* gone */ } }
+        answer(ok);
+      };
+      const keys = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); return; }
+        if (e.key === 'Tab') {                // keep the focus inside the alert
+          e.preventDefault();
+          (document.activeElement === no ? yes : no).focus();
+          return;
+        }
+        // nothing behind the alert may hear a key (the timer's space bar, a cube move)
+        if (e.key !== 'Enter' && e.key !== ' ') { e.stopPropagation(); e.preventDefault(); }
+        else e.stopPropagation();
+      };
+      no.addEventListener('click', () => done(false));
+      yes.addEventListener('click', () => { haptic('warning'); done(true); });
+      document.addEventListener('keydown', keys, true);
+      document.body.appendChild(back);
+      no.focus();
+    });
+  }
   // One voice at a time, and one place that knows who is speaking. A Read button asks
   // the narrator to speak on its behalf; pressing it again stops it. Whenever the
   // narration ends, is stopped, or is replaced by another one, the button that started
@@ -130,6 +201,9 @@
     // The word is hidden on a phone to keep the three buttons on one line, so each
     // button says what it does on its own.
     row.appendChild(el('span', 'speed-label', 'Speed'));
+    // an iOS segmented control: one rounded track, the chosen speed raised out of it
+    const seg = el('div', 'segmented');
+    row.appendChild(seg);
     for (const s of SPEEDS) {
       const b = el('button', 'speed-btn' + (s.key === speedKey ? ' active' : ''), s.label);
       b.type = 'button';
@@ -143,7 +217,7 @@
           other.setAttribute('aria-pressed', String(on));
         });
       });
-      row.appendChild(b);
+      seg.appendChild(b);
     }
     return row;
   }
@@ -153,7 +227,7 @@
   // press the same button again to stop it. An empty label makes an icon-only button.
   const readButton = (getText, label, cls) => {
     const icon = label === '';
-    const idle = icon ? '🔊' : '🔊 ' + (label || 'Read to me');
+    const idle = icon ? '🔊' : '🔊 ' + (label || 'Read to Me');
     const busy = icon ? '⏹' : '⏹ Stop';
     const b = el('button', cls || 'btn small ghost', idle);
     b.setAttribute('aria-pressed', 'false');
@@ -378,7 +452,7 @@
       watchedAll = false;
       const failed = (e) => {
         const why = e && e.internal
-          ? 'Something went wrong on my side. Press Mix it up and try again.'
+          ? 'Something went wrong on my side. Tap Mix It Up and try again.'
           : ((e && e.message) || 'One of the stickers does not look right.') + ' Let\'s check the stickers together.';
         container.innerHTML = '<div class="guide-error">Hmm, this does not look like a real cube yet. ' + why + '</div>';
         return false;
@@ -419,7 +493,7 @@
       if (i >= steps.length) {
         if (watchedAll) {
           container.appendChild(el('div', 'guide-done', '👀 That was the whole solve! Want to do it yourself, step by step?'));
-          const again = el('button', 'btn primary', '◀ Start from the first step');
+          const again = el('button', 'btn primary', '◀ Start from the First Step');
           again.addEventListener('click', () => {
             let s = station.state;
             for (let k = steps.length - 1; k >= 0; k--) s = station.model.applyAlg(s, station.model.invertAlg(steps[k].moves));
@@ -455,11 +529,11 @@
       container.insertAdjacentHTML('beforeend', wordsList(step.moves));
 
       const btns = el('div', 'guide-btns');
-      const showBtn = el('button', 'btn primary', shown ? '▶ Watch again' : '▶ Watch');
-      const nextBtn = el('button', 'btn', 'I did it ▶');
-      const backBtn = el('button', 'btn ghost', '◀ Last step');
+      const showBtn = el('button', 'btn primary', shown ? '▶ Watch Again' : '▶ Watch');
+      const nextBtn = el('button', 'btn', 'I Did It ▶');
+      const backBtn = el('button', 'btn ghost', '◀ Last Step');
       const sayBtn = readButton(() => step.text + ' ' + movesInWords(step.moves), 'Read', 'btn ghost');
-      const autoBtn = el('button', 'btn ghost', '⏩ Watch the whole solve');
+      const autoBtn = el('button', 'btn ghost', '⏩ Watch the Whole Solve');
       backBtn.disabled = i === 0;
       showBtn.addEventListener('click', async () => {
         if (busy) return;
@@ -475,7 +549,7 @@
         station.view.setHighlights([]);
         shown = true;
         busy = false;
-        showBtn.textContent = '▶ Watch again';
+        showBtn.textContent = '▶ Watch Again';
         nextBtn.classList.add('primary');
         showBtn.classList.remove('primary');
       });
@@ -497,12 +571,12 @@
       // While the whole solve plays, these two replace the ordinary buttons.
       const runBtns = el('div', 'guide-btns');
       const pauseBtn = el('button', 'btn primary', '⏸️ Pause');
-      const stopBtn = el('button', 'btn', '⏹️ Stop here');
+      const stopBtn = el('button', 'btn', '⏹️ Stop Here');
       runBtns.append(pauseBtn, stopBtn);
       runBtns.hidden = true;
       pauseBtn.addEventListener('click', () => {
         paused = !paused;
-        pauseBtn.textContent = paused ? '▶️ Carry on' : '⏸️ Pause';
+        pauseBtn.textContent = paused ? '▶️ Carry On' : '⏸️ Pause';
       });
       stopBtn.addEventListener('click', () => { stopping = true; paused = false; });
 
@@ -627,7 +701,7 @@
       $('#lesson-story').prepend(readRow);
       $('#lesson-tips').innerHTML = L.tips.length ? '<h3>💡 Tips</h3><ul>' + L.tips.map((t) => '<li>' + t + '</li>').join('') + '</ul>' : '';
       $('#lesson-prev').disabled = n === 0;
-      $('#lesson-next').textContent = n === LESSONS.length - 1 ? 'Back to lessons' : 'Next lesson ▶';
+      $('#lesson-next').textContent = n === LESSONS.length - 1 ? 'Back to Lessons' : 'Next Lesson ▶';
       renderAlgs(L);
       renderInteractive(L);
       renderPractice(L);
@@ -675,13 +749,13 @@
           Centres: Cube.FACES.map((f) => Cube.centerIndex(f)),
           Edges: Cube.EDGES.flatMap((e) => e.idx),
           Corners: Cube.CORNERS.flatMap((c) => c.idx),
-          'Lights off': [],
+          'Lights Off': [],
         };
         for (const name of Object.keys(groups)) {
           const b = el('button', 'btn small', name);
           b.addEventListener('click', () => {
             station.view.setHighlights(groups[name]);
-            const fact = { Centres: '6 centres. They never move!', Edges: '12 edges with 2 colours each.', Corners: '8 corners with 3 colours each.', 'Lights off': '' }[name];
+            const fact = { Centres: '6 centres. They never move!', Edges: '12 edges with 2 colours each.', Corners: '8 corners with 3 colours each.', 'Lights Off': '' }[name];
             $('#parts-fact').textContent = fact;
           });
           row.appendChild(b);
@@ -690,7 +764,7 @@
         const fact = el('p', 'fact', 'Tap a button to light up that kind of block.');
         fact.id = 'parts-fact';
         box.appendChild(fact);
-        const spin = el('button', 'btn small ghost', '🔄 Turn the right side');
+        const spin = el('button', 'btn small ghost', '🔄 Turn the Right Side');
         spin.addEventListener('click', () => station.move('R'));
         box.appendChild(spin);
       } else if (L.interactive === 'notation') {
@@ -718,8 +792,8 @@
       const q = el('div', 'quiz');
       const status = el('p', 'fact', 'Watch the cube do a move, then tap the right letter. Get 5 in a row to earn 3 stars!');
       const choices = el('div', 'btn-row');
-      const go = el('button', 'btn primary', '▶ Do a move');
-      const again = el('button', 'btn ghost', '▶ Show it again');
+      const go = el('button', 'btn primary', '▶ Do a Move');
+      const again = el('button', 'btn ghost', '▶ Show It Again');
       again.hidden = true;
       let answer = null, lastMove = null, streak = 0, best = 0;
       again.addEventListener('click', async () => {
@@ -752,7 +826,7 @@
               if (streak >= 5) { award('moves', 3); status.textContent += ' 🌟 Three stars!'; renderList(); }
               else if (streak >= 2) award('moves', Math.max(progress.moves || 0, 1));
             } else {
-              status.textContent = 'Almost! It was ' + answer + ': ' + MOVE_WORDS[answer] + ' Press Show it again to see it. Best so far: ' + best + ' in a row.';
+              status.textContent = 'Almost! It was ' + answer + ': ' + MOVE_WORDS[answer] + ' Tap Show It Again to see it. Best so far: ' + best + ' in a row.';
               streak = 0;
               award('moves', Math.max(progress.moves || 0, 1));
             }
@@ -776,11 +850,11 @@
       station.listeners = [];
       if (!L.stage) return;
       box.appendChild(el('h3', '', '🎮 Your turn'));
-      const intro = el('p', '', 'This is a pretend cube on the screen, not your real one. It is set up for this step. Use the buttons under the cube and try it. Stuck? Press <b>Hint</b>.');
+      const intro = el('p', '', 'This is a pretend cube on the screen, not your real one. It is set up for this step. Use the buttons under the cube and try it. Stuck? Tap <b>Hint</b>.');
       const status = el('div', 'practice-status', 'Goal: ' + L.subtitle);
       const row = el('div', 'btn-row');
       const hintBtn = el('button', 'btn primary', '💡 Hint');
-      const newBtn = el('button', 'btn ghost', '🎲 Another puzzle');
+      const newBtn = el('button', 'btn ghost', '🎲 Another Puzzle');
       const undoBtn = el('button', 'btn ghost', '↩ Undo');
       const hintBox = el('div', 'hint-box');
       hintBox.hidden = true;
@@ -813,6 +887,7 @@
           award(L.id, 3, hintsUsed === 0 && !byWatch);
           renderList();
           station.settled().then(() => {
+            haptic('success');
             status.innerHTML = '🎉 <b>You did it!</b> ★★★' + (byWatch
               ? ' The Watch button did the last turns, so no 🧠 this time. Try Another puzzle with your own turns!'
               : hintsUsed ? '' : ' 🧠 No hints!');
@@ -834,7 +909,7 @@
         hintBox.innerHTML = '';
         const stageIdx = Solver.STAGES.indexOf(L.stage);
         if (one.stage !== 'orient' && Solver.STAGES.indexOf(one.stage) < stageIdx) {
-          hintBox.appendChild(el('p', 'guide-warn', 'Oops, the ' + STAGE_TITLES[one.stage].toLowerCase() + ' came apart. That happens to everyone! Press Undo a few times, or follow the hints to fix it.'));
+          hintBox.appendChild(el('p', 'guide-warn', 'Oops, the ' + STAGE_TITLES[one.stage].toLowerCase() + ' came apart. That happens to everyone! Tap Undo a few times, or follow the hints to fix it.'));
         }
         hintBox.appendChild(el('p', 'guide-text', '💡 ' + one.text));
         hintBox.appendChild(el('div', 'guide-moves', stepChips(one.moves)));
@@ -923,6 +998,7 @@
         station.settled().then(() => {
           statusEl.innerHTML = '🎉 <b>Solved</b> in ' + fmt(took) + ' with ' + moves + (moves === 1 ? ' move!' : ' moves!');
           confetti();
+          haptic('success');
         });
       }
     });
@@ -930,7 +1006,7 @@
       if (!guideBox.childElementCount) return;
       hush();                       // the Read button being removed cannot stop itself
       guideBox.innerHTML = '';
-      statusEl.textContent = 'You made your own move, so the steps changed. Press "Help me solve it" for new steps.';
+      statusEl.textContent = 'You made your own move, so the steps changed. Tap Help Me Solve It for new steps.';
     }
     function userMove(m) {
       if (thinking) return false;      // the solver is working on this very cube
@@ -957,7 +1033,7 @@
       scrambled = false;
       moveCount = 0;
       sizeNote.textContent = noteFor(n);
-      statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
+      statusEl.textContent = 'The cube is solved. Tap Mix It Up to start.';
     }
     function noteFor(n) {
       return n <= 3
@@ -965,32 +1041,23 @@
         : 'Cube Clubhouse can guide this one too: centres, then edges, then it works like a 3×3. Lessons and My real cube use the 3×3.';
     }
     // A new size means a new cube. With a mixed cube on screen that throws away the
-    // child's work, so the first tap only says so and the second tap swaps. Two taps
-    // rather than a pop-up, as with Clear saved progress: WKWebView shows no confirm().
-    let armed = null, armTimer = null;
-    function disarm() {
-      clearTimeout(armTimer);
-      if (armed === null) return;
-      armed = null;
-      sizeBox.querySelectorAll('.size-btn').forEach((x) => x.classList.remove('confirm'));
-      sizeNote.textContent = noteFor(size);
-    }
+    // child's work, so an iOS alert asks first; a solved cube swaps straight away.
     for (const n of NCube.SIZES) {
       const b = el('button', 'size-btn', n + '×' + n);
       b.type = 'button';
       b.dataset.size = n;
       b.setAttribute('aria-label', n + ' by ' + n + ' cube');
-      b.addEventListener('click', () => {
-        if (n === size) { disarm(); return; }
-        if (armed !== n && !station.model.isSolved(station.state)) {
-          disarm();
-          armed = n;
-          b.classList.add('confirm');
-          sizeNote.textContent = 'Tap ' + n + '×' + n + ' again to swap cubes. Your mixed-up ' + size + '×' + size + ' will be lost.';
-          armTimer = setTimeout(disarm, 5000);
-          return;
+      b.addEventListener('click', async () => {
+        if (n === size) return;
+        if (!station.model.isSolved(station.state)) {
+          const was = size;
+          const ok = await askFirst({
+            title: 'Start a ' + n + '×' + n + '?',
+            message: 'Your mixed-up ' + was + '×' + was + ' will be lost.',
+            action: 'Swap Cubes',
+          });
+          if (!ok || size !== was) return;
         }
-        disarm();
         applySize(n, false);
       });
       sizeBox.appendChild(b);
@@ -1018,7 +1085,7 @@
       // twenty-one Undos is a "solve" in two seconds, with confetti.
       station.forget();
       scrambled = true;
-      statusEl.textContent = 'Go! The clock starts on your first move. Stuck? Press "Help me solve it".';
+      statusEl.textContent = 'Go! The clock starts on your first move. Stuck? Tap Help Me Solve It.';
     });
     $('#play-reset').addEventListener('click', () => {
       hush();
@@ -1028,12 +1095,12 @@
       scrambled = false;
       moveCount = 0;
       station.set(station.model.solved());
-      statusEl.textContent = 'The cube is solved. Press Mix it up to start.';
+      statusEl.textContent = 'The cube is solved. Tap Mix It Up to start.';
     });
     $('#play-undo').addEventListener('click', () => {
       if (mixing) return;                 // the mix is not the child's to take back
       if (!station.history.length) {
-        if (scrambled) statusEl.textContent = 'Undo takes back your own turns, not the mix. Press Make it solved to start again.';
+        if (scrambled) statusEl.textContent = 'Undo takes back your own turns, not the mix. Tap Make It Solved to start again.';
         return;
       }
       staleGuide();
@@ -1057,8 +1124,8 @@
       const ok = await guide.start(station.state);
       if (station.view.gen !== myGen) return;       // the cube was replaced meanwhile
       statusEl.textContent = !ok ? 'Hmm, I could not work that one out. Read the message below.'
-        : solved ? 'This cube is already solved! Press Mix it up for a new one.'
-          : 'Follow the steps below. Press Watch to see each one.';
+        : solved ? 'This cube is already solved! Tap Mix It Up for a new one.'
+          : 'Follow the steps below. Tap Watch to see each one.';
       guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
     $('#play-help').addEventListener('click', async () => {
@@ -1217,13 +1284,13 @@
       guideNote.appendChild(document.createTextNode('These steps are for a cube mixed with exactly the turns above. '
         + 'If you have turned it since, mix it again from solved' + (station.model.N === 3 ? ', or paint it in on My real cube.' : '.')));
       if (station.model.N === 3) {
-        const go = el('button', 'btn small ghost', '🔍 My real cube');
+        const go = el('button', 'btn small ghost', '🔍 My Real Cube');
         go.type = 'button';
         go.addEventListener('click', () => showScreen('solve'));
         guideNote.appendChild(document.createTextNode(' '));
         guideNote.appendChild(go);
       }
-      checkEl.textContent = 'Follow the steps below on your real cube. Press Watch to see each one here.';
+      checkEl.textContent = 'Follow the steps below on your real cube. Tap Watch to see each one here.';
       thinking = true;
       setPhase('idle');
       const myMix = mix;
@@ -1231,7 +1298,7 @@
       try { ok = await guide.start(state); } finally { thinking = false; setPhase('idle'); }
       if (mix !== myMix || !guideOpen) return;
       mixProgress.textContent = ok ? 'Follow the steps below. When you can do it on your own, time a fresh mix!'
-        : 'Hmm, I could not work that one out. Press New mix and try another.';
+        : 'Hmm, I could not work that one out. Tap New Mix and try another.';
       guideBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 
@@ -1249,8 +1316,8 @@
     const HELP = {
       idle: () => (data.inspect
         ? 'Tap here, or press the space bar, to start your 15 seconds of looking.'
-        : 'Hold here, or hold the space bar, until the numbers turn green. Let go to start. Tap to stop.'),
-      inspecting: () => 'Look at your cube, but do not turn it yet. Hold here when you are ready, and let go to start.',
+        : 'Touch and hold here, or hold down the space bar, until the numbers turn green. Let go to start. Tap to stop.'),
+      inspecting: () => 'Look at your cube, but do not turn it yet. Touch and hold here when you are ready, and let go to start.',
       holding: () => 'Keep holding…',
       ready: () => 'Let go to start!',
       running: () => 'Tap anywhere, or press any key, to stop.',
@@ -1289,7 +1356,7 @@
       if (data.inspect && !inspecting) { tapToInspect = true; return; }
       setPhase('holding');
       clearTimeout(holdTimer);
-      holdTimer = setTimeout(() => { if (phase === 'holding') setPhase('ready'); }, HOLD_MS);
+      holdTimer = setTimeout(() => { if (phase === 'holding') { setPhase('ready'); haptic('light'); } }, HOLD_MS);
     }
     function release() {
       if (justStopped) { justStopped = false; return; }
@@ -1318,6 +1385,7 @@
     }
     function stop() {
       const ms = Timer.clockTime(performance.now() - startAt);
+      haptic('medium');
       justStopped = true;
       cancelAnimationFrame(raf); raf = 0;
       display.textContent = Timer.format(ms);
@@ -1358,7 +1426,7 @@
       showLast();
       renderAll();
       newMix();
-      if (party) confetti();
+      if (party) { confetti(); haptic('success'); }
     }
     function showLast() {
       const s = solves()[solves().length - 1];
@@ -1383,16 +1451,15 @@
     }
     plus2.addEventListener('click', () => penalise(2));
     dnf.addEventListener('click', () => penalise(Timer.DNF));
-    let delArmed = 0;
-    del.addEventListener('click', () => {
-      if (Date.now() > delArmed) {
-        delArmed = Date.now() + 4000;
-        del.textContent = 'Tap again to delete';
-        setTimeout(() => { if (Date.now() > delArmed) del.textContent = '🗑️ Delete this time'; }, 4100);
-        return;
-      }
-      delArmed = 0;
-      del.textContent = '🗑️ Delete this time';
+    del.addEventListener('click', async () => {
+      const s0 = solves()[solves().length - 1];
+      if (!s0) return;
+      const ok = await askFirst({
+        title: 'Delete This Time?',
+        message: Timer.formatSolve(s0) + ' will be taken off your ' + data.size + '×' + data.size + ' times.',
+        action: 'Delete',
+      });
+      if (!ok || solves()[solves().length - 1] !== s0) return;
       solves().pop();
       save();
       lastBox.hidden = true;
@@ -1444,7 +1511,7 @@
       render();
       const n = solves().length;
       showAllBtn.hidden = n <= SHOWN;
-      showAllBtn.textContent = showAll ? 'Show only the last ' + SHOWN : 'Show all ' + n + ' times';
+      showAllBtn.textContent = showAll ? 'Show Only the Last ' + SHOWN : 'Show All ' + n + ' Times';
       showAllBtn.setAttribute('aria-expanded', String(showAll));
       drawChart();
     }
@@ -1592,11 +1659,11 @@
       b.addEventListener('click', () => { if (n !== data.size) applySize(n, true); });
       sizeBox.appendChild(b);
     }
+    // an iOS switch: the words say what it is, the knob says whether it is on
     function showInspect() {
-      inspectBtn.textContent = '👀 15 seconds to look first: ' + (data.inspect ? 'On' : 'Off');
-      inspectBtn.setAttribute('aria-pressed', String(data.inspect));
+      inspectBtn.setAttribute('aria-checked', String(data.inspect));
     }
-    inspectBtn.addEventListener('click', () => { data.inspect = !data.inspect; save(); showInspect(); abort(); });
+    inspectBtn.addEventListener('click', () => { data.inspect = !data.inspect; save(); showInspect(); haptic('light'); abort(); });
     $('#timer-new-mix', section).addEventListener('click', newMix);
 
     // Touch: hold on the pad; the pointer is captured so letting go off the pad still
@@ -1648,29 +1715,20 @@
     const section = $('#screen-grownups');
     const msg = $('#clear-progress-msg', section);
     const clearBtn = $('#clear-progress', section);
-    let armed = 0;
-    // Two taps rather than a pop-up dialog: a child cannot wipe a week of stars by
-    // brushing the button, and nobody has to read a modal to say no.
-    clearBtn.addEventListener('click', () => {
-      if (Date.now() > armed) {
-        armed = Date.now() + 6000;
-        clearBtn.textContent = 'Tap again to erase';
-        msg.textContent = 'This cannot be undone.';
-        setTimeout(() => {
-          if (Date.now() <= armed) return;
-          clearBtn.textContent = 'Clear saved progress';
-          msg.textContent = '';
-        }, 6200);
-        return;
-      }
-      armed = 0;
-      clearBtn.textContent = 'Clear saved progress';
+    // An iOS alert asks first: a child cannot wipe a week of stars by brushing the button.
+    clearBtn.addEventListener('click', async () => {
+      const ok = await askFirst({
+        title: 'Clear Saved Progress?',
+        message: 'This erases every star, the chosen settings and every Timer time on ' + here() + '. It cannot be undone.',
+        action: 'Clear',
+      });
+      if (!ok) return;
       try {
         for (const key of [PROGRESS_KEY, LEGACY_PROGRESS_KEY, SIZE_KEY, SPEED_KEY, TIMER_KEY]) localStorage.removeItem(key);
         if (screens.timer) screens.timer.reload();
         msg.textContent = 'Erased. The lessons start fresh next time, and the Timer has no times.';
       } catch {
-        msg.textContent = 'This browser will not let the app save or erase anything, so there was nothing stored.';
+        msg.textContent = (DEVICE ? 'This ' + DEVICE : 'This browser') + ' will not let the app save or erase anything, so there was nothing stored.';
       }
     });
     section.querySelectorAll('.back-to-app').forEach((b) => b.addEventListener('click', () => showScreen('learn')));
@@ -1681,9 +1739,11 @@
     showScreen('grownups');
     const target = part && $('#' + part);
     if (!target) { window.scrollTo(0, 0); return; }
-    // The top bar is sticky, so scroll to just above the heading rather than under it.
+    // Where the top bar is sticky (not on a phone, where the tabs sit at the bottom),
+    // scroll to just above the heading rather than under it.
     const bar = $('.topbar');
-    const top = target.getBoundingClientRect().top + window.scrollY - (bar ? bar.offsetHeight : 0) - 10;
+    const sticky = bar && getComputedStyle(bar).position === 'sticky';
+    const top = target.getBoundingClientRect().top + window.scrollY - (sticky ? bar.offsetHeight : 0) - 10;
     window.scrollTo(0, Math.max(0, top));
   };
 
@@ -1727,7 +1787,7 @@
     $('#solve-check').addEventListener('click', () => {
       const grey = painted.filter((c) => c === 'X').length;
       if (grey) {
-        msg.innerHTML = '🎨 ' + grey + (grey === 1 ? ' sticker is' : ' stickers are') + ' still grey. Paint each one to match your cube, then press Check.';
+        msg.innerHTML = '🎨 ' + grey + (grey === 1 ? ' sticker is' : ' stickers are') + ' still grey. Paint each one to match your cube, then tap Check My Cube.';
         msg.className = 'msg bad';
         return;
       }

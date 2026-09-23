@@ -132,7 +132,7 @@ tips on the right.
 **For grown-ups** – reached from the three footer links, never from the child's nav:
 what the app teaches and how to sit with a child through it; a privacy page naming the
 four things kept on the device and the fact that the app makes no network requests at
-all, with a two-press button that erases the lot; and the licence conditions in full - the app is
+all, with a button that erases the lot after an iOS alert asks first; and the licence conditions in full - the app is
 proprietary, owned by Ira Learning LLC - with the typeface's own licence and the
 trademark notes. `#parents`, `#privacy` and `#licence` open it at the right
 section, and anything unrecognised in the hash lands on the lessons.
@@ -150,7 +150,7 @@ look afterwards. Hold the big pad (or the space bar) until it turns green, let g
 and touch anywhere or press any key to stop; letting go too soon starts nothing. Times
 read to the hundredth. An optional 15 seconds to look first follows competition rules:
 starting after 15 seconds adds two, after 17 is a DNF. The last solve can be marked +2 or
-DNF, or deleted with a second tap. For each size it keeps the best time, the best average
+DNF, or deleted once an iOS alert has asked. For each size it keeps the best time, the best average
 of 5, and the current averages of 5 and 12, worked out the way the World Cube Association
 does (drop the best and worst, average the rest; two DNFs make a DNF average), and stars
 the best in the list. A new best says what the old one was, with confetti. Leaving the
@@ -350,6 +350,37 @@ plain-English tooltips, and buttons *Show me* (animate), *Next*, *Back*, *Read* 
 * Lessons are data (`js/lessons.js`); `MOVE_WORDS` gives the plain-English meaning of every
   move token, used for tooltips, the notation lesson and speech.
 
+### Speaking and feeling like iOS
+
+The app is meant to feel at home on iPad and iPhone, so it follows Apple's conventions
+rather than a website's:
+
+* **Words.** On a touch screen you *tap*; a long press is *touch and hold*; only keys are
+  *pressed* (the space bar). Buttons, tabs and screen titles are in Title Case, as iOS
+  buttons are ("Mix It Up", "Help Me Solve This Mix"). Settings are named as iOS names
+  them: Aeroplane Mode, Reduce Motion, Guided Access, Screen Time, Text Size.
+* **Where it is.** `WebAppView.swift` tells the page, before any script runs, that it is
+  the iOS app and whether it is on an iPad or an iPhone. The page then says "on this
+  iPad" where a browser would say "in this browser's storage" (`.w-ios` / `.w-web` in
+  `index.html`); in a browser nothing changes.
+* **Tabs.** A capsule at the top on iPad, as iPadOS draws it; on iPhone a translucent tab
+  bar along the bottom, in reach of a thumb and clear of the home indicator, with the
+  title scrolling away like a large title.
+* **Controls.** Filled, tinted and gray buttons without borders, dimming while touched;
+  segmented controls for cube size and guide speed; a real switch for the 15 seconds
+  to look; no text-selection magnifier on a touch and hold.
+* **Alerts.** Anything that loses work (clearing progress, deleting a time, swapping a
+  mixed cube for another size) asks with an iOS alert: a title, one line, a bold Cancel
+  with the focus, and the action in red. It is drawn by the page, because WKWebView
+  shows no `confirm()` unless the app builds one.
+* **Haptics.** A light tap when the timer turns green and on a switch, a firmer one when
+  it stops, success on a solve or a finished practice, a warning on a destructive
+  choice — through a `haptic` message handler in `WebAppView.swift`. iPad has no haptic
+  engine, and a browser has no handler, so there it quietly does nothing.
+* **Text Size.** The app follows Settings › Display & Brightness › Text Size, growing the
+  whole page by up to a quarter; `npm run test:ios` checks every screen at that size on
+  the narrowest iPhone.
+
 ### Nothing reaches the network
 
 The app makes no requests at all, and three separate things keep it that way, because a
@@ -415,7 +446,7 @@ same reason.
 
 49 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 266 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 300 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -439,19 +470,19 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R19 | A 6×6 guide opens from a real scramble, with "Thinking…" while it works, and its stage bar no longer fills a phone screen with thirteen chips. |
 | R20 | The whole-solve run can be paused, resumed, stopped and re-speeded; stopping lands on a whole step, and the steps left still solve the cube. |
 | R21 | The view repaints only what changed, so every sticker on screen is checked against the state it is meant to show. |
-| R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress takes two presses. |
+| R22 | The grown-ups pages open from the footer and from a deep link, say what is stored and carry the licence in full, and erasing progress asks first with an iOS alert (Cancel keeps everything). |
 | R23 | Every part of the app is free: the guide opens on a 2×2, 3×3 and 4×4 and from My real cube with nothing in the way, no page asks for money, and the grown-ups pages say so — free to use, still proprietary, still no copying or reselling. |
 | R24 | The app asks the network for nothing. Every request the page makes is recorded and anything off-device is refused outright; the walk covers all four screens, `fetch` to the outside is blocked by the page's own policy, and the app still works with the network cut. |
 | R25 | Undo takes back the child's own turns, never the mix. One turn and twenty-one Undos used to walk the mix back and announce "Solved in 00:02 with 1 move!" with confetti; now the mix is cleared from the history when it finishes, and Undo does nothing while it is still mixing. |
 | R26 | Holding a key down turns the cube once. Every auto-repeat used to queue a turn, so the cube spun on for about nine seconds after the key came up. |
 | R27 | A drag that turns the picture a quarter or more round swings it back before a button, key or move chip turns a layer, so R is always the side on the right. A small peek round the side is left alone. |
 | R28 | When a trick card's Watch makes the last turns of a practice, the stars are still earned but the 🧠 badge is not, and the app says why. The same turns typed by the child, or watched first and then taken back, still earn it. |
-| R29 | Swapping cube size with a mixed cube on screen takes a second tap, and the first tap says what will be lost. A solved cube swaps on one tap. |
+| R29 | Swapping cube size with a mixed cube on screen asks first with an iOS alert that says what will be lost; Escape or Cancel keeps the cube, Swap Cubes swaps. A solved cube swaps on one tap. |
 | R30 | The keyboard reaches every layer: X, Y and Z turn the whole cube, and a digit typed first picks an inner layer on a big cube (2 then R is 2R). A layer the cube has not got is ignored. |
 | R31 | Clear my colours really clears: every sticker but the centres goes grey, and Check asks for the grey ones before it says anything about the cube. |
 | R32 | The speed timer: holding turns the pad amber, then green; letting go too soon starts nothing; it counts in hundredths; any key or a touch anywhere stops it and keeps the time; a fresh mix follows; and the space bar never presses a focused button. |
 | R33 | Best time, best average of 5 and the averages of 5 and 12 match the WCA arithmetic; a faster solve is announced as a new best with the old one named; each size keeps its own times and mix length; everything survives a reload. |
-| R34 | +2 and DNF toggle on the last solve (a DNF is never the best), delete takes two taps, and the 15 seconds to look count down, then give +2, then DNF. The clock is fast-forwarded rather than waited for. |
+| R34 | +2 and DNF toggle on the last solve (a DNF is never the best), delete asks first with an alert that names the time, and the 15 seconds to look count down, then give +2, then DNF. The clock is fast-forwarded rather than waited for. |
 | R35 | Leaving the screen mid-solve throws the solve away; Escape cancels the looking time. |
 | R36 | The Privacy and For parents pages describe the times; Clear saved progress erases them at once; opening the Timer stores nothing; damaged saved data is skipped, not fatal. |
 | R37 | Cube Clubhouse® carries its ® in the header on every screen, the footer (with the ownership notice), the first mention on the grown-ups pages, the licence and the trademark note, without making the header taller; the page title stays plain. |
@@ -459,13 +490,20 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R39 | Ticking the mix: one tap turns the picture by one move, a later tap ticks everything up to it, a done turn steps back, the last turn says it is time to solve, and turns cannot be ticked while the clock runs. |
 | R40 | Inspection says "Eight seconds" and "Twelve seconds", once each, and nothing during the solve. |
 | R41 | The progress chart: one point per timed solve (a DNF left out, and said so), round-second ticks, only the best and the latest labelled (one label when they are the same solve), a readout by touch and by arrow keys, a Show all list, a redraw on resize, its own dark-mode blue, no chart for a single time, and the last 50 of a longer history. |
+| R42 | On a touch screen you tap: nothing on any screen says to press a button or to click, the timer says "Touch and hold", and every button label is in Title Case. |
+| R43 | In the iOS app the page says "this iPad" or "this iPhone" where a browser would say "this browser" (privacy, footer), and never mentions a browser; in a browser it still does. For Parents lists Guided Access, Screen Time and Text Size. |
+| R44 | Haptics: a light tap when the clock turns green and on a switch, a firmer one when it stops, a warning on a destructive choice; with no haptic engine listening, nothing breaks. |
+| R45 | On iPhone the tabs sit along the bottom and the title scrolls away; nothing at the foot of the page hides under the bar; the grown-ups section links stay in the page. On iPad the tabs are a capsule at the top. |
+| R46 | The iOS alert: Cancel has the focus, it is announced as a modal alert, Tab stays inside it, keys do not reach the cube behind, tapping outside does nothing, and Escape cancels. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
 the build phases, both configurations on iOS 17.0, no `#available` check the target
 already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
-produces, by touch, on an iPhone and an iPad profile: 120 checks, including the launch
+produces, by touch, on an iPhone and an iPad profile (each told it is the iOS app, as the
+real one is): 130 checks, including every screen at the largest Text Size on the narrowest
+iPhone, the tab bar at the bottom on iPhone and the top on iPad, the launch
 screen (Info.plist wired into both configurations, a background colour identical to the
 page's in light and dark, the logo at every scale and appearance and narrow enough for
 the smallest iPhone, and a cover that lifts on load, on failure and after a timeout), a whole

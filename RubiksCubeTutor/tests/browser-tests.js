@@ -34,13 +34,20 @@ const view = (sel) => `(() => { const st=new Array(54);
   document.querySelectorAll('${sel} .face:not(.inner)').forEach(f=>{st[+f.dataset.index]=f.className.match(/c-(\\w)/)[1];});
   return st.join(''); })()`;
 let pass = 0, fail = 0;
-// Swapping size with a mixed cube on screen takes a second tap (R29). The cases that
-// use this are about what happens after a swap, so they make both taps.
+// Swapping size with a mixed cube on screen asks first, with an iOS alert (R29). The
+// cases that use this are about what happens after a swap, so they say yes.
 const swapSize = async (p, n) => {
-  const b = p.locator('#play-size .size-btn', { hasText: n + '×' + n });
-  await b.click();
-  if (!(await b.evaluate((x) => x.classList.contains('active')))) await b.click();
+  await p.locator('#play-size .size-btn', { hasText: n + '×' + n }).click();
+  const yes = p.locator('.ios-alert-action');
+  if (await yes.count()) await yes.click();
 };
+// the one alert on screen: its title, its message, and its two buttons
+const alertOf = async (p) => (await p.locator('.ios-alert').count() ? {
+  title: (await p.locator('.ios-alert-title').textContent()).trim(),
+  message: (await p.locator('.ios-alert-message').textContent()).trim(),
+  cancel: (await p.locator('.ios-alert-cancel').textContent()).trim(),
+  action: (await p.locator('.ios-alert-action').textContent()).trim(),
+} : null);
 const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  PASS ' : '  FAIL ') + name + (extra !== undefined ? '  [' + extra + ']' : '')); };
 
 (async () => {
@@ -75,7 +82,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('.lesson-card').nth(2).click(); await p.waitForTimeout(250);
     await p.locator('#lesson-practice .btn', { hasText: 'Hint' }).click(); await p.waitForTimeout(50);
     await p.locator('.hint-box .btn', { hasText: '▶ Watch' }).click(); await p.waitForTimeout(100);
-    await p.locator('#lesson-practice .btn', { hasText: 'Another puzzle' }).click(); await p.waitForTimeout(1500);
+    await p.locator('#lesson-practice .btn', { hasText: 'Another Puzzle' }).click(); await p.waitForTimeout(1500);
     for (let k = 0; k < 30; k++) {
       if (await p.locator('.practice-status.win').count()) break;
       await p.locator('#lesson-practice .btn', { hasText: 'Hint' }).click(); await p.waitForTimeout(60);
@@ -122,7 +129,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#play-scramble').click(); await p.waitForTimeout(700);
     await p.locator('#play-scramble').click(); await p.waitForTimeout(4000);
     await p.locator('#play-help').click(); await p.waitForTimeout(400);
-    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the Whole Solve' }).click();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 120000 });
     ck('auto-solve ends on a visibly solved cube', await p.evaluate(`RC.Cube.isSolved(${view('#play-cube')}.split(''))`));
     await p.close(); }
@@ -132,7 +139,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('nav button[data-screen="play"]').click();
     await p.locator('#play-scramble').click(); await p.waitForTimeout(2600);
     await p.locator('#play-help').click(); await p.waitForTimeout(300);
-    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click(); await p.waitForTimeout(900);
+    await p.locator('#play-guide .btn', { hasText: 'Watch the Whole Solve' }).click(); await p.waitForTimeout(900);
     await p.locator('#play-controls .pad-btn').first().click();   // tears down the guide mid-run
     await p.waitForTimeout(1200);
     await p.locator('#play-help').click(); await p.waitForTimeout(400);
@@ -201,7 +208,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('.lesson-card').nth(6).click(); await p.waitForTimeout(300);   // yellow cross, was 11%
     for (let k = 0; k < 40; k++) {
       if (await p.locator('.practice-status.win').count()) instant++;
-      await p.locator('#lesson-practice .btn', { hasText: 'Another puzzle' }).click(); await p.waitForTimeout(120);
+      await p.locator('#lesson-practice .btn', { hasText: 'Another Puzzle' }).click(); await p.waitForTimeout(120);
     }
     ck('40 fresh yellow-cross cubes all need work', instant === 0, 'instant wins=' + instant);
     await p.close(); }
@@ -250,7 +257,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     const spoken = () => p.evaluate(() => window.__speech.spoken.length);
     const cancels = () => p.evaluate(() => window.__speech.cancels);
 
-    ck('it starts out offering to read', /Read to me/.test(await label()) && (await pressed()) === 'false');
+    ck('it starts out offering to read', /Read to Me/.test(await label()) && (await pressed()) === 'false');
 
     await read.click(); await p.waitForTimeout(80);
     const saidFirst = await spoken();
@@ -259,7 +266,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     const before = await cancels();
     await read.click(); await p.waitForTimeout(80);
     ck('a second press stops it', (await cancels()) > before, 'cancel called');
-    ck('and the button offers to read again', /Read to me/.test(await label()) && (await pressed()) === 'false');
+    ck('and the button offers to read again', /Read to Me/.test(await label()) && (await pressed()) === 'false');
     ck('stopping does not start a new narration', (await spoken()) === saidFirst);
 
     // a third press starts again, and finishing on its own also resets the button
@@ -267,13 +274,13 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('it can be started again', (await spoken()) === saidFirst + 1 && /Stop/.test(await label()));
     await p.evaluate(() => window.__endSpeech());
     await p.waitForTimeout(80);
-    ck('finishing on its own resets the button', /Read to me/.test(await label()) && (await pressed()) === 'false');
+    ck('finishing on its own resets the button', /Read to Me/.test(await label()) && (await pressed()) === 'false');
 
     // only one thing reads at a time: another Read button takes over and resets this one
     await read.click(); await p.waitForTimeout(80);
     const alg = p.locator('#lesson-algs .btn[aria-pressed]').first();
     await alg.click(); await p.waitForTimeout(80);
-    ck('another Read button takes over', /Read to me/.test(await label()) && (await pressed()) === 'false');
+    ck('another Read button takes over', /Read to Me/.test(await label()) && (await pressed()) === 'false');
     ck('and that one is now reading', (await alg.getAttribute('aria-pressed')) === 'true');
 
     // a late end event from the cancelled utterance must not reset the new reader
@@ -303,7 +310,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     });
     ck('five sizes are offered', await p.locator('#play-size .size-btn').count() === 5);
     for (const n of [2, 4, 5, 6, 3]) {
-      await p.locator('#play-size .size-btn', { hasText: n + '×' + n }).click();
+      await swapSize(p, n);
       await p.waitForTimeout(250);
       ck(n + 'x' + n + ' draws ' + (6 * n * n) + ' stickers', (await stickers()) === 6 * n * n, await stickers());
       const before = await viewState();
@@ -330,7 +337,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       ck(n + 'x' + n + ' Make it solved', await solvedOnScreen());
     }
     // the guide works on a 2x2
-    await p.locator('#play-size .size-btn', { hasText: '2×2' }).click();
+    await swapSize(p, 2);
     await p.waitForTimeout(250);
     await p.locator('#play-scramble').click();
     await p.waitForTimeout(2600);
@@ -338,11 +345,11 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.waitForTimeout(400);
     ck('2x2: the guide offers steps', /step 1 of/.test(await p.locator('#play-guide .guide-count').textContent()));
     ck('2x2: no step mentions a centre', !/centre/.test(await p.locator('#play-guide').textContent()));
-    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the Whole Solve' }).click();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 120000 });
     ck('2x2: the guide solves it', await solvedOnScreen());
     // and on a 4x4, where it builds centres and pairs edges before the 3x3 part
-    await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
+    await swapSize(p, 4);
     await p.waitForTimeout(250);
     ck('4x4: help is offered', !(await p.locator('#play-help').isDisabled()));
     ck('4x4: the note explains the plan', /centres, then edges/.test(await p.locator('#play-size-note').textContent()));
@@ -354,11 +361,11 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('4x4: the stage bar starts with centres and edges', chips.indexOf('Centres') >= 0 && chips.indexOf('Pair the edges') > chips.indexOf('Centres') && chips.indexOf('White cross') > chips.indexOf('Pair the edges'), chips.join(','));
     ck('4x4: the first card explains the big-cube idea', /middle squares|centre/i.test(await p.locator('#play-guide .guide-text').textContent()));
     ck('4x4: the status says what to do', /Follow the steps/.test(await p.locator('#play-status').textContent()));
-    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the Whole Solve' }).click();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 240000 });
     ck('4x4: the guide solves it', await solvedOnScreen());
     // a 5x5 can turn its middle layer, which its guide asks for
-    await p.locator('#play-size .size-btn', { hasText: '5×5' }).click();
+    await swapSize(p, 5);
     await p.waitForTimeout(250);
     const labels = await p.locator('#play-controls .pad-label').allTextContents();
     ck('5x5: the pad has a middle-layer row', labels.includes('the middle layer'), labels.join(','));
@@ -371,7 +378,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.waitForTimeout(300);
 
     // a 6x6 gets a guide too, without waiting for the whole solve to play out
-    await p.locator('#play-size .size-btn', { hasText: '6×6' }).click();
+    await swapSize(p, 6);
     await p.waitForTimeout(250);
     await p.locator('#play-scramble').click();
     await p.waitForTimeout(2600);
@@ -396,7 +403,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#solve-from-play').click();
     ck('My real cube explains it needs a 3x3', /4×4/.test(await p.locator('#solve-msg').textContent()));
     await p.locator('nav button[data-screen="play"]').click();
-    await p.locator('#play-size .size-btn', { hasText: '3×3' }).click();
+    await swapSize(p, 3);
     await p.waitForTimeout(200);
     await p.close(); }
 
@@ -510,10 +517,10 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('pause and stop stay out of the way until they are needed', await p.locator('#play-guide .btn', { hasText: 'Pause' }).isHidden());
 
     await p.locator('#play-guide .speed-btn', { hasText: 'Slow' }).click();
-    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the Whole Solve' }).click();
     await p.waitForTimeout(700);
     ck('pause and stop appear while the solve plays', await p.locator('#play-guide .btn', { hasText: 'Pause' }).isVisible());
-    ck('the step buttons are hidden while it plays', await p.locator('#play-guide .btn', { hasText: 'I did it' }).isHidden());
+    ck('the step buttons are hidden while it plays', await p.locator('#play-guide .btn', { hasText: 'I Did It' }).isHidden());
 
     await p.locator('#play-guide .btn', { hasText: 'Pause' }).click();
     await p.waitForTimeout(900);
@@ -522,17 +529,17 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('pause holds the cube still', frozen === (await cubeState()));
     // a new speed while paused, then carry on
     await p.locator('#play-guide .speed-btn', { hasText: 'Fast' }).click();
-    await p.locator('#play-guide .btn', { hasText: 'Carry on' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Carry On' }).click();
     await p.waitForTimeout(1200);
     ck('carrying on starts the cube turning again', frozen !== (await cubeState()));
 
-    await p.locator('#play-guide .btn', { hasText: 'Stop here' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Stop Here' }).click();
     await p.waitForTimeout(1500);
-    ck('stopping brings the step buttons back', await p.locator('#play-guide .btn', { hasText: 'I did it' }).isVisible());
+    ck('stopping brings the step buttons back', await p.locator('#play-guide .btn', { hasText: 'I Did It' }).isVisible());
     const card = await p.locator('#play-guide .guide-count').textContent();
     ck('stopping lands on a whole step', /step \d+ of \d+/.test(card), card);
     // The cube it hands back has to match the card: the rest of the steps must finish it.
-    await p.locator('#play-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.locator('#play-guide .btn', { hasText: 'Watch the Whole Solve' }).click();
     await p.waitForFunction(() => document.querySelector('#play-guide .guide-done'), null, { timeout: 180000 });
     ck('the steps left after a stop still solve the cube', await solvedNow());
 
@@ -605,15 +612,19 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       return document.querySelector('#licence h2').getBoundingClientRect().top >= bar.bottom - 1;
     }));
 
-    // Clearing progress takes two taps, and really clears it.
+    // Clearing progress asks first, with an iOS alert, and really clears it.
     await p.evaluate(() => { localStorage.setItem('cubeclubhouse.progress', '{"daisy":3}'); localStorage.setItem('cubeclubhouse.size', '5'); });
     await p.locator('#clear-progress').click();
     await p.waitForTimeout(120);
-    ck('one press only arms the erase', (await p.evaluate(() => localStorage.getItem('cubeclubhouse.progress'))) === '{"daisy":3}');
-    ck('and says what it is about to do', /Tap again/.test(await p.locator('#clear-progress').textContent()));
-    await p.locator('#clear-progress').click();
+    const ask = await alertOf(p);
+    ck('a tap only asks', (await p.evaluate(() => localStorage.getItem('cubeclubhouse.progress'))) === '{"daisy":3}');
+    ck('and the alert says what will happen', ask && ask.title === 'Clear Saved Progress?' && /cannot be undone/.test(ask.message) && ask.cancel === 'Cancel' && ask.action === 'Clear', JSON.stringify(ask));
+    await p.locator('.ios-alert-cancel').click(); await p.waitForTimeout(100);
+    ck('Cancel keeps everything', (await p.locator('.ios-alert').count()) === 0 && (await p.evaluate(() => localStorage.getItem('cubeclubhouse.progress'))) === '{"daisy":3}');
+    await p.locator('#clear-progress').click(); await p.waitForTimeout(100);
+    await p.locator('.ios-alert-action').click();
     await p.waitForTimeout(120);
-    ck('the second press erases the lot', await p.evaluate(() => !localStorage.getItem('cubeclubhouse.progress') && !localStorage.getItem('cubeclubhouse.size') && !localStorage.getItem('cubeclubhouse.speed')));
+    ck('Clear erases the lot', await p.evaluate(() => !localStorage.getItem('cubeclubhouse.progress') && !localStorage.getItem('cubeclubhouse.size') && !localStorage.getItem('cubeclubhouse.speed')));
 
     await p.locator('#screen-grownups .back-to-app').first().click();
     await p.waitForTimeout(250);
@@ -633,7 +644,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.waitForTimeout(200);
     // The guide used to stop at a paywall on anything bigger than a 2x2.
     for (const n of [2, 3, 4]) {
-      await p.locator('#play-size .size-btn', { hasText: n + '×' + n }).click();
+      await swapSize(p, n);                  // the last cube is still mixed, so it asks
       await p.waitForTimeout(350);
       await p.locator('#play-scramble').click();
       await p.waitForTimeout(2700);
@@ -856,7 +867,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('watching the trick first, then doing it, still earns the 🧠', /No hints/.test(await statusOf(r)), await statusOf(r));
     await q.close(); await r.close(); }
 
-  console.log('R29 swapping size with a mixed cube takes a second tap');
+  console.log('R29 swapping size with a mixed cube asks first');
   { const p = await newPage();
     await p.locator('nav button[data-screen="play"]').click();
     await p.locator('#play-scramble').click();
@@ -864,11 +875,14 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     const mixed = await settle(p, '#play-cube');
     const four = p.locator('#play-size .size-btn', { hasText: '4×4' });
     await four.click(); await p.waitForTimeout(200);
-    ck('the first tap keeps the mixed cube', (await stickersOf(p, '#play-cube')) === mixed);
-    ck('and says what a second tap will do', /Tap 4×4 again/.test(await p.locator('#play-size-note').textContent()));
-    ck('the tapped size is marked', await four.evaluate((x) => x.classList.contains('confirm')));
-    await four.click(); await p.waitForTimeout(300);
-    ck('the second tap swaps', (await stickersOf(p, '#play-cube')).length === 96);
+    ck('a tap keeps the mixed cube', (await stickersOf(p, '#play-cube')) === mixed);
+    const ask = await alertOf(p);
+    ck('and asks, saying what will be lost', ask && ask.title === 'Start a 4×4?' && /mixed-up 3×3 will be lost/.test(ask.message) && ask.action === 'Swap Cubes', JSON.stringify(ask));
+    await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+    ck('Escape means Cancel', (await p.locator('.ios-alert').count()) === 0 && (await stickersOf(p, '#play-cube')) === mixed);
+    await four.click(); await p.waitForTimeout(150);
+    await p.locator('.ios-alert-action').click(); await p.waitForTimeout(300);
+    ck('Swap Cubes swaps', (await stickersOf(p, '#play-cube')).length === 96);
     // a solved cube has nothing to lose, so one tap is enough
     await p.locator('#play-size .size-btn', { hasText: '2×2' }).click(); await p.waitForTimeout(300);
     ck('a solved cube swaps on one tap', (await stickersOf(p, '#play-cube')).length === 24);
@@ -877,7 +891,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
   console.log('R30 the keyboard reaches every layer, and turns the whole cube');
   { const p = await newPage();
     await p.locator('nav button[data-screen="play"]').click();
-    await p.locator('#play-size .size-btn', { hasText: '4×4' }).click();
+    await swapSize(p, 4);
     await p.waitForTimeout(300);
     ck('the pad says how', /type its number first/.test(await p.locator('#play-controls .pad-hint').textContent())
       && /X, Y or Z/.test(await p.locator('#play-controls .pad-hint').textContent()));
@@ -1017,13 +1031,14 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#timer-dnf').click();
     ck('tapping DNF again takes it off', /^10\.\d\d$/.test((await times(p))[0]));
     await p.locator('#timer-delete').click();
-    ck('delete asks for a second tap', (await times(p)).length === 1 && /Tap again/.test(await p.locator('#timer-delete').textContent()));
-    await p.locator('#timer-delete').click();
-    ck('the second tap deletes it', (await times(p)).length === 0);
+    const ask = await alertOf(p);
+    ck('delete asks first, naming the time', (await times(p)).length === 1 && ask && ask.title === 'Delete This Time?' && /^10\.\d\d will be taken off your 3×3 times\.$/.test(ask.message), JSON.stringify(ask));
+    await p.locator('.ios-alert-action').click(); await p.waitForTimeout(100);
+    ck('Delete deletes it', (await times(p)).length === 0);
 
     // inspection: a tap starts 15 seconds of looking, counted down
     await p.locator('#timer-inspect').click();
-    ck('inspection can be switched on', (await p.locator('#timer-inspect').getAttribute('aria-pressed')) === 'true');
+    ck('inspection is an iOS switch, switched on', (await p.locator('#timer-inspect').getAttribute('role')) === 'switch' && (await p.locator('#timer-inspect').getAttribute('aria-checked')) === 'true');
     await p.keyboard.down(' '); await p.keyboard.up(' '); await p.waitForTimeout(100);
     ck('a tap starts the looking time', (await phase(p)) === 'inspecting' && (await p.locator('#timer-display').textContent()) === '15');
     await p.evaluate(() => window.__skip(5200)); await p.waitForTimeout(100);
@@ -1064,7 +1079,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(200);
     ck('privacy lists the times', /times from the Timer screen/.test(await p.locator('#privacy').textContent()));
     ck('for parents describes the Timer', /speedcubing timer/.test(await p.locator('#parents').textContent()));
-    await p.locator('#clear-progress').click(); await p.locator('#clear-progress').click();
+    await p.locator('#clear-progress').click(); await p.locator('.ios-alert-action').click();
     await p.waitForTimeout(150);
     ck('Clear saved progress erases the times', await p.evaluate((k) => localStorage.getItem(k) === null, TKEY));
     // opening the Timer on a fresh device leaves storage alone until the child does something
@@ -1115,9 +1130,9 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the picture shows the mixed cube', (await stickersOf(p, '#timer-cube')) === await cubeAfter(p, 3, (await mixOf(p)).join(' ')));
     const note = await p.locator('#timer-guide-note').textContent();
     ck('it says the steps are for a cube mixed exactly so', /exactly the turns above/.test(note));
-    ck('and offers My real cube for one turned since', (await p.locator('#timer-guide-note .btn', { hasText: 'My real cube' }).count()) === 1);
+    ck('and offers My real cube for one turned since', (await p.locator('#timer-guide-note .btn', { hasText: 'My Real Cube' }).count()) === 1);
     await p.locator('#play-guide, #timer-guide').locator('.speed-btn', { hasText: 'Fast' }).click().catch(() => {});
-    await p.locator('#timer-guide .btn', { hasText: 'Watch the whole solve' }).click();
+    await p.locator('#timer-guide .btn', { hasText: 'Watch the Whole Solve' }).click();
     await p.waitForSelector('#timer-guide .guide-done', { timeout: 120000 });
     await settle(p, '#timer-cube');
     ck('watching the whole solve ends on a solved cube', await solvedPicture(p, 3));
@@ -1143,7 +1158,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#timer-size .size-btn', { hasText: '3×3' }).click(); await p.waitForTimeout(150);
     await p.locator('#timer-solve-help').click();
     await p.waitForSelector('#timer-guide .guide-count', { timeout: 60000 });
-    await p.locator('#timer-guide-note .btn', { hasText: 'My real cube' }).click(); await p.waitForTimeout(150);
+    await p.locator('#timer-guide-note .btn', { hasText: 'My Real Cube' }).click(); await p.waitForTimeout(150);
     ck('the My real cube button goes there', !(await p.locator('#screen-solve').isHidden()));
     await p.close(); }
 
@@ -1224,7 +1239,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.keyboard.press('ArrowLeft'); await p.keyboard.press('ArrowLeft'); await p.keyboard.press('ArrowLeft');
     ck('and the arrows step back, to the best three solves ago', /^18\.90solve 17 · your best/.test(await p.locator('.chart-tip').textContent()), await p.locator('.chart-tip').textContent());
     // the list is the chart's table: every value can be read without touching the line
-    ck('the list shows the last 12', (await times(p)).length === 12 && /Show all 20 times/.test(await p.locator('#timer-show-all').textContent()));
+    ck('the list shows the last 12', (await times(p)).length === 12 && /Show All 20 Times/.test(await p.locator('#timer-show-all').textContent()));
     await p.locator('#timer-show-all').click();
     ck('Show all lists every time', (await times(p)).length === 20 && (await p.locator('#timer-show-all').getAttribute('aria-expanded')) === 'true');
     await p.locator('#timer-show-all').click();
@@ -1246,6 +1261,138 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     const one = await r.locator('.chart-label').allTextContents();
     ck('when the latest is the best, it gets one label, at the end of the line', one.length === 1 && one[0] === '⭐ 24.10', one.join(' / '));
     await r.close(); }
+
+  // ---- R42-R46: the app speaks and feels like iOS ----
+  // A page that believes it is the iOS app, as WebAppView.swift tells it before any script runs.
+  const iosPage = async (device, viewport, extra) => {
+    const ctx = await b.newContext({ viewport, hasTouch: true, isMobile: device === 'iPhone' });
+    await ctx.addInitScript((d) => { window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: d }); }, device);
+    if (extra) await ctx.addInitScript(extra);
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.goto(URL); await p.waitForTimeout(250);
+    return p;
+  };
+  // everything a child or parent can read, screen by screen
+  const allWords = async (p) => {
+    let text = '';
+    for (const screen of ['learn', 'play', 'timer', 'solve']) {
+      await p.locator(`nav button[data-screen="${screen}"]`).click(); await p.waitForTimeout(150);
+      text += await p.evaluate(() => document.body.innerText) + '\n';
+    }
+    await p.locator('.lesson-card').first().click().catch(() => {});
+    await p.locator('nav button[data-screen="learn"]').click(); await p.waitForTimeout(100);
+    await p.locator('.lesson-card').nth(2).click(); await p.waitForTimeout(250);
+    text += await p.evaluate(() => document.body.innerText) + '\n';
+    await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(150);
+    text += await p.evaluate(() => document.body.innerText);
+    return text;
+  };
+
+  console.log('R42 on a touch screen you tap: the words match');
+  { const p = await newPage();
+    const text = await allWords(p);
+    const presses = (text.match(/\b[Pp]ress(ed|ing)?\b[^.\n]{0,24}/g) || []).filter((m) => !/space bar|any key|Shift/.test(m));
+    ck('nothing on screen says to press a button', presses.length === 0, presses.slice(0, 3).join(' | ') || 'none');
+    // "makes it click" is an idiom, and "triple-click the side button" is Apple's own
+    // name for starting Guided Access; neither is a screen control
+    ck('nothing says to click', !/\bclick/i.test(text.replace(/makes it click|triple-click/g, '')));
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(100);
+    ck('a long press is "Touch and hold", as iOS calls it', /Touch and hold here/.test(await p.locator('#timer-help').innerText()));
+    // buttons in title-style capitalisation, as iOS buttons are
+    const small = new Set(['a', 'an', 'the', 'and', 'or', 'to', 'of', 'in', 'on', 'at', 'by', 'for', 'from', 'with', 'as']);
+    const odd = [];
+    for (const screen of ['learn', 'play', 'timer', 'solve']) {
+      await p.locator(`nav button[data-screen="${screen}"]`).click(); await p.waitForTimeout(120);
+      const labels = await p.$$eval('.btn, nav button, .switch-row, .speed-btn, .linkish', (bs) => bs.filter((x) => x.offsetParent !== null).map((x) => x.innerText.trim()));
+      for (const l of labels) {
+        const words = l.replace(/[^A-Za-z' -]/g, ' ').split(/\s+/).filter((w) => /^[A-Za-z]/.test(w));
+        words.forEach((w, i) => { if (w[0] === w[0].toLowerCase() && !(i > 0 && i < words.length - 1 && small.has(w))) odd.push(l); });
+      }
+    }
+    ck('every button label is in Title Case', odd.length === 0, [...new Set(odd)].slice(0, 5).join(' | ') || 'none');
+    await p.close(); }
+
+  console.log('R43 in the iOS app it says iPad or iPhone, not browser');
+  { for (const [device, vp] of [['iPad', { width: 1180, height: 820 }], ['iPhone', { width: 390, height: 844 }]]) {
+      const p = await iosPage(device, vp);
+      ck(device + ': the page knows it is the iOS app', await p.evaluate(() => document.documentElement.classList.contains('ios-app')));
+      await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(150);
+      const privacy = await p.locator('#privacy').innerText();
+      ck(device + ': privacy says where things are kept', new RegExp('on this ' + device + ', inside the app').test(privacy), privacy.match(/Four small things[^:]*/) && privacy.match(/Four small things[^:]*/)[0]);
+      ck(device + ': and never mentions a browser', !/browser/i.test(privacy));
+      ck(device + ': the footer too', new RegExp('everything stays on this ' + device).test(await p.locator('footer').innerText()) && !/browser/.test(await p.locator('footer').innerText()));
+      await p.close();
+    }
+    const w = await newPage();
+    await w.locator('.foot-links [data-info="privacy"]').click(); await w.waitForTimeout(150);
+    ck('in a browser it still says browser', /this browser's own storage/.test(await w.locator('#privacy').innerText()) && /runs in your browser/.test(await w.locator('footer').innerText()));
+    ck('and not iPad', !/this iPad|this iPhone/.test(await w.locator('#privacy').innerText()));
+    ck('For Parents has the iPad and iPhone settings a parent needs', /Guided Access/.test(await w.locator('#parents').innerText()) && /Screen Time/.test(await w.locator('#parents').innerText()) && /Text Size/.test(await w.locator('#parents').innerText()));
+    await w.close(); }
+
+  console.log('R44 haptics where a hand expects them');
+  { const p = await iosPage('iPhone', { width: 390, height: 844 }, () => {
+      window.__haptics = [];
+      window.webkit = { messageHandlers: { haptic: { postMessage: (k) => window.__haptics.push(k) } } };
+    });
+    const felt = () => p.evaluate(() => window.__haptics.slice());
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    await p.keyboard.down(' '); await p.waitForTimeout(380);
+    ck('the clock turning green is felt', (await felt()).join() === 'light');
+    await p.keyboard.up(' '); await p.waitForTimeout(300);
+    await p.keyboard.press('a'); await p.waitForTimeout(150);
+    ck('stopping it is felt, more firmly', (await felt()).join() === 'light,medium');
+    await p.locator('#timer-inspect').click(); await p.waitForTimeout(80);
+    ck('flipping a switch is felt', (await felt()).slice(-1)[0] === 'light');
+    await p.locator('#timer-delete').click(); await p.waitForTimeout(80);
+    await p.locator('.ios-alert-action').click(); await p.waitForTimeout(80);
+    ck('a destructive choice warns', (await felt()).slice(-1)[0] === 'warning');
+    await p.close();
+    const q = await newPage();
+    await q.locator('nav button[data-screen="timer"]').click(); await q.waitForTimeout(100);
+    await q.keyboard.down(' '); await q.waitForTimeout(380); await q.keyboard.up(' '); await q.keyboard.press('a');
+    await q.waitForTimeout(150);
+    ck('in a browser, with nobody listening, nothing breaks', (await q.locator('#timer-list .timer-t').count()) === 1);
+    await q.close(); }
+
+  console.log('R45 the tab bar sits where iOS puts it');
+  { const p = await iosPage('iPhone', { width: 390, height: 844 });
+    const bar = await p.locator('header nav').boundingBox();
+    ck('iPhone: the tabs are along the bottom', Math.round(bar.y + bar.height) === 844 && bar.width === 390, JSON.stringify(bar));
+    ck('iPhone: the title scrolls away, not stuck at the top', (await p.evaluate(() => getComputedStyle(document.querySelector('.topbar')).position)) === 'static');
+    ck('iPhone: the chosen tab is tinted', (await p.locator('nav button.active').evaluate((x) => getComputedStyle(x).color)) !== (await p.locator('nav button:not(.active)').first().evaluate((x) => getComputedStyle(x).color)));
+    await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+    const lastLink = await p.locator('.foot-links .linkish').last().boundingBox();
+    ck('iPhone: nothing hides under the bar at the bottom of the page', lastLink.y + lastLink.height <= bar.y, Math.round(lastLink.y + lastLink.height) + ' vs ' + Math.round(bar.y));
+    await p.locator('.foot-links .linkish').last().click();
+    ck('iPhone: and the last link can still be tapped', !(await p.locator('#screen-grownups').isHidden()));
+    const sections = await p.locator('.info-nav').boundingBox();
+    ck('iPhone: the grown-ups section links stay in the page, not in the tab bar', sections && sections.y < bar.y - 100, JSON.stringify(sections));
+    await p.close();
+    const q = await iosPage('iPad', { width: 1180, height: 820 });
+    const top = await q.locator('header nav').boundingBox();
+    ck('iPad: the tabs are a capsule at the top', top.y < 60 && top.width < 800, JSON.stringify(top));
+    await q.close(); }
+
+  console.log('R46 the iOS alert behaves like one');
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-scramble').click();
+    await p.waitForFunction(() => /Go!/.test(document.querySelector('#play-status').textContent), null, { timeout: 10000 });
+    const before = await settle(p, '#play-cube');
+    await p.locator('#play-size .size-btn', { hasText: '5×5' }).click(); await p.waitForTimeout(150);
+    ck('Cancel has the focus, as the safe choice', await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('ios-alert-cancel')));
+    ck('it is announced as an alert', (await p.locator('.ios-alert').getAttribute('role')) === 'alertdialog' && (await p.locator('.ios-alert').getAttribute('aria-modal')) === 'true');
+    await p.keyboard.press('Tab');
+    ck('Tab stays inside the alert', await p.evaluate(() => document.activeElement.classList.contains('ios-alert-action')));
+    await p.keyboard.press('r'); await p.waitForTimeout(400);
+    ck('keys do not reach the cube behind it', (await settle(p, '#play-cube')) === before);
+    await p.mouse.click(10, 10); await p.waitForTimeout(100);
+    ck('tapping outside does nothing, as on iOS', (await p.locator('.ios-alert').count()) === 1);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(100);
+    ck('Escape cancels and the cube is untouched', (await p.locator('.ios-alert').count()) === 0 && (await settle(p, '#play-cube')) === before);
+    await p.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');

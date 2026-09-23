@@ -152,6 +152,17 @@ function runCopyPhase() {
     ck('it respects Reduce Motion', /accessibilityReduceMotion/.test(app));
   }
 
+  console.log('\nthe iOS side of the page');
+  {
+    const web = fs.readFileSync(path.join(IOS, 'CubeClubhouse', 'WebAppView.swift'), 'utf8');
+    ck('the page is told it is the iOS app, and on which device, before it runs', /CubeClubhouseHost = Object\.freeze\(\{ platform: 'ios', device: '\\\(device\)' \}\)/.test(web)
+      && /injectionTime: \.atDocumentStart/.test(web) && /userInterfaceIdiom == \.pad \? "iPad" : "iPhone"/.test(web));
+    ck('haptics: the page can ask, and four kinds are felt', /add\(context\.coordinator, name: "haptic"\)/.test(web)
+      && ['"light"', '"medium"', '"success"', '"warning"'].every((k) => web.includes('case ' + k)));
+    ck('Text Size: the page follows it, growing by at most a quarter', /preferredFont\(forTextStyle: \.body\)\.pointSize \/ 17/.test(web)
+      && /pageZoom = min\(max\(scale, 1\), 1\.25\)/.test(web) && /UIContentSizeCategory\.didChangeNotification/.test(web));
+  }
+
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
   for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/timer.js', 'js/app.js',
@@ -177,6 +188,8 @@ function runCopyPhase() {
   for (const profile of ['iPhone 12', 'iPad Pro 11']) {
     console.log('\n' + profile + ', served from the bundle');
     const ctx = await b.newContext({ ...devices[profile] });
+    const device = /iPad/.test(profile) ? 'iPad' : 'iPhone';
+    await ctx.addInitScript((d) => { window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: d }); }, device);
     const p = await ctx.newPage();
     const errs = [];
     const offDevice = [];
@@ -374,9 +387,44 @@ function runCopyPhase() {
     }));
     await p.evaluate(() => localStorage.removeItem('cubeclubhouse.timer'));
 
+    // it speaks as the iOS app on this device
+    await p.locator('.foot-links [data-info="privacy"]').tap(); await p.waitForTimeout(200);
+    ck('the privacy page says this ' + device, new RegExp('on this ' + device + ', inside the app').test(await p.locator('#privacy').innerText()));
+    const nav = await p.locator('header nav').boundingBox();
+    const vh = await p.evaluate(() => window.innerHeight);
+    ck(device === 'iPhone' ? 'the tab bar is along the bottom' : 'the tab bar is at the top',
+      device === 'iPhone' ? Math.abs(nav.y + nav.height - vh) < 2 : nav.y < 80, Math.round(nav.y) + '/' + vh);
+
     ck('no page errors', errs.length === 0, errs.join(' | ') || 'none');
     await ctx.close();
   }
+  console.log('\nat the largest Text Size, on the narrowest iPhone');
+  {
+    // pageZoom 1.25 on a 375pt iPhone SE lays the page out 300 CSS pixels wide
+    // Not isMobile: a mobile layout viewport quietly widens to fit whatever overflows,
+    // which would hide exactly the fault this is looking for.
+    const ctx = await b.newContext({ viewport: { width: 300, height: 534 }, deviceScaleFactor: 2, hasTouch: true });
+    await ctx.addInitScript(() => { window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: 'iPhone' }); });
+    const p = await ctx.newPage();
+    const errs = [];
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.goto(base + '/index.html'); await p.waitForTimeout(400);
+    const wide = [];
+    for (const screen of ['learn', 'play', 'timer', 'solve']) {
+      await p.locator(`nav button[data-screen="${screen}"]`).tap(); await p.waitForTimeout(250);
+      if (await p.evaluate(() => document.documentElement.scrollWidth > 300)) wide.push(screen);
+    }
+    await p.locator('.foot-links [data-info="parents"]').tap(); await p.waitForTimeout(200);
+    if (await p.evaluate(() => document.documentElement.scrollWidth > 300)) wide.push('grown-ups');
+    ck('nothing scrolls sideways on any screen', wide.length === 0, wide.join(',') || 'none');
+    ck('the four tabs still fit one row', await p.evaluate(() => {
+      const t = [...document.querySelectorAll('header nav button')].map((b) => Math.round(b.getBoundingClientRect().top));
+      return t.every((x) => x === t[0]);
+    }));
+    ck('no page errors', errs.length === 0, errs.join(' | ') || 'none');
+    await ctx.close();
+  }
+
   await b.close();
   server.close();
   fs.rmSync(path.dirname(path.dirname(root)), { recursive: true, force: true });

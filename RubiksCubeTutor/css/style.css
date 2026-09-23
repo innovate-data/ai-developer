@@ -36,6 +36,12 @@
   --shadow: 0 8px 24px rgba(60, 50, 30, 0.08);
   --glow: rgba(47, 104, 171, 0.18);
   --chart-line: #2f68ab;
+  --fill: #ebe6da;                 /* an iOS "gray" button, a segmented track */
+  --seg-on: #fffdf7;               /* the chosen segment, raised out of the track */
+  --bar: rgba(246, 243, 234, 0.86);  /* the translucent tab bar */
+  --hairline: rgba(60, 50, 30, 0.2);
+  --alert-bg: rgba(255, 253, 247, 0.97);
+  --switch-on: #34c759;            /* the iOS switch green */
   /* cube sticker colours: identical in both themes, they are the cube itself */
   --W: #ffffff; --Y: #ffd500; --G: #00a651; --B: #0055d4; --R: #d3202b; --O: #ff7a00;
   --radius: 18px;
@@ -68,6 +74,12 @@
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
     --glow: rgba(147, 184, 234, 0.25);
     --chart-line: #5a92e0;
+    --fill: #34353c;
+    --seg-on: #4a4b53;
+    --bar: rgba(31, 32, 36, 0.86);
+    --hairline: rgba(255, 255, 255, 0.14);
+    --alert-bg: rgba(43, 44, 51, 0.97);
+    --switch-on: #30d158;
   }
 }
 :root[data-theme="dark"] {
@@ -97,6 +109,12 @@
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --glow: rgba(147, 184, 234, 0.25);
   --chart-line: #5a92e0;
+  --fill: #34353c;
+  --seg-on: #4a4b53;
+  --bar: rgba(31, 32, 36, 0.86);
+  --hairline: rgba(255, 255, 255, 0.14);
+  --alert-bg: rgba(43, 44, 51, 0.97);
+  --switch-on: #30d158;
 }
 * { box-sizing: border-box; }
 /* Touch handling for iPhone and iPad: no tap flash, no double-tap zoom delay on
@@ -132,6 +150,12 @@ h3 { font-size: 1.25rem; margin: 1.2em 0 0.4em; }
 p { margin: 0.5em 0; }
 b { font-weight: 600; }
 button { font: inherit; cursor: pointer; }
+/* A touch and hold on a control should never pop up the text-selection magnifier. */
+button, nav, .pad-btn, .chip, .mix-turn, .net-cell, .swatch, .timer-pad { -webkit-user-select: none; user-select: none; }
+/* words that only make sense in a browser, or only in the iOS app (app.js marks the app) */
+.w-ios { display: none; }
+html.ios-app .w-ios { display: inline; }
+html.ios-app .w-web { display: none; }
 
 /* ---- top bar */
 .topbar {
@@ -149,19 +173,33 @@ button { font: inherit; cursor: pointer; }
   background: conic-gradient(var(--R) 0 25%, var(--Y) 0 50%, var(--G) 0 75%, var(--B) 0);
   box-shadow: inset 0 0 0 3px var(--plastic);
 }
-nav { display: flex; gap: 8px; flex-wrap: wrap; }
-nav button {
-  border: 2px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 8px 16px; font-weight: 600;
+/* The tabs, as iPadOS draws them: one capsule, the chosen tab raised out of it. */
+.topbar nav { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 999px; }
+.topbar nav button {
+  border: 0; background: transparent; color: var(--ink); border-radius: 999px; padding: 9px 16px; font-weight: 600;
+  min-height: 44px; transition: background-color 0.15s ease;
 }
-nav button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-/* A phone has room for one row of four tabs, not a second sticky row eating the screen:
-   the icon sits over a short label, and "My real cube" becomes "My cube". */
+.topbar nav button.active { background: var(--seg-on); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 1px 1px rgba(0, 0, 0, 0.06); }
+/* On a phone, as on iPhone: a tab bar along the bottom, in reach of a thumb, translucent
+   over the page, clear of the home indicator. The title scrolls away, like an iOS large
+   title, instead of holding a sticky strip at the top. */
 @media (max-width: 620px) {
-  nav { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-    padding: 5px 2px; min-height: 48px; font-size: 0.85rem; line-height: 1.15; border-radius: 14px; }
-  .nav-ico { font-size: 1.15rem; }
+  .topbar { position: static; }
+  .topbar nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; border-radius: 0;
+    padding: 6px calc(8px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(8px + env(safe-area-inset-left, 0px));
+    background: var(--bar); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    border-top: 0.5px solid var(--hairline);
+  }
+  .topbar nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    padding: 4px 2px; min-height: 50px; font-size: 0.8rem; line-height: 1.15; border-radius: 14px; color: var(--muted); }
+  .topbar nav button.active { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
+  .nav-ico { font-size: 1.25rem; }
   .nav-long { display: none; }
+  /* room under the page for the bar, and scrolling never parks anything beneath it */
+  body { padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
+  html { scroll-padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 }
 
 main {
@@ -226,16 +264,17 @@ main {
 
 /* ---- buttons */
 .btn {
-  border: 2px solid var(--accent); background: var(--card); color: var(--accent); border-radius: 999px; padding: 10px 18px; font-weight: 600;
-  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  /* "tinted": the accent on a wash of itself */
+  border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 12px 20px; font-weight: 600;
+  transition: opacity 0.12s ease;
 }
-.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px var(--glow); }
-.btn:active { transform: translateY(1px); }
-.btn.primary { background: var(--accent); color: var(--accent-ink); }
-.btn.ghost { border-color: var(--line); color: var(--ink); }
-.btn.small { padding: 6px 14px; font-size: 0.95rem; }
-.btn.tiny { padding: 4px 10px; font-size: 0.85rem; }
-.btn:disabled { opacity: 0.45; cursor: default; transform: none; box-shadow: none; }
+@media (hover: hover) { .btn:hover { filter: brightness(0.97); } }
+.btn:active { opacity: 0.6; }                        /* iOS dims a button while it is touched */
+.btn.primary { background: var(--accent); color: var(--accent-ink); }   /* "filled" */
+.btn.ghost { background: var(--fill); color: var(--accent); }           /* "gray" */
+.btn.small { padding: 8px 16px; font-size: 0.95rem; }
+.btn.tiny { padding: 5px 12px; font-size: 0.85rem; }
+.btn:disabled { opacity: 0.45; cursor: default; filter: none; }
 /* A finger needs about 44px. The icon-only buttons shrink below that on a phone, so
    give every button that much room where the pointer is a finger. */
 @media (pointer: coarse) {
@@ -297,15 +336,16 @@ main {
 .pad-btn.rot { background: var(--rot-bg); border-color: var(--rot-line); }
 .pad-btn.inner { background: var(--accent-soft); border-color: var(--accent-line); font-size: 1.05rem; }
 .pad-label { color: var(--muted); font-size: 0.8rem; font-weight: 600; margin-top: 4px; }
-.size-pick { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
-.size-btn {
-  min-width: 60px; height: 46px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); color: var(--ink);
-  font-weight: 700; font-size: 1.05rem; box-shadow: 0 2px 0 var(--line);
+/* iOS segmented controls: one rounded track, the chosen segment raised out of it */
+.size-pick, .segmented { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 12px; width: fit-content; max-width: 100%; }
+.size-pick { margin: 6px 0 2px; }
+.size-btn, .speed-btn {
+  flex: 1 1 0; min-width: 52px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--ink); font-weight: 700; font-size: 1.05rem; box-shadow: none; transition: background-color 0.15s ease;
 }
-.size-btn:active { transform: translateY(2px); box-shadow: none; }
-.size-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); box-shadow: none; }
-/* first tap on a new size while a mixed cube is on screen: tap again to swap */
-.size-btn.confirm { border-color: var(--accent); border-style: dashed; background: var(--accent-soft); }
+.size-btn.active, .speed-btn.active { background: var(--seg-on); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 1px 1px rgba(0, 0, 0, 0.06); }
+.size-btn:active, .speed-btn:active { opacity: 0.6; }
+.size-btn:disabled, .speed-btn:disabled { opacity: 0.45; }
 .pad-btn sup { font-size: 0.8em; }
 .pad-hint { color: var(--muted); font-size: 0.8rem; text-align: center; max-width: 420px; }
 
@@ -340,8 +380,8 @@ main {
 .chip.rot { background: var(--rot-bg); border-color: var(--rot-line); }
 .chip.rot::before { content: '🔄'; font-size: 0.75em; margin-right: 4px; }
 /* A Read button that is currently reading, so a child can see what pressing it again does. */
-.btn.reading { border-color: var(--accent); color: var(--accent); animation: reading 1.4s ease-in-out infinite; }
-@keyframes reading { 50% { box-shadow: 0 0 0 4px var(--glow); } }
+.btn.reading { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); animation: reading 1.4s ease-in-out infinite; }
+@keyframes reading { 50% { box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 4px var(--glow); } }
 @media (prefers-reduced-motion: reduce) { .btn.reading { animation: none; } }
 .then { align-self: center; color: var(--muted); font-weight: 600; padding: 0 2px; }
 .times { display: inline-grid; place-items: center; height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 1.1rem; }
@@ -359,13 +399,7 @@ main {
 .guide-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .speed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
 .speed-label { color: var(--muted); font-size: 0.85rem; font-weight: 700; margin-right: 2px; }
-.speed-btn {
-  height: 40px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--card);
-  color: var(--ink); font-weight: 700; font-size: 0.95rem; box-shadow: 0 2px 0 var(--line);
-}
-.speed-btn:active { transform: translateY(2px); box-shadow: none; }
-.speed-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); box-shadow: none; }
-@media (pointer: coarse) { .speed-btn { min-height: 44px; min-width: 44px; } }
+.speed-btn { font-size: 0.95rem; white-space: nowrap; }
 /* on a phone the three speeds only fit on one line without the word "Speed" */
 @media (max-width: 620px) { .speed-label { display: none; } .speed-btn { padding: 0 10px; } }
 .guide-done { font-size: 1.3rem; background: var(--good-bg); border-radius: 12px; padding: 14px; }
@@ -477,7 +511,7 @@ main {
 .timer { font-size: 2.6rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 2px; }
 
 /* ---- net editor */
-.palette { display: flex; gap: 8px; margin: 8px 0; }
+.palette { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }   /* wraps at the largest Text Size, never squeezes a swatch */
 .swatch { width: 44px; height: 44px; border-radius: 12px; border: 3px solid var(--plastic); }
 .swatch.active { outline: 4px solid var(--accent); outline-offset: 2px; }
 /* The net is fluid: four equal face columns that shrink with the container, so it
@@ -517,4 +551,42 @@ main {
   .cubie, .btn, .face { transition-duration: 0.01ms !important; }
   .face.hl { animation: none; }
   .confetti i { animation-duration: 0.01ms; }
+}
+
+
+/* ---- an iOS switch: the row names the setting, the switch says whether it is on */
+.switch-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; max-width: 440px;
+  min-height: 52px; padding: 8px 14px; border: 0; border-radius: 14px; background: var(--card); box-shadow: var(--shadow);
+  color: var(--ink); font-weight: 600; text-align: left;
+}
+.switch { position: relative; flex: 0 0 auto; width: 51px; height: 31px; border-radius: 999px; background: var(--fill);
+  box-shadow: inset 0 0 0 1.5px var(--hairline); transition: background-color 0.2s ease; }
+.switch-knob { position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25); transition: transform 0.2s ease; }
+.switch-row[aria-checked="true"] .switch { background: var(--switch-on); box-shadow: none; }
+.switch-row[aria-checked="true"] .switch-knob { transform: translateX(20px); }
+.switch-row:disabled { opacity: 0.45; }
+.switch-row:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* ---- an iOS alert (askFirst in app.js) */
+.ios-alert-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px;
+  background: rgba(0, 0, 0, 0.35); animation: alert-fade 0.15s ease-out; }
+.ios-alert { width: min(300px, 100%); border-radius: 14px; overflow: hidden; text-align: center; color: var(--ink);
+  background: var(--alert-bg); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28); animation: alert-pop 0.2s ease-out; }
+.ios-alert-text { padding: 20px 16px 16px; }
+.ios-alert-title { margin: 0 0 6px; font-size: 1.1rem; font-weight: 700; }
+.ios-alert-message { margin: 0; font-size: 0.95rem; line-height: 1.35; }
+.ios-alert-buttons { display: grid; grid-template-columns: 1fr 1fr; border-top: 0.5px solid var(--hairline); }
+.ios-alert-buttons button { min-height: 48px; border: 0; background: transparent; font-size: 1.05rem; color: var(--accent); }
+.ios-alert-buttons button:active { background: var(--fill); }
+.ios-alert-buttons button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.ios-alert-cancel { font-weight: 700; border-right: 0.5px solid var(--hairline) !important; }   /* the safe choice is the bold one */
+.ios-alert-action { font-weight: 500; color: var(--bad) !important; }                            /* the action that loses something is red */
+@keyframes alert-fade { from { opacity: 0; } }
+@keyframes alert-pop { from { transform: scale(1.12); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ios-alert-backdrop, .ios-alert { animation: none; }
+  .switch, .switch-knob, nav button, .size-btn, .speed-btn { transition: none; }
 }

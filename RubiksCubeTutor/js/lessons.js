@@ -102,9 +102,9 @@
         'Hold the cube with the <b>yellow centre on top</b>. We will make a daisy. The yellow centre is the middle of the flower. Four <b>white edges</b> are the petals around it.',
         'Find an edge with a white sticker. Turn sides to bring it up to the top, white facing up. Any petal can go in any spot.',
         'Got a petal? Keep it safe. Before you turn a side, look up. Is a petal on that side? Turn ONLY the top layer first, to move the petal out of the way.',
-        'There is no trick to learn here. It is a puzzle you can work out by looking. Press <b>Hint</b> and the app shows you one petal at a time.',
+        'There is no trick to learn here. It is a puzzle you can work out by looking. Tap <b>Hint</b> and the app shows you one petal at a time.',
       ],
-      tips: ['White edge on the bottom, white facing down? Turn that side twice. It pops straight up.', 'White edge in the middle layer? One turn of a side brings it to the top.', 'White edge facing sideways? Press Hint. The hint says where it is and what to turn.'],
+      tips: ['White edge on the bottom, white facing down? Turn that side twice. It pops straight up.', 'White edge in the middle layer? One turn of a side brings it to the top.', 'White edge facing sideways? Tap Hint. The hint says where it is and what to turn.'],
       algs: [],
     },
     {
