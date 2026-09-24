@@ -796,6 +796,29 @@ test('timer: the chart axis uses round ticks that cover every time', () => {
 });
 
 
+test('privacy: every thing the app stores is on the Privacy page, and it can be reached', () => {
+  const app = read('js/app.js');
+  // The only keys the app writes. A new one fails here until the Privacy page says what it holds.
+  const written = [...new Set([...app.matchAll(/localStorage\.setItem\(([A-Z_]+)/g)].map((m) => m[1]))].sort();
+  assert.deepStrictEqual(written, ['PROGRESS_KEY', 'SIZE_KEY', 'SPEED_KEY', 'TIMER_KEY'], 'stored keys: ' + written.join(', '));
+  const html = read('index.html');
+  const privacy = /<article id="privacy"[\s\S]*?<\/article>/.exec(html)[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  for (const said of ['their stars', '🧠 badge', 'cube size last chosen on the Play screen', 'speed chosen for the guided solve',
+    'times from the Timer screen', 'cube size last chosen there', '15 Seconds to Look First', 'No dates, no names']) {
+    assert(privacy.includes(said), 'the Privacy page does not say: ' + said);
+  }
+  // a copy can leave the device only in the family's own backup, and the page says so
+  assert(/iCloud Backup/.test(privacy) && /sends none of it anywhere/.test(privacy), 'the backup exception is not stated');
+  assert(!/Nothing is sent off the/.test(privacy), 'the old absolute claim is back');
+  // who runs it, and how to reach them: in the app, and in the licence file
+  const email = 'irealearningllc@gmail.com';
+  assert(privacy.includes('Ira Learning LLC') && privacy.includes(email), 'no contact on the Privacy page');
+  assert(read('LICENSE').includes(email), 'no contact in LICENSE');
+  // shown as text, never a mail link: a link out of a Kids app needs a parental gate
+  assert(!/mailto:/i.test(html), 'a mail link would be a link out of the app');
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

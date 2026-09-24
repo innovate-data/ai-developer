@@ -444,9 +444,14 @@ same reason.
 * the progress chart's axis: round whole-second ticks, evenly spaced, never below zero,
   that always cover every time plotted.
 
-49 groups in all.
+* that the Privacy page keeps up with the code: the app writes only the four storage
+  keys the page describes (a new one fails the test until the page says what it holds),
+  the page states the backup exception, and it and `LICENSE` carry the contact address,
+  never as a mail link.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 300 checks.
+50 groups in all.
+
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 309 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -495,6 +500,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R44 | Haptics: a light tap when the clock turns green and on a switch, a firmer one when it stops, a warning on a destructive choice; with no haptic engine listening, nothing breaks. |
 | R45 | On iPhone the tabs sit along the bottom and the title scrolls away; nothing at the foot of the page hides under the bar; the grown-ups section links stay in the page. On iPad the tabs are a capsule at the top. |
 | R46 | The iOS alert: Cancel has the focus, it is announced as a modal alert, Tab stays inside it, keys do not reach the cube behind, tapping outside does nothing, and Escape cancels. |
+| R47 | The Privacy page says exactly what is kept: driving the app writes only the four documented keys, the Timer's record holds only its size, the look-first switch and times without dates, and the page names every one of them; it says a copy leaves the device only in the family's own backup; and it names Ira Learning LLC with an email address shown as copyable text, not a link out of the app. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in

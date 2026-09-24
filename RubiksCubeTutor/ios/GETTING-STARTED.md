@@ -111,11 +111,14 @@ proprietary, and `LICENSE` beside the app holds the terms shown on its Licence p
 Two things to settle before you submit:
 
 * **A privacy policy URL.** App Store Connect wants one you host. The wording is already
-  written — it is the Privacy section of the in-app **For grown-ups** page (the footer
-  links lead there) — so put the same text on a page of your own and link to that.
-* **Who to contact.** The in-app page deliberately gives no address, because there is
-  nothing to request or delete. If you want one shown, add it to the end of the Privacy
-  section in `index.html`.
+  written — it is the Privacy section of the in-app **For Grown-Ups** page (the footer
+  links lead there) — so put the same text on a page of your own and link to that. Use
+  the browser wording there, since it will be read in a browser.
+* **Who to contact.** The Privacy page names Ira Learning LLC and gives
+  irealearningllc@gmail.com; the licence page and `LICENSE` give it too. It is plain text,
+  not a mail link, on purpose: a link that leaves a Kids Category app must sit behind a
+  parental gate. Use the same address as the support and privacy contact in App Store
+  Connect.
 
 The app is free with no purchases, no subscriptions and no advertising, so there is
 nothing to declare under in-app purchases and nothing to price. If you publish in the

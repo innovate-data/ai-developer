@@ -245,8 +245,9 @@
 
           <h3>Stars and progress</h3>
           <p>Stars mark lessons a child has practised: one for finishing, more for doing it without
-            hints. They are kept on this <span class="device-name">device</span> only, and there is no account, no leaderboard and no
-            way for anyone else to see them. You can wipe them here:</p>
+            hints. They are kept on this <span class="device-name">device</span> (and in your own backup of it, if you make one),
+            and there is no account, no leaderboard and no way for anyone else to see them. You can
+            wipe them here:</p>
           <p><button type="button" id="clear-progress" class="btn ghost">Clear Saved Progress</button>
             <span id="clear-progress-msg" class="msg" aria-live="polite"></span></p>
 
@@ -287,15 +288,21 @@
           <p>Four small things are kept <span class="w-web">in this browser's own storage, </span>on this
             <span class="device-name">device</span><span class="w-ios">, inside the app</span>, so the app is where the child left it:</p>
           <ul>
-            <li>which lessons have been practised, and their stars;</li>
+            <li>which lessons have been practised, their stars, and the 🧠 badge for any finished
+              without hints;</li>
             <li>the cube size last chosen on the Play screen;</li>
             <li>the speed chosen for the guided solve;</li>
-            <li>the times from the Timer screen, with the cube size of each and nothing else —
-              no dates, no names — so it can show the child's best.</li>
+            <li>the times from the Timer screen, so it can show the child's best: each time with its
+              cube size and any +2 or DNF, plus the cube size last chosen there and whether
+              <b>15 Seconds to Look First</b> is switched on. No dates, no names.</li>
           </ul>
           <p>That is all of it. No names, no ages, no messages, no photos, no location, no identifiers.
-            Nothing is sent off the <span class="device-name">device</span>, and nothing is shared between devices. Deleting the app,
-            or tapping <b>Clear Saved Progress</b> above, erases it.</p>
+            The app sends none of it anywhere and shares none of it between devices. The one way a copy
+            leaves this <span class="device-name">device</span> is inside your own backup of it — iCloud Backup, or a backup on your
+            computer — if you make one. That backup belongs to your account; we never see it, and
+            restoring it to a new <span class="device-name">device</span> brings the stars along. Deleting the app, or tapping
+            <b>Clear Saved Progress</b> above, erases what is on this <span class="device-name">device</span>; an older backup keeps
+            whatever it held when it was made, until you delete that backup.</p>
 
           <h3>What the app asks the internet for</h3>
           <p><strong>Nothing.</strong> Not one request, not even for the typeface it is drawn in —
@@ -323,9 +330,14 @@
             typeface, which is an open-source file stored inside the app and talks to nobody. Nothing your child does here can be seen by
             anyone else.</p>
 
+          <h3>Who we are, and how to reach us</h3>
+          <p>Cube Clubhouse is made by <b>Ira Learning LLC</b>. For any question about privacy, about
+            this page, or about the app itself, email us at <b class="contact-email">irealearningllc@gmail.com</b>.</p>
+
           <h3>Children's privacy</h3>
           <p>Because nothing is collected, there is nothing to consent to, nothing to request and
-            nothing for us to delete — it is all on your device, under your control.</p>
+            nothing for us to delete — it is all on your device, and in your own backup of it if you
+            make one, under your control.</p>
         </article>
 
         <article id="licence" class="info-card">
@@ -426,6 +438,9 @@ open source: the licence below grants permission to use it and nothing more.
             logo is a trademark of Ira Learning LLC. Rubik's Cube® is a registered trademark of its owner; Cube Clubhouse is an independent teaching app, not
             made by, affiliated with, or endorsed by that trademark owner, and the puzzle itself is
             not included.</p>
+
+          <h3>Questions about the licence</h3>
+          <p>Email Ira Learning LLC at <b class="contact-email">irealearningllc@gmail.com</b>.</p>
         </article>
 
         <button type="button" class="btn ghost back-to-app">◀ Back to the App</button>

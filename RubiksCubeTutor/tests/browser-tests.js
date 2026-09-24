@@ -1394,6 +1394,43 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('Escape cancels and the cube is untouched', (await p.locator('.ios-alert').count()) === 0 && (await settle(p, '#play-cube')) === before);
     await p.close(); }
 
+  console.log('R47 the Privacy page says exactly what is kept, where, and who to ask');
+  { const p = await newPage();
+    await p.evaluate(() => localStorage.clear());
+    // write everything the app can write, the way a child would
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-size .size-btn', { hasText: '2×2' }).click(); await p.waitForTimeout(200);
+    await p.locator('#play-scramble').click(); await p.waitForTimeout(2200);
+    await p.locator('#play-help').click();
+    await p.waitForSelector('#play-guide .guide-count', { timeout: 60000 });
+    await p.locator('#play-guide .speed-btn', { hasText: 'Fast' }).click();
+    await p.locator('nav button[data-screen="timer"]').click(); await p.waitForTimeout(150);
+    await p.locator('#timer-inspect').click();
+    await p.locator('#timer-inspect').click();
+    await p.keyboard.down(' '); await p.waitForTimeout(380); await p.keyboard.up(' ');
+    await p.waitForTimeout(300); await p.keyboard.press('a'); await p.waitForTimeout(150);
+    await p.evaluate(() => localStorage.setItem('cubeclubhouse.progress', JSON.stringify({ daisy: 3, brain: { daisy: true } })));
+    const stored = await p.evaluate(() => Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)])));
+    ck('only the four documented keys are written', Object.keys(stored).sort().join() === 'cubeclubhouse.progress,cubeclubhouse.size,cubeclubhouse.speed,cubeclubhouse.timer', Object.keys(stored).join(','));
+    const timer = JSON.parse(stored['cubeclubhouse.timer']);
+    ck('the Timer keeps its chosen size, the look-first switch and the times, nothing more', Object.keys(timer).sort().join() === 'inspect,size,solves');
+    const one = Object.values(timer.solves).flat()[0];
+    ck('each time is just the time and any penalty: no date', one && Object.keys(one).sort().join() === 'ms,pen', JSON.stringify(one));
+    await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(150);
+    const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
+    ck('the page names every one of those', ['🧠 badge', 'cube size last chosen on the Play screen', 'speed chosen for the guided solve',
+      'cube size last chosen there', '15 Seconds to Look First', 'No dates, no names'].every((x) => privacy.includes(x)));
+    ck('it says a copy can leave only in your own backup', /The one way a copy leaves this device is inside your own backup/.test(privacy) && /we never see it/.test(privacy));
+    ck('it says who we are and how to reach us', /made by Ira Learning LLC/.test(privacy) && privacy.includes('irealearningllc@gmail.com'));
+    ck('the address is text a parent can copy, not a link out of the app', (await p.locator('a[href^="mailto:"]').count()) === 0
+      && (await p.locator('#privacy .contact-email').evaluate((e) => getComputedStyle(e).userSelect)) !== 'none');
+    ck('the licence page has it too', (await p.locator('#licence').innerText()).includes('irealearningllc@gmail.com'));
+    await p.close();
+    const q = await iosPage('iPhone', { width: 390, height: 844 });
+    await q.locator('.foot-links [data-info="privacy"]').click(); await q.waitForTimeout(150);
+    ck('in the app it names the device: "leaves this iPhone"', /leaves this iPhone is inside your own backup/.test((await q.locator('#privacy').innerText()).replace(/\s+/g, ' ')));
+    await q.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();
