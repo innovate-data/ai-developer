@@ -1448,6 +1448,24 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('Privacy speaks for this version, with a date', /This version of Cube Clubhouse \(1\.0\)/.test(privacy) && /Last updated: 25 September 2026/.test(privacy) && !/made them impossible/.test(privacy));
     await p.close(); }
 
+  console.log('R49 the app speaks to learners of every age, not to children only');
+  { const p = await newPage();
+    const foot = await p.locator('footer').innerText();
+    ck('the footer says all ages, not kid-friendly', /a Cube tutor for all ages/.test(foot) && !/kid/i.test(foot));
+    ck('the footer link reads About', (await p.locator('.foot-links [data-info="parents"]').innerText()).trim() === 'About');
+    await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(150);
+    ck('the page is About the App', (await p.locator('#screen-grownups h1').innerText()).trim() === 'About the App');
+    const about = (await p.locator('#parents').innerText()).replace(/\s+/g, ' ');
+    ck('it says any age and general audiences', /anyone, of any age/.test(about) && /general audiences/.test(about) && /no upper age limit/.test(about));
+    ck('it speaks to the learner, not about "the child"', !/\bthe child\b|\byour child\b|\ba child has\b/i.test(about), (about.match(/.{30}\b(the|your) child\b.{30}/i) || [''])[0]);
+    ck('the safety advice for young children stays', /under three/.test(about) && /younger child/.test(about));
+    const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
+    ck('privacy is about everyone who uses it', /collects nothing about the people who use it/.test(privacy) && !/your child/.test(privacy) && /general audience of all ages/.test(privacy));
+    const licence = (await p.locator('#licence').innerText()).replace(/\s+/g, ' ');
+    ck('the terms say all ages', /made for a general audience of people of all ages/.test(licence) && /learning aid for people of all ages/.test(licence));
+    ck('the page description says any age', /people of any age/.test(await p.locator('meta[name="description"]').getAttribute('content')));
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

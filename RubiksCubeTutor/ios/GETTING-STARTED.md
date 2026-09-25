@@ -111,23 +111,33 @@ proprietary, and `LICENSE` beside the app holds the terms shown on its Licence p
 Two things to settle before you submit:
 
 * **A privacy policy URL.** App Store Connect wants one you host. The wording is already
-  written — it is the Privacy section of the in-app **For Grown-Ups** page (the footer
+  written — it is the Privacy section of the in-app **About the App** page (the footer
   links lead there) — so put the same text on a page of your own and link to that. Use
   the browser wording there, since it will be read in a browser.
 * **Who to contact.** The Privacy page names Ira Learning LLC and gives
   iralearningllc@gmail.com; the licence page and `LICENSE` give it too. It is plain text,
-  not a mail link, on purpose: a link that leaves a Kids Category app must sit behind a
-  parental gate. Use the same address as the support and privacy contact in App Store
+  not a mail link, on purpose: children use the app too, and a link out of it would need
+  a parental gate. Use the same address as the support and privacy contact in App Store
   Connect.
 
 The app is free with no purchases, no subscriptions and no advertising, so there is
-nothing to declare under in-app purchases and nothing to price. If you publish in the
-Kids category, note that it also has no external links, so no parental gate is needed.
+nothing to declare under in-app purchases and nothing to price.
+
+**Audience.** The app is worded for a general audience of all ages, not for children
+only. To keep the store listing consistent with that, publish it in the **Education**
+category (with Games › Puzzle as a secondary if you like) and **do not** tick the Kids
+Category; answer the age-rating questions truthfully, which for this app gives 4+. A 4+
+rating means "suitable for everyone", not "made for children". Write the description and
+screenshots for learners of any age too. Be aware that the FTC decides whether an app is
+"directed to children" from the whole picture (its look, language, subject and actual
+audience), not from what the app says about itself, so the wording change lowers risk but
+is not a guarantee; because the app collects nothing from anyone, it stays on the safe
+side either way.
 
 ## Known scope
 
 Every part of the app is free to use, with nothing held back and nothing to buy.
-The **Timer** tab is a speedcubing timer for the child's real cube: hold the pad until it
+The **Timer** tab is a speedcubing timer for a real cube: hold the pad until it
 turns green, let go to start, tap anywhere to stop. It works with an iPad keyboard's space
 bar too. The mix can be ticked off turn by turn, "Help me solve this mix" gives guided steps
 for it on any size, and a chart shows the last 50 times. Its times stay on the device, which App Privacy does not count as collection:

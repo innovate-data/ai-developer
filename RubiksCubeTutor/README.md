@@ -1,6 +1,6 @@
-# Cube Clubhouse® – a Cube tutor for kids
+# Cube Clubhouse® – a Cube tutor for all ages
 
-Cube Clubhouse teaches children (roughly ages 7–12) to solve a 3×3 Cube using the
+Cube Clubhouse helps people of any age learn to solve a 3×3 Cube using the
 classic beginner "layer by layer" method. It is a single-page web app with **no build
 step and no dependencies**: open `index.html` in any modern browser and it works,
 including on a phone or tablet.
@@ -15,7 +15,7 @@ including on a phone or tablet.
 ```
 RubiksCubeTutor/
 ├── index.html            the app shell (three screens: Learn, Play, Solve my cube)
-├── css/style.css         kid-friendly styling, light and dark themes, 3D cube, net editor
+├── css/style.css         friendly styling, light and dark themes, 3D cube, net editor
 ├── js/cube.js            3x3 model: facelets, moves, pieces, validity check
 ├── js/ncube.js           N x N model for 2x2 to 6x6, sticker-identical to cube.js at N=3
 ├── js/solver.js          beginner-method solver that explains every step
@@ -48,8 +48,8 @@ npm run test:all       # all three
 
 | | |
 |---|---|
-| **Learner** | A child who has a real cube and wants to solve it, possibly with a parent alongside. |
-| **Promise** | "Ten short lessons and you can solve any cube." |
+| **Learner** | Anyone, of any age, who has a real cube and wants to solve it. The words are written so a confident reader of about seven can follow them, which keeps them plain for everyone; a younger child can learn with an adult alongside. The app is worded for a general audience, not for children only. |
+| **Goal** | Ten short lessons that lead a learner, step by step, to a first solve. |
 | **Method** | The beginner layer-by-layer method used by most official guides: daisy → white cross → white corners → middle layer → yellow cross → yellow edges → yellow corners → twist corners. |
 | **Not a goal** | Speed-cubing methods (CFOP, Roux) or optimal solutions. Move counts do not matter; understanding does. |
 
@@ -129,8 +129,8 @@ picture stays up until the page has loaded and then fades, so there is no white 
 cube with a move pad on the left, text, tricks, interactive widgets, practice area and
 tips on the right.
 
-**For grown-ups** – reached from the three footer links, never from the child's nav:
-what the app teaches and how to sit with a child through it; a privacy page naming the
+**About the App** – reached from the three footer links (About, Privacy, Licence), not
+from the main tabs: what the app teaches, who it suits, tips and safety; a privacy page naming the
 four things kept on the device and the fact that the app makes no network requests at
 all, with a button that erases the lot after an iOS alert asks first; and the licence conditions in full - the app is
 proprietary, owned by Ira Learning LLC - with the typeface's own licence and the
@@ -454,7 +454,7 @@ same reason.
 
 51 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 316 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 325 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -499,12 +499,13 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R40 | Inspection says "Eight seconds" and "Twelve seconds", once each, and nothing during the solve. |
 | R41 | The progress chart: one point per timed solve (a DNF left out, and said so), round-second ticks, only the best and the latest labelled (one label when they are the same solve), a readout by touch and by arrow keys, a Show all list, a redraw on resize, its own dark-mode blue, no chart for a single time, and the last 50 of a longer history. |
 | R42 | On a touch screen you tap: nothing on any screen says to press a button or to click, the timer says "Touch and hold", and every button label is in Title Case. |
-| R43 | In the iOS app the page says "this iPad" or "this iPhone" where a browser would say "this browser" (privacy, footer), and never mentions a browser; in a browser it still does. For Parents lists Guided Access, Screen Time and Text Size. |
+| R43 | In the iOS app the page says "this iPad" or "this iPhone" where a browser would say "this browser" (privacy, footer), and never mentions a browser; in a browser it still does. About lists Guided Access, Screen Time and Text Size. |
 | R44 | Haptics: a light tap when the clock turns green and on a switch, a firmer one when it stops, a warning on a destructive choice; with no haptic engine listening, nothing breaks. |
 | R45 | On iPhone the tabs sit along the bottom and the title scrolls away; nothing at the foot of the page hides under the bar; the grown-ups section links stay in the page. On iPad the tabs are a capsule at the top. |
 | R46 | The iOS alert: Cancel has the focus, it is announced as a modal alert, Tab stays inside it, keys do not reach the cube behind, tapping outside does nothing, and Escape cancels. |
 | R47 | The Privacy page says exactly what is kept: driving the app writes only the four documented keys, the Timer's record holds only its size, the look-first switch and times without dates, and the page names every one of them; it says a copy leaves the device only in the family's own backup; and it names Ira Learning LLC with an email address shown as copyable text, not a link out of the app, alongside a notice asking a child to have a parent or guardian send it. |
-| R48 | The grown-ups pages make no promises: For Parents has a Safety section (small parts, under-three warning, Reduce Motion) and speaks of "rough guides, not promises" rather than a guaranteed outcome or timing; the Licence page's plain-English summary says a parent or guardian agrees on a child's behalf and names the new terms (educational content, safety and supervision, App Store terms, governing law, the US$50 liability cap); and "for as long as you like" / "held back" do not appear. |
+| R48 | The info pages make no promises: About has a Safety section (small parts, under-three warning, Reduce Motion) and speaks of "rough guides, not promises" rather than a guaranteed outcome or timing; the Licence page's plain-English summary says a parent or guardian agrees on a child's behalf and names the new terms (educational content, safety and supervision, App Store terms, governing law, the US$50 liability cap); and "for as long as you like" / "held back" do not appear. |
+| R49 | The app speaks to learners of every age: the footer says "a Cube tutor for all ages" and its link reads About; the info page is About the App and says anyone, of any age, with no upper age limit, and speaks to the learner rather than about "the child"; Privacy covers everyone who uses the app; the licence says it is made for a general audience; the safety advice for young children stays. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in

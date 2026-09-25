@@ -846,6 +846,10 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
     assert(!text.includes(promise), 'a promise is back: ' + promise);
   }
   const parents = /<article id="parents"[\s\S]*?<\/article>/.exec(html)[0];
+  // worded for a general audience of all ages, in the app and in the licence
+  assert(terms.includes('general audience of people of all\nages'), 'the licence does not say it is for all ages');
+  assert(!/kid-friendly|teaches kids|your child/i.test(text), 'child-only wording is back');
+  assert(/anyone, of any age/.test(parents), 'About does not say any age');
   assert(/<h3>Safety<\/h3>/.test(parents) && /under three/.test(parents), 'For Parents has no Safety section');
 });
 
