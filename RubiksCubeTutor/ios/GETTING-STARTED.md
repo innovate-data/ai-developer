@@ -17,8 +17,9 @@ and builds for both iPhone and iPad.
 Select the **CubeClubhouse** target, then **Signing & Capabilities**:
 
 - **Team**: choose your own Apple Developer team.
-- **Bundle Identifier**: change `com.example.cubeclubhouse` to something of your
-  own, such as `com.yourname.cubeclubhouse`. Apple requires this to be unique.
+- **Bundle Identifier**: already `com.iralearningllc.cubeclubhouse`. Keep it for the
+  App Store release; to try the app under your own team first, change it to something
+  of your own, such as `com.yourname.cubeclubhouse`. Apple requires it to be unique.
 
 A free Apple ID is enough to run on your own device; a paid Developer account is
 needed for TestFlight or the App Store.
@@ -92,10 +93,22 @@ registered; a mark that is claimed but not registered takes ™ instead.
 
 ## Uploading to the App Store
 
-1. Set a real bundle identifier and a paid team, as above.
-2. Bump `MARKETING_VERSION` (the version people see) and `CURRENT_PROJECT_VERSION`
-   (the build number) in the target's build settings.
-3. **Product → Archive**, then **Distribute App**.
+**`app-store/APP-STORE.md` is the full release guide**: registering the app, the two web
+pages to host, the listing text, keywords, screenshots, App Privacy, age rating and
+review notes, ready to paste. The short version, on a Mac with the current Xcode:
+
+```sh
+TEAM_ID=ABCDE12345 ios/release.sh --upload
+```
+
+`release.sh` runs the unit tests, archives a Release build for any iOS device, checks the
+archive (web app, privacy manifest, bundle ID, export-compliance key), and uploads it to
+App Store Connect using `ExportOptions-Upload.plist`. Without `--upload` it writes a
+signed `.ipa` to `ios/build/export/` using `ExportOptions.plist`. Or, in Xcode: destination
+**Any iOS Device**, then **Product → Archive**, then **Distribute App**.
+
+Export compliance is answered in the build (`ITSAppUsesNonExemptEncryption = NO`: the app
+uses no encryption at all), and the category is Education.
 
 The icon already meets Apple's requirement of 1024×1024 with no alpha channel. The app
 requests no permissions, collects nothing and makes no network requests whatsoever, so
@@ -110,10 +123,12 @@ proprietary, and `LICENSE` beside the app holds the terms shown on its Licence p
 
 Two things to settle before you submit:
 
-* **A privacy policy URL.** App Store Connect wants one you host. The wording is already
-  written — it is the Privacy section of the in-app **About the App** page (the footer
-  links lead there) — so put the same text on a page of your own and link to that. Use
-  the browser wording there, since it will be read in a browser.
+* **A privacy policy URL and a support URL.** App Store Connect wants pages you host.
+  Both are already built: `app-store/privacy-policy.html` is the app's own Privacy
+  section, as the iPhone and iPad app words it, and `app-store/support.html` has the
+  contact address and common questions. Upload both to any web host and paste their
+  addresses in. `npm run build:store-pages` rebuilds them after the Privacy section
+  changes, and the unit tests fail until you do.
 * **Who to contact.** The Privacy page names Ira Learning LLC and gives
   iralearningllc@gmail.com; the licence page and `LICENSE` give it too. It is plain text,
   not a mail link, on purpose: children use the app too, and a link out of it would need

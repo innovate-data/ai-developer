@@ -395,6 +395,7 @@ main {
 .guide-count { color: var(--muted); font-size: 0.95rem; font-weight: 600; }
 .guide-text { font-size: 1.12rem; }
 .guide-words { padding-left: 18px; color: var(--muted); font-size: 0.95rem; columns: 2; column-gap: 20px; }
+.guide-words li { break-inside: avoid; }             /* one move never splits across the two columns */
 @media (max-width: 600px) { .guide-words { columns: 1; } }
 .guide-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .speed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }

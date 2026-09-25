@@ -2,16 +2,19 @@
   "name": "cube-clubhouse",
   "version": "1.0.0",
   "private": true,
-  "description": "A Cube tutor for kids: interactive 3D lessons, practice puzzles and a guided solver.",
+  "description": "A Cube tutor for all ages: interactive 3D lessons, practice puzzles and a guided solver.",
   "author": "Ira Learning LLC",
   "license": "UNLICENSED",
   "scripts": {
     "test": "node tests/run-tests.js",
-    "lint": "npx --yes eslint@9 --no-config-lookup -c eslint.config.mjs js tests build-artifact.js",
+    "lint": "npx --yes eslint@9 --no-config-lookup -c eslint.config.mjs js tests build-artifact.js ios/app-store",
     "build": "node build-artifact.js",
     "test:browser": "node tests/browser-tests.js",
     "test:all": "npm test && npm run test:browser && npm run test:ios",
     "test:ios": "node tests/ios-bundle-tests.js",
-    "build:launch": "node ios/launch-art/render.js"
+    "build:launch": "node ios/launch-art/render.js",
+    "build:store-pages": "node ios/app-store/build-pages.js",
+    "build:screenshots": "node ios/app-store/screenshots.js",
+    "release:ios": "ios/release.sh"
   }
 }

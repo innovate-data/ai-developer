@@ -1466,6 +1466,20 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the page description says any age', /people of any age/.test(await p.locator('meta[name="description"]').getAttribute('content')));
     await p.close(); }
 
+  console.log('R50 a move\'s words never split across the two columns of the guide');
+  { const p = await b.newPage({ viewport: { width: 1032, height: 1376 } });
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.goto(URL); await p.waitForTimeout(250);
+    await p.locator('nav button[data-screen="play"]').click();
+    await p.locator('#play-size .size-btn', { hasText: '3×3' }).click();
+    await p.locator('#play-scramble').click(); await p.waitForTimeout(3000);
+    await p.locator('#play-help').click();
+    await p.waitForSelector('#play-guide .guide-words li', { timeout: 60000 });
+    const split = await p.evaluate(() => [...document.querySelectorAll('.guide-words li')]
+      .filter((li) => li.getClientRects().length > 1).map((li) => li.textContent));
+    ck('every move\'s words stay in one column', split.length === 0, JSON.stringify(split));
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

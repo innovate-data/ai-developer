@@ -854,6 +854,65 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
 });
 
 
+test('release: the Xcode project, export options, script and store pages are ready for the App Store', () => {
+  const pbx = read('ios/CubeClubhouse.xcodeproj/project.pbxproj');
+  const ids = [...pbx.matchAll(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/g)].map((m) => m[1]);
+  assert(ids.length === 2 && ids.every((id) => id === 'com.iralearningllc.cubeclubhouse'), 'bundle ids: ' + ids.join(', '));
+  // answered in the build, so App Store Connect does not ask about encryption on every upload
+  assert.strictEqual((pbx.match(/INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;/g) || []).length, 2, 'export compliance key');
+  assert.strictEqual((pbx.match(/INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";/g) || []).length, 2, 'category');
+  const version = /MARKETING_VERSION = ([\d.]+);/.exec(pbx)[1];
+  assert(read('index.html').includes('This version of Cube Clubhouse (' + version + ')'), 'the Privacy page names a different version from the project');
+
+  for (const [file, dest] of [['ios/ExportOptions.plist', 'export'], ['ios/ExportOptions-Upload.plist', 'upload']]) {
+    const x = read(file);
+    assert(/<key>method<\/key>\s*<string>app-store-connect<\/string>/.test(x), file + ': method');
+    assert(new RegExp('<key>destination</key>\\s*<string>' + dest + '</string>').test(x), file + ': destination');
+    assert(/<key>signingStyle<\/key>\s*<string>automatic<\/string>/.test(x), file + ': signing');
+  }
+
+  const script = path.join(ROOT, 'ios', 'release.sh');
+  assert(fs.statSync(script).mode & 0o111, 'release.sh is not executable');
+  require('child_process').execFileSync('bash', ['-n', script]);      // parses
+  const sh = read('ios/release.sh');
+  for (const need of ['-destination \'generic/platform=iOS\'', '-configuration Release', 'Web/index.html', 'PrivacyInfo.xcprivacy',
+    'ITSAppUsesNonExemptEncryption', 'ExportOptions-Upload.plist', 'com.example']) {
+    assert(sh.includes(need), 'release.sh does not mention ' + need);
+  }
+
+  // the hosted pages are exactly what the generator makes from the app now
+  const pages = require('../ios/app-store/build-pages.js').build();
+  for (const [name, text] of Object.entries(pages)) {
+    assert.strictEqual(read('ios/app-store/' + name), text, name + ' is out of date: run npm run build:store-pages');
+    assert(!/https?:\/\//.test(text.replace(/http:\/\/www\.w3\.org[^"]*/g, '')), name + ' loads or links something off the page');
+  }
+  assert(pages['privacy-policy.html'].includes('iralearningllc@gmail.com') && pages['support.html'].includes('iralearningllc@gmail.com'), 'contact');
+
+  // the listing fits App Store Connect's limits and keeps other companies' marks out
+  const md = read('ios/app-store/APP-STORE.md');
+  const field = (label) => new RegExp('\\*\\*' + label + '\\*\\*[^`\\n]*`([^`]+)`').exec(md)[1];
+  assert(field('Name').length <= 30 && field('Subtitle').length <= 30, 'name or subtitle too long');
+  const keywords = /\*\*Keywords\*\*[^\n]*\n`([^`]+)`/.exec(md)[1];
+  assert(keywords.length <= 100 && !/\s/.test(keywords) && !/rubik/i.test(keywords), 'keywords: ' + keywords.length);
+  const quote = (label) => new RegExp('\\*\\*' + label + '\\*\\*[^\\n]*\\n\\n((?:> ?[^\\n]*\\n)+)').exec(md)[1].replace(/^> ?/gm, '').trim();
+  assert(quote('Promotional text').replace(/\n/g, ' ').length <= 170, 'promotional text too long');
+  assert(quote('Description').length <= 4000, 'description too long');
+  assert(!/rubik/i.test(field('Name') + field('Subtitle')), 'a trademark in the name');
+
+  // screenshots at the two sizes App Store Connect asks for, without an alpha channel
+  const shots = fs.readdirSync(path.join(ROOT, 'ios/app-store/screenshots')).filter((f) => f.endsWith('.png'));
+  for (const [prefix, w, h] of [['iPhone-6.9-', 1320, 2868], ['iPad-13-', 2064, 2752]]) {
+    const mine = shots.filter((f) => f.startsWith(prefix));
+    assert.strictEqual(mine.length, 5, prefix + ' screenshots: ' + mine.length);
+    for (const f of mine) {
+      const png = fs.readFileSync(path.join(ROOT, 'ios/app-store/screenshots', f));
+      assert.deepStrictEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [w, h], f + ' size');
+      assert.strictEqual(png[25], 2, f + ' is not plain RGB');
+    }
+  }
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

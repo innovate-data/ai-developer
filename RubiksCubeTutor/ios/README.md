@@ -13,7 +13,8 @@ no Swift packages, no `xcodegen`.
 |---|---|
 | Deployment target | iOS 17.0 |
 | Devices | iPhone and iPad, all orientations |
-| Bundle identifier | `com.example.cubeclubhouse`, change it to your own |
+| Bundle identifier | `com.iralearningllc.cubeclubhouse` |
+| Release | `TEAM_ID=… ios/release.sh --upload`; see `app-store/APP-STORE.md` |
 | Signing | Automatic. Pick your team under Signing & Capabilities before running on a device. |
 
 ## How it is put together

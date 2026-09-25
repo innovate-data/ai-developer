@@ -25,6 +25,8 @@ RubiksCubeTutor/
 ├── js/app.js             screens, move pad, guided walkthrough, practice, quiz
 ├── build-artifact.js     bundles index.html + css into a single publishable page
 ├── ios/                  Xcode project: the same web app as a native iPhone/iPad app
+│   ├── release.sh        one-step archive + App Store upload (on a Mac with Xcode)
+│   └── app-store/        release guide, listing text, hosted privacy/support pages, screenshots
 ├── tests/run-tests.js    model and solver tests (Node only, no packages)
 ├── tests/browser-tests.js end-to-end regression tests (needs Chromium)
 └── tests/ios-bundle-tests.js  checks what the Xcode build phase would ship
@@ -452,9 +454,15 @@ same reason.
   with its clauses numbered in order, and that no promise ("most children can solve",
   "held back", "for as long as you like") has crept back into the grown-ups pages.
 
-51 groups in all.
+* that the App Store release is ready: the real bundle ID, the export-compliance and
+  category keys, both export option files, `ios/release.sh` (it must parse and check the
+  archive), the hosted privacy and support pages matching what the app says now, listing
+  text within App Store Connect's limits and free of other companies' trademarks, and ten
+  screenshots at exactly the two sizes Apple asks for.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 325 checks.
+52 groups in all.
+
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 326 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -506,6 +514,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R47 | The Privacy page says exactly what is kept: driving the app writes only the four documented keys, the Timer's record holds only its size, the look-first switch and times without dates, and the page names every one of them; it says a copy leaves the device only in the family's own backup; and it names Ira Learning LLC with an email address shown as copyable text, not a link out of the app, alongside a notice asking a child to have a parent or guardian send it. |
 | R48 | The info pages make no promises: About has a Safety section (small parts, under-three warning, Reduce Motion) and speaks of "rough guides, not promises" rather than a guaranteed outcome or timing; the Licence page's plain-English summary says a parent or guardian agrees on a child's behalf and names the new terms (educational content, safety and supervision, App Store terms, governing law, the US$10 liability cap); and "for as long as you like" / "held back" do not appear. |
 | R49 | The app speaks to learners of every age: the footer says "a Cube tutor for all ages" and its link reads About; the info page is About the App and says anyone, of any age, with no upper age limit, and speaks to the learner rather than about "the child"; Privacy covers everyone who uses the app; the licence says it is made for a general audience; the safety advice for young children stays. |
+| R50 | In the guide's two-column list of move words, a list with a single move split that one item across both columns ("…the side ··· left." / "facing you, so its top goes to the"). Found in the iPad App Store screenshot. Each item now stays whole. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
