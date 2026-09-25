@@ -115,7 +115,7 @@ Two things to settle before you submit:
   links lead there) — so put the same text on a page of your own and link to that. Use
   the browser wording there, since it will be read in a browser.
 * **Who to contact.** The Privacy page names Ira Learning LLC and gives
-  irealearningllc@gmail.com; the licence page and `LICENSE` give it too. It is plain text,
+  iralearningllc@gmail.com; the licence page and `LICENSE` give it too. It is plain text,
   not a mail link, on purpose: a link that leaves a Kids Category app must sit behind a
   parental gate. Use the same address as the support and privacy contact in App Store
   Connect.

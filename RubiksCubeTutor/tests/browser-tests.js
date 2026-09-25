@@ -1321,7 +1321,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       const privacy = await p.locator('#privacy').innerText();
       ck(device + ': privacy says where things are kept', new RegExp('on this ' + device + ', inside the app').test(privacy), privacy.match(/Four small things[^:]*/) && privacy.match(/Four small things[^:]*/)[0]);
       ck(device + ': and never mentions a browser', !/browser/i.test(privacy));
-      ck(device + ': the footer too', new RegExp('everything stays on this ' + device).test(await p.locator('footer').innerText()) && !/browser/.test(await p.locator('footer').innerText()));
+      ck(device + ': the footer too', new RegExp('the app keeps everything on this ' + device).test(await p.locator('footer').innerText()) && !/browser/.test(await p.locator('footer').innerText()));
       await p.close();
     }
     const w = await newPage();
@@ -1421,15 +1421,32 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the page names every one of those', ['🧠 badge', 'cube size last chosen on the Play screen', 'speed chosen for the guided solve',
       'cube size last chosen there', '15 Seconds to Look First', 'No dates, no names'].every((x) => privacy.includes(x)));
     ck('it says a copy can leave only in your own backup', /The one way a copy leaves this device is inside your own backup/.test(privacy) && /we never see it/.test(privacy));
-    ck('it says who we are and how to reach us', /made by Ira Learning LLC/.test(privacy) && privacy.includes('irealearningllc@gmail.com'));
+    ck('it says who we are and how to reach us', /made by Ira Learning LLC/.test(privacy) && privacy.includes('iralearningllc@gmail.com'));
+    ck('a child is told to ask a grown-up to send the email', /ask your parent or guardian to send the email/.test(privacy));
     ck('the address is text a parent can copy, not a link out of the app', (await p.locator('a[href^="mailto:"]').count()) === 0
       && (await p.locator('#privacy .contact-email').evaluate((e) => getComputedStyle(e).userSelect)) !== 'none');
-    ck('the licence page has it too', (await p.locator('#licence').innerText()).includes('irealearningllc@gmail.com'));
+    const licenceInner = await p.locator('#licence').innerText();
+    ck('the licence page has it too', licenceInner.includes('iralearningllc@gmail.com') && /ask a parent or guardian to send the email/.test(licenceInner));
     await p.close();
     const q = await iosPage('iPhone', { width: 390, height: 844 });
     await q.locator('.foot-links [data-info="privacy"]').click(); await q.waitForTimeout(150);
     ck('in the app it names the device: "leaves this iPhone"', /leaves this iPhone is inside your own backup/.test((await q.locator('#privacy').innerText()).replace(/\s+/g, ' ')));
     await q.close(); }
+
+  console.log('R48 the grown-ups pages make no promises, and the terms cover safety');
+  { const p = await newPage();
+    await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(150);
+    const parents = (await p.locator('#parents').innerText()).replace(/\s+/g, ' ');
+    ck('For Parents has a Safety section', /Safety/.test(parents) && /small parts/.test(parents) && /under three/.test(parents) && /Reduce Motion/.test(parents));
+    ck('it gives rough guides, not promises', /rough guides, not promises/.test(parents) && !/most children can solve/.test(parents) && !/that exact cube/.test(parents));
+    const licence = (await p.locator('#licence').innerText()).replace(/\s+/g, ' ');
+    ck('the summary says a grown-up agrees, and supervises', /a parent or guardian agrees for a child/.test(licence) && /small parts/.test(licence));
+    ck('the terms have the new clauses', ['EDUCATIONAL CONTENT', 'SAFETY AND SUPERVISION', 'APPLE APP STORE TERMS', 'GOVERNING LAW', 'US$50', 'Last updated'].every((x) => licence.includes(x)));
+    ck('no "for as long as you like" or "nothing held back"', !/for as long as you like|held back/.test(licence + parents));
+    await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(150);
+    const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
+    ck('Privacy speaks for this version, with a date', /This version of Cube Clubhouse \(1\.0\)/.test(privacy) && /Last updated: 25 September 2026/.test(privacy) && !/made them impossible/.test(privacy));
+    await p.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');

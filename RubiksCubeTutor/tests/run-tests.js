@@ -811,11 +811,42 @@ test('privacy: every thing the app stores is on the Privacy page, and it can be 
   assert(/iCloud Backup/.test(privacy) && /sends none of it anywhere/.test(privacy), 'the backup exception is not stated');
   assert(!/Nothing is sent off the/.test(privacy), 'the old absolute claim is back');
   // who runs it, and how to reach them: in the app, and in the licence file
-  const email = 'irealearningllc@gmail.com';
+  const email = 'iralearningllc@gmail.com';
   assert(privacy.includes('Ira Learning LLC') && privacy.includes(email), 'no contact on the Privacy page');
   assert(read('LICENSE').includes(email), 'no contact in LICENSE');
+  // a child is asked to have a grown-up send the email, not to send it themselves
+  assert(/ask your parent or guardian to send the email/.test(privacy), 'no notice asking a child to have a parent send the email');
+  const licenceText = /<article id="licence"[\s\S]*?<\/article>/.exec(html)[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  assert(licenceText.includes(email) && /ask a parent or guardian to send the email/.test(licenceText), 'the licence contact has no child notice');
   // shown as text, never a mail link: a link out of a Kids app needs a parental gate
   assert(!/mailto:/i.test(html), 'a mail link would be a link out of the app');
+});
+
+
+test('licence: the app shows the LICENSE file word for word, and the pages make no promises', () => {
+  const lic = read('LICENSE');
+  const html = read('index.html');
+  const shown = /<pre class="licence-text">([\s\S]*?)<\/pre>/.exec(html)[1];
+  const terms = lic.slice(0, lic.indexOf('Cube Clubhouse(R) is a registered trademark')).trimEnd();
+  assert.strictEqual(shown, terms, 'the Licence page and LICENSE differ');
+  assert(/^[\x00-\x7f]*$/.test(lic), 'LICENSE is not plain ASCII');
+  assert(lic.split('\n').every((l) => l.length <= 78), 'LICENSE has a line over 78 characters');
+  // clauses numbered 1..15 in order, none skipped
+  const nums = [...terms.matchAll(/^(\d+)\. [A-Z]/gm)].map((m) => +m[1]);
+  assert.deepStrictEqual(nums, Array.from({ length: 15 }, (_, i) => i + 1), 'clause numbers: ' + nums.join(','));
+  for (const clause of ['By installing, opening or using the Software you', 'parent or guardian', 'EDUCATIONAL CONTENT',
+    'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$50', 'APPLE APP STORE TERMS',
+    'third-party\n   beneficiaries', 'GOVERNING LAW', 'CHANGES', 'GENERAL', 'Last updated: 25 September 2026']) {
+    assert(terms.includes(clause), 'the licence does not say: ' + clause);
+  }
+  const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  for (const promise of ['most children can solve', 'that exact cube', 'held back', 'for as long as you like',
+    'made them impossible', 'can be seen by anyone else', 'everything stays on this', 'teaches a child',
+    'walks any mixed cube']) {
+    assert(!text.includes(promise), 'a promise is back: ' + promise);
+  }
+  const parents = /<article id="parents"[\s\S]*?<\/article>/.exec(html)[0];
+  assert(/<h3>Safety<\/h3>/.test(parents) && /under three/.test(parents), 'For Parents has no Safety section');
 });
 
 
