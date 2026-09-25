@@ -1441,7 +1441,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('it gives rough guides, not promises', /rough guides, not promises/.test(parents) && !/most children can solve/.test(parents) && !/that exact cube/.test(parents));
     const licence = (await p.locator('#licence').innerText()).replace(/\s+/g, ' ');
     ck('the summary says a grown-up agrees, and supervises', /a parent or guardian agrees for a child/.test(licence) && /small parts/.test(licence));
-    ck('the terms have the new clauses', ['EDUCATIONAL CONTENT', 'SAFETY AND SUPERVISION', 'APPLE APP STORE TERMS', 'GOVERNING LAW', 'US$50', 'Last updated'].every((x) => licence.includes(x)));
+    ck('the terms have the new clauses', ['EDUCATIONAL CONTENT', 'SAFETY AND SUPERVISION', 'APPLE APP STORE TERMS', 'GOVERNING LAW', 'US$10', 'Last updated'].every((x) => licence.includes(x)));
     ck('no "for as long as you like" or "nothing held back"', !/for as long as you like|held back/.test(licence + parents));
     await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(150);
     const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');

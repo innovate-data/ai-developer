@@ -835,7 +835,7 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
   const nums = [...terms.matchAll(/^(\d+)\. [A-Z]/gm)].map((m) => +m[1]);
   assert.deepStrictEqual(nums, Array.from({ length: 15 }, (_, i) => i + 1), 'clause numbers: ' + nums.join(','));
   for (const clause of ['By installing, opening or using the Software you', 'parent or guardian', 'EDUCATIONAL CONTENT',
-    'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$50', 'APPLE APP STORE TERMS',
+    'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$10', 'APPLE APP STORE TERMS',
     'third-party\n   beneficiaries', 'GOVERNING LAW', 'CHANGES', 'GENERAL', 'Last updated: 25 September 2026']) {
     assert(terms.includes(clause), 'the licence does not say: ' + clause);
   }
