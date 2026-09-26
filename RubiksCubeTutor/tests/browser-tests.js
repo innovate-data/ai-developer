@@ -1480,6 +1480,65 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('every move\'s words stay in one column', split.length === 0, JSON.stringify(split));
     await p.close(); }
 
+  console.log('R51 Reset Cube puts a lesson\'s cube back to how the lesson set it up');
+  { const p = await newPage();
+    const pad = (m) => p.locator('#lesson-controls .pad-btn', { hasText: new RegExp('^' + m + '$') }).first().click();
+    const msg = () => p.locator('#lesson-reset-msg').textContent();
+    // a lesson with a practice puzzle: back to the same puzzle, not a new one
+    await p.locator('.lesson-card').nth(2).click(); await settle(p, '#lesson-cube');
+    const start = await stickersOf(p, '#lesson-cube');
+    ck('every lesson has the button, in Title Case', (await p.locator('#lesson-reset-cube').innerText()).includes('Reset Cube'));
+    await pad('R'); await pad('U'); await pad('F'); await settle(p, '#lesson-cube');
+    ck('turns change the cube', (await stickersOf(p, '#lesson-cube')) !== start);
+    await p.locator('#lesson-reset-cube').click(); await settle(p, '#lesson-cube');
+    ck('Reset Cube brings back the same puzzle', (await stickersOf(p, '#lesson-cube')) === start);
+    ck('and says so', /Back to the start of this puzzle/.test(await msg()));
+    await p.locator('#lesson-practice button', { hasText: 'Undo' }).click(); await settle(p, '#lesson-cube');
+    ck('Undo cannot turn a reset back', (await stickersOf(p, '#lesson-cube')) === start);
+    await pad('U'); await settle(p, '#lesson-cube');
+    ck('the next turn clears the message', (await msg()) === '');
+    // an open hint goes away with the reset
+    await p.locator('#lesson-practice button', { hasText: 'Hint' }).click(); await p.waitForTimeout(150);
+    ck('a hint is showing', await p.locator('#lesson-practice .hint-box').isVisible());
+    await p.locator('#lesson-reset-cube').click(); await settle(p, '#lesson-cube');
+    ck('the reset puts the hint away and clears its highlight', !(await p.locator('#lesson-practice .hint-box').isVisible())
+      && (await p.locator('#lesson-cube .face.hl, #lesson-cube .hl').count()) === 0);
+    // solve it with the hints, then reset: the win goes, so it can be done again, but no 🧠
+    for (let i = 0; i < 20 && !(await p.locator('#lesson-practice .practice-status.win').count()); i++) {
+      await p.locator('#lesson-practice button', { hasText: 'Hint' }).click(); await p.waitForTimeout(100);
+      const w = p.locator('#lesson-practice .hint-box button', { hasText: 'Watch' });
+      if (await w.count()) { await w.click(); await settle(p, '#lesson-cube'); }
+    }
+    ck('solved with hints', await p.locator('#lesson-practice .practice-status.win').count() === 1);
+    await p.locator('#lesson-reset-cube').click(); await settle(p, '#lesson-cube');
+    ck('after a win, Reset Cube starts the same puzzle again', (await stickersOf(p, '#lesson-cube')) === start
+      && await p.locator('#lesson-practice .practice-status.win').count() === 0
+      && /^Goal:/.test(await p.locator('#lesson-practice .practice-status').textContent()));
+    ck('the stars are kept, and hints still mean no 🧠', await p.evaluate(() => {
+      const pr = JSON.parse(localStorage.getItem('cubeclubhouse.progress'));
+      return pr.daisy === 3 && !(pr.brain && pr.brain.daisy);
+    }));
+    // Another Puzzle, then Reset Cube: back to the new puzzle
+    await p.locator('#lesson-practice button', { hasText: 'Another Puzzle' }).click(); await settle(p, '#lesson-cube');
+    const fresh = await stickersOf(p, '#lesson-cube');
+    await pad('L'); await settle(p, '#lesson-cube');
+    await p.locator('#lesson-reset-cube').click(); await settle(p, '#lesson-cube');
+    ck('after Another Puzzle, Reset Cube goes back to that one', (await stickersOf(p, '#lesson-cube')) === fresh && fresh !== start);
+    // halfway through a trick's Watch (White Corners has Righty): the picture and the cube
+    // both end up at the start, and stay there once the trick's time is up
+    await p.locator('#lesson-back').click(); await p.locator('.lesson-card').nth(4).click(); await settle(p, '#lesson-cube');
+    const corners = await stickersOf(p, '#lesson-cube');
+    await p.locator('#lesson-algs button', { hasText: 'Watch' }).first().click(); await p.waitForTimeout(250);
+    await p.locator('#lesson-reset-cube').click(); await settle(p, '#lesson-cube'); await p.waitForTimeout(1800);
+    ck('a reset in the middle of a Watch still lands on the start', (await stickersOf(p, '#lesson-cube')) === corners);
+    // a lesson without a puzzle: back to solved
+    await p.locator('#lesson-back').click(); await p.locator('.lesson-card').nth(0).click(); await settle(p, '#lesson-cube');
+    const solved = await expectAfter(p, 3, '');
+    await pad('R'); await pad('U'); await settle(p, '#lesson-cube');
+    await p.locator('#lesson-reset-cube').click(); await settle(p, '#lesson-cube');
+    ck('in a lesson without a puzzle the cube is solved again', (await stickersOf(p, '#lesson-cube')) === solved && /solved again/.test(await msg()));
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

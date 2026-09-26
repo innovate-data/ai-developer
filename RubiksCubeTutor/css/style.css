@@ -250,6 +250,8 @@ main {
 @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
 .col-cube { position: sticky; top: 84px; }
 @media (max-width: 860px) { .col-cube { position: static; } }
+.cube-actions { justify-content: center; margin-top: 10px; }
+#lesson-reset-msg { text-align: center; margin: 6px 0 0; min-height: 1.5em; }
 .cube-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; position: relative; }
 .cube-card .tiny { position: absolute; right: 12px; top: 12px; }
 /* On a phone the full label is wide enough to sit over the cube, so show just the icon. */

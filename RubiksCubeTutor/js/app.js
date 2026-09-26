@@ -707,7 +707,28 @@
       renderPractice(L);
       station.view.resetView();
       station.set(L.stage ? practiceCube(L.stage) : Cube.solved());
+      lessonStart = station.state.slice();
+      $('#lesson-reset-msg').textContent = '';
       window.scrollTo(0, 0);
+    }
+
+    // Reset Cube puts the cube back to how this lesson set it up: the same practice
+    // puzzle, not a new one (Another Puzzle does that), or a solved cube in the lessons
+    // without practice. Undo history goes too, so Undo cannot turn the reset back.
+    let lessonStart = Cube.solved();
+    let resetPractice = null;                 // set by renderPractice for lessons with a puzzle
+    function resetCube() {
+      hush();
+      station.set(lessonStart);
+      if (resetPractice) resetPractice();
+      const msg = $('#lesson-reset-msg');
+      msg.textContent = LESSONS[current].stage ? 'Back to the start of this puzzle.' : 'The cube is solved again.';
+      // the message is about this reset; the next turn makes it old news
+      const clear = () => {
+        msg.textContent = '';
+        station.listeners = station.listeners.filter((fn) => fn !== clear);
+      };
+      station.onChange(clear);
     }
 
     // A trick card's Watch and Undo turn the practice cube for the child. play() applies
@@ -848,6 +869,7 @@
       // Drop the previous lesson's goal watcher BEFORE returning early, otherwise it
       // keeps scoring moves made in a lesson that has no practice of its own.
       station.listeners = [];
+      resetPractice = null;
       if (!L.stage) return;
       box.appendChild(el('h3', '', '🎮 Your turn'));
       const intro = el('p', '', 'This is a pretend cube on the screen, not your real one. It is set up for this step. Use the buttons under the cube and try it. Stuck? Tap <b>Hint</b>.');
@@ -930,14 +952,21 @@
         hintBox.appendChild(hintBtns);
         station.view.setHighlights(one.highlight);
       });
-      newBtn.addEventListener('click', () => {
+      // Back to the start of the same puzzle: the hint and the win go, so it can be done
+      // again, but hints already seen for this puzzle still count against the 🧠 badge.
+      resetPractice = () => {
         solvedThis = false;
-        hintsUsed = 0;
         hintFor = null;
         status.textContent = 'Goal: ' + L.subtitle;
         status.classList.remove('win');
         hintBox.hidden = true;
+      };
+      newBtn.addEventListener('click', () => {
+        resetPractice();
+        hintsUsed = 0;
         station.set(practiceCube(L.stage));
+        lessonStart = station.state.slice();
+        $('#lesson-reset-msg').textContent = '';
       });
       undoBtn.addEventListener('click', () => station.undo());
       row.append(hintBtn, undoBtn, newBtn);
@@ -953,6 +982,7 @@
       else openLesson(current + 1);
     });
     $('#lesson-reset-view').addEventListener('click', () => station.view.resetView());
+    $('#lesson-reset-cube').addEventListener('click', resetCube);
     renderList();
     screens.learn = { section, station, openLesson };
   }
