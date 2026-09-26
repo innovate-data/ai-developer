@@ -913,6 +913,46 @@ test('release: the Xcode project, export options, script and store pages are rea
 });
 
 
+test('updates: the App Store check is the one request, made by the app, small and switchable', () => {
+  const dir = path.join(ROOT, 'ios', 'CubeClubhouse');
+  const swift = Object.fromEntries(fs.readdirSync(dir).filter((f) => f.endsWith('.swift'))
+    .map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
+  const pbx = read('ios/CubeClubhouse.xcodeproj/project.pbxproj');
+  assert(/UpdateChecker\.swift in Sources/.test(pbx) && /path = UpdateChecker\.swift;/.test(pbx), 'UpdateChecker.swift is not built');
+  const uc = swift['UpdateChecker.swift'];
+  // the only web address in any Swift file is Apple's lookup service
+  const code = Object.values(swift).join('\n').replace(/^\s*\/\/.*$/gm, '');      // not the comments
+  const urls = code.match(/"https?:\/\/[^"]*"/g) || [];
+  assert.deepStrictEqual(urls, ['"https://itunes.apple.com/lookup"'], 'addresses in Swift: ' + urls.join(', '));
+  // and it asks with nothing but the bundle id and the country
+  const params = [...uc.matchAll(/URLQueryItem\(name: "([^"]+)"/g)].map((m) => m[1]).sort();
+  assert.deepStrictEqual(params, ['bundleId', 'country'], 'query: ' + params.join(', '));
+  for (const need of ['URLSessionConfiguration.ephemeral', 'httpCookieAcceptPolicy = .never', 'httpShouldSetCookies = false',
+    'urlCache = nil', 'waitsForConnectivity = false']) {
+    assert(uc.includes(need), 'the lookup session is missing: ' + need);
+  }
+  assert(/checkEvery: TimeInterval = 24 \* 60 \* 60/.test(uc), 'not at most once a day');
+  assert(/quietAfterNotNow: TimeInterval = 7 \* 24 \* 60 \* 60/.test(uc), 'Not Now does not keep quiet for a week');
+  assert(/func checkIfDue\(\) \{\s*guard enabled else \{ return \}/.test(uc), 'the switch does not stop the daily check');
+  assert(/SKStoreProductViewController\(\)/.test(uc) && !/UIApplication\.shared\.open/.test(uc), 'Update should open the store sheet inside the app');
+  assert(/minimumOsVersion/.test(uc), 'a version this device cannot install would be offered');
+  // the page stays offline: the check lives in Swift and the page's blockers are untouched
+  const app = swift['CubeClubhouseApp.swift'], web = swift['WebAppView.swift'];
+  assert(/updates\.checkIfDue\(\)/.test(app) && /ready && updates\.offer != nil/.test(app), 'the alert is not shown after the page is up');
+  assert(/Button\("Not Now", role: \.cancel\)/.test(app) && /Button\("Update"\)/.test(app), 'the alert buttons');
+  assert(/name: "updates"/.test(web) && /updateCheck: \\\(updates\.enabled\)/.test(web) && /version: '\\\(version\)'/.test(web), 'the page is not told the version and the switch');
+  assert(!/URLSession|itunes/.test(web + app + swift['BundleSchemeHandler.swift']), 'a request outside UpdateChecker');
+  assert(!/fetch\(|XMLHttpRequest|itunes/.test(read('js/app.js')), 'the page itself makes a request');
+  // what the grown-ups read
+  const html = read('index.html');
+  assert(/<div id="updates-section" hidden>/.test(html), 'the Updates section must start hidden (the browser has none)');
+  const privacy = /<article id="privacy"[\s\S]*?<\/article>/.exec(html)[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  for (const said of ['bundle identifier', 'About › Updates', 'never reaches us', 'the date it last asked the App Store', 'Not Now']) {
+    assert(privacy.includes(said), 'the Privacy page does not say: ' + said);
+  }
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

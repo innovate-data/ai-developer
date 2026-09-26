@@ -97,9 +97,17 @@ function runCopyPhase() {
     const manifest = fs.readFileSync(path.join(IOS, 'CubeClubhouse', 'PrivacyInfo.xcprivacy'), 'utf8');
     ck('the privacy manifest is a plist', /<plist version="1.0">/.test(manifest) && /<\/plist>/.test(manifest));
     ck('it declares no tracking', /<key>NSPrivacyTracking<\/key>\s*<false\/>/.test(manifest));
-    for (const key of ['NSPrivacyTrackingDomains', 'NSPrivacyCollectedDataTypes', 'NSPrivacyAccessedAPITypes']) {
+    for (const key of ['NSPrivacyTrackingDomains', 'NSPrivacyCollectedDataTypes']) {
       ck('it declares an empty ' + key, new RegExp('<key>' + key + '<\\/key>\\s*<array\\/>').test(manifest));
     }
+    // UserDefaults (the update check's switch and dates) is the one API Apple wants a
+    // reason for: CA92.1, read only by this app. Nothing else may creep in unannounced.
+    const apis = [...manifest.matchAll(/<key>NSPrivacyAccessedAPIType<\/key>\s*<string>([^<]+)<\/string>/g)].map((m) => m[1]);
+    ck('the only reasoned API is UserDefaults, for this app alone', apis.join() === 'NSPrivacyAccessedAPICategoryUserDefaults'
+      && /<string>CA92\.1<\/string>/.test(manifest), apis.join());
+    const swiftAll = fs.readdirSync(path.join(IOS, 'CubeClubhouse')).filter((f) => f.endsWith('.swift'))
+      .map((f) => fs.readFileSync(path.join(IOS, 'CubeClubhouse', f), 'utf8')).join('\n');
+    ck('and UserDefaults is indeed used, so the declaration is needed', /UserDefaults\.standard/.test(swiftAll));
   }
 
   console.log('\nthe launch screen');
@@ -155,7 +163,7 @@ function runCopyPhase() {
   console.log('\nthe iOS side of the page');
   {
     const web = fs.readFileSync(path.join(IOS, 'CubeClubhouse', 'WebAppView.swift'), 'utf8');
-    ck('the page is told it is the iOS app, and on which device, before it runs', /CubeClubhouseHost = Object\.freeze\(\{ platform: 'ios', device: '\\\(device\)' \}\)/.test(web)
+    ck('the page is told it is the iOS app, and on which device, before it runs', /CubeClubhouseHost = Object\.freeze\(\{ platform: 'ios', device: '\\\(device\)', "\s*\+ "version: '\\\(version\)', updateCheck: \\\(updates\.enabled\) \}\);"/.test(web)
       && /injectionTime: \.atDocumentStart/.test(web) && /userInterfaceIdiom == \.pad \? "iPad" : "iPhone"/.test(web));
     ck('haptics: the page can ask, and four kinds are felt', /add\(context\.coordinator, name: "haptic"\)/.test(web)
       && ['"light"', '"medium"', '"success"', '"warning"'].every((k) => web.includes('case ' + k)));

@@ -1741,6 +1741,53 @@
 
   // ============================================================ GROWN-UPS
   // Not in the child's nav: the footer links lead here, one per section.
+  // ---- Updates (the iOS app only)
+  // The app itself asks the App Store about new versions (UpdateChecker.swift); the page
+  // makes no request. This is its switch and its Check Now button, and the answer comes
+  // back through window.CubeClubhouseUpdates.result().
+  function buildUpdates() {
+    const box = $('#updates-section');
+    const bridge = root.webkit && root.webkit.messageHandlers && root.webkit.messageHandlers.updates;
+    if (!box || !HOST || HOST.platform !== 'ios' || !bridge) return;
+    box.hidden = false;
+    if (HOST.version) $('#app-version').textContent = HOST.version;
+    const toggle = $('#update-check-switch');
+    const now = $('#update-check-now');
+    const msg = $('#update-check-msg');
+    toggle.setAttribute('aria-checked', String(HOST.updateCheck !== false));
+    toggle.addEventListener('click', () => {
+      const on = toggle.getAttribute('aria-checked') !== 'true';
+      toggle.setAttribute('aria-checked', String(on));
+      try { bridge.postMessage({ action: 'set', enabled: on }); } catch { /* the app has gone away */ }
+      haptic('light');
+      msg.textContent = on ? 'The app will check about once a day.' : 'The app will not check. Check Now still works.';
+    });
+    let waiting = null;
+    const ANSWERS = {
+      newer: (v) => 'Version ' + v + ' is in the App Store. Tap Update in the message to get it.',
+      'up-to-date': () => 'You have the newest version.',
+      unavailable: () => 'The App Store could not be reached just now. Check the internet connection and try again.',
+    };
+    root.CubeClubhouseUpdates = Object.freeze({
+      result(r) {
+        if (!waiting) return;               // only ever an answer to Check Now
+        clearTimeout(waiting);
+        waiting = null;
+        now.disabled = false;
+        const say = ANSWERS[r && r.outcome] || ANSWERS.unavailable;
+        msg.textContent = say((String((r && r.version) || '').match(/^\d+(?:\.\d+)*/) || [''])[0]);
+      },
+    });
+    now.addEventListener('click', () => {
+      if (waiting) return;
+      now.disabled = true;
+      msg.textContent = 'Checking…';
+      // The app gives up after ten seconds; this is the same, in case no answer comes.
+      waiting = setTimeout(() => { root.CubeClubhouseUpdates.result({ outcome: 'unavailable' }); }, 12000);
+      try { bridge.postMessage({ action: 'check' }); } catch { root.CubeClubhouseUpdates.result({ outcome: 'unavailable' }); }
+    });
+  }
+
   function buildGrownUps() {
     const section = $('#screen-grownups');
     const msg = $('#clear-progress-msg', section);
@@ -1917,11 +1964,12 @@
     buildSolve();
     buildTimer();
     buildGrownUps();
+    buildUpdates();
     keyboard();
     stopSpeakingWhenHidden();
     document.querySelectorAll('nav button[data-screen]').forEach((b) => b.addEventListener('click', () => showScreen(b.dataset.screen)));
     document.querySelectorAll('.foot-links [data-info]').forEach((b) => b.addEventListener('click', () => openGrownUps(b.dataset.info)));
-    document.querySelectorAll('.info-nav a').forEach((a) => a.addEventListener('click', (e) => {
+    document.querySelectorAll('.info-nav a, .info-card a[href^="#"]').forEach((a) => a.addEventListener('click', (e) => {
       e.preventDefault();                       // the hash belongs to the screens, not the sections
       openGrownUps(a.getAttribute('href').slice(1));
     }));

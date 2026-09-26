@@ -25,15 +25,22 @@ function build() {
   const version = /MARKETING_VERSION = ([\d.]+);/.exec(
     fs.readFileSync(path.join(HERE, '..', 'CubeClubhouse.xcodeproj', 'project.pbxproj'), 'utf8'))[1];
 
+  // The device name first: it sits inside the app-only spans, and those are unwrapped
+  // with a match that stops at the first closing tag.
   let body = article[1]
+    .replace(/this\s+<span class="device-name">device<\/span>/g, 'your device')
+    .replace(/the\s+<span class="device-name">device<\/span>/g, 'your device')
+    .replace(/<span class="device-name">device<\/span>/g, 'device')
     .replace(/<span class="w-web">[\s\S]*?<\/span>/g, '')           // the browser's wording
     .replace(/<span class="w-ios">([\s\S]*?)<\/span>/g, '$1')        // the app's wording
-    .replace(/this\s+<span class="device-name">device<\/span>/g, 'your device')
-    .replace(/<span class="device-name">device<\/span>/g, 'device')
+    .replace(/<li class="w-ios">/g, '<li>')
     .replace('<b>Clear Saved Progress</b> above', '<b>Clear Saved Progress</b> on the app\'s About page')
     .replace(/<h2>Privacy<\/h2>/, '');
   for (const left of ['device-name', 'w-ios', 'w-web', '<button', ' above,']) {
     if (body.includes(left)) throw new Error('the privacy policy still contains "' + left + '"');
+  }
+  if ((body.match(/<span\b/g) || []).length !== (body.match(/<\/span>/g) || []).length) {
+    throw new Error('the privacy policy has unbalanced <span> tags');
   }
 
   const privacy = page('Cube Clubhouse Privacy Policy', `

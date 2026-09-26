@@ -1445,7 +1445,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('no "for as long as you like" or "nothing held back"', !/for as long as you like|held back/.test(licence + parents));
     await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(150);
     const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
-    ck('Privacy speaks for this version, with a date', /This version of Cube Clubhouse \(1\.0\)/.test(privacy) && /Last updated: 25 September 2026/.test(privacy) && !/made them impossible/.test(privacy));
+    ck('Privacy speaks for this version, with a date', /This version of Cube Clubhouse \(1\.0\)/.test(privacy) && /Last updated: 26 September 2026/.test(privacy) && !/made them impossible/.test(privacy));
     await p.close(); }
 
   console.log('R49 the app speaks to learners of every age, not to children only');
@@ -1538,6 +1538,70 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('#lesson-reset-cube').click(); await settle(p, '#lesson-cube');
     ck('in a lesson without a puzzle the cube is solved again', (await stickersOf(p, '#lesson-cube')) === solved && /solved again/.test(await msg()));
     await p.close(); }
+
+  console.log('R52 the Updates section: a switch and Check Now in the iOS app, nothing in a browser');
+  { const p = await newPage();
+    await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(150);
+    ck('a browser has no Updates section', !(await p.locator('#updates-section').isVisible()));
+    const priv = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
+    ck('and its Privacy page still says the page asks for nothing', /Nothing\. Not one request/.test(priv) && !/App Store/.test(priv) && /Four small things/.test(priv));
+    await p.close();
+    const app = async (updateCheck) => {
+      const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+      await ctx.addInitScript((on) => {
+        window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: 'iPhone', version: '1.0', updateCheck: on });
+        window.__sent = [];
+        window.webkit = { messageHandlers: { haptic: { postMessage() {} }, updates: { postMessage(m) { window.__sent.push(m); } } } };
+      }, updateCheck);
+      const q = await ctx.newPage();
+      q.on('pageerror', (e) => errs.push(e.message));
+      await q.goto(URL); await q.waitForTimeout(250);
+      await q.locator('.foot-links [data-info="parents"]').click(); await q.waitForTimeout(150);
+      return q;
+    };
+    const q = await app(true);
+    const sent = () => q.evaluate(() => window.__sent.slice());
+    const sw = q.locator('#update-check-switch'), now = q.locator('#update-check-now'), msg = q.locator('#update-check-msg');
+    ck('the app shows Updates with its version', await q.locator('#updates-section').isVisible() && (await q.locator('#app-version').textContent()) === '1.0');
+    ck('the switch starts on, as the app says', (await sw.getAttribute('aria-checked')) === 'true');
+    await sw.click();
+    ck('turning it off tells the app', (await sw.getAttribute('aria-checked')) === 'false' && JSON.stringify(await sent()) === '[{"action":"set","enabled":false}]');
+    ck('and says Check Now still works', /will not check\. Check Now still works/.test(await msg.textContent()));
+    await sw.click();
+    ck('and on again', (await sw.getAttribute('aria-checked')) === 'true' && JSON.stringify((await sent())[1]) === '{"action":"set","enabled":true}');
+    await now.click();
+    ck('Check Now asks the app, and waits', JSON.stringify((await sent())[2]) === '{"action":"check"}' && await now.isDisabled() && /Checking/.test(await msg.textContent()));
+    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'up-to-date', version: '' }));
+    ck('up to date', /You have the newest version/.test(await msg.textContent()) && !(await now.isDisabled()));
+    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'newer', version: '9.9' }));
+    ck('an answer nobody asked for is ignored', /newest version/.test(await msg.textContent()));
+    await now.click();
+    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'newer', version: '1.1<img src=x onerror=alert(1)>' }));
+    ck('a newer version is named, and only as digits', (await msg.textContent()) === 'Version 1.1 is in the App Store. Tap Update in the message to get it.'
+      && await q.locator('#update-check-msg img').count() === 0);
+    await now.click();
+    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'unavailable' }));
+    ck('no connection is explained', /could not be reached/.test(await msg.textContent()));
+    const priv2 = (await q.locator('#privacy').innerText()).replace(/\s+/g, ' ');
+    ck('the app\'s Privacy page says what the check sends', /One question, to Apple, and you can switch it off/.test(priv2)
+      && /bundle identifier/.test(priv2) && /this iPhone’s country or region/.test(priv2) && /Five small things/.test(priv2)
+      && /for the update check: whether it is switched on/.test(priv2));
+    ck('the footer says nothing about you is sent', /the app keeps everything on this iPhone and sends nothing about you anywhere/.test(await q.locator('footer').innerText()));
+    await q.locator('#updates-section a[href="#privacy"]').click(); await q.waitForTimeout(200);
+    ck('the Privacy link stays in the app, on the Privacy section', !(await q.locator('#screen-grownups').isHidden())
+      && (await q.evaluate(() => Math.abs(document.getElementById('privacy').getBoundingClientRect().top) < 200)));
+    await q.context().close();
+    const off = await app(false);
+    ck('switched off in the app, the switch starts off', (await off.locator('#update-check-switch').getAttribute('aria-checked')) === 'false');
+    // no answer at all: after twelve seconds the page stops waiting
+    await off.clock.install();
+    await off.reload(); await off.waitForTimeout(250);
+    await off.locator('.foot-links [data-info="parents"]').click();
+    await off.locator('#update-check-now').click();
+    await off.clock.runFor(12500);
+    ck('if the app never answers, Check Now gives up and can be tried again', /could not be reached/.test(await off.locator('#update-check-msg').textContent())
+      && !(await off.locator('#update-check-now').isDisabled()));
+    await off.context().close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');

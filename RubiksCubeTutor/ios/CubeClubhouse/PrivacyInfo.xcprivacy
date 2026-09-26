@@ -3,9 +3,14 @@
 <plist version="1.0">
 <dict>
 	<!--
-	  Cube Clubhouse collects nothing, tracks nobody, and uses none of the APIs Apple
-	  asks you to give a reason for. This file says so in the form App Review reads,
-	  and it matches the Privacy page inside the app word for word in substance.
+	  Cube Clubhouse collects nothing and tracks nobody. It says so here in the form App
+	  Review reads, and it matches the Privacy page inside the app in substance.
+
+	  The one API Apple asks a reason for is UserDefaults: UpdateChecker keeps whether the
+	  update check is on, when it last ran, and a version someone said "Not Now" to. That
+	  is only ever read by this app (reason CA92.1). The update check itself asks Apple's
+	  App Store whether a newer version exists; nothing about the person is sent, so there
+	  is no collected data type to declare and no tracking domain.
 	-->
 	<key>NSPrivacyTracking</key>
 	<false/>
@@ -14,6 +19,15 @@
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

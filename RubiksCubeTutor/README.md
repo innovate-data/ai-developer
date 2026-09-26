@@ -134,8 +134,9 @@ tips on the right.
 
 **About the App** – reached from the three footer links (About, Privacy, Licence), not
 from the main tabs: what the app teaches, who it suits, tips and safety; a privacy page naming the
-four things kept on the device and the fact that the app makes no network requests at
-all, with a button that erases the lot after an iOS alert asks first; and the licence conditions in full - the app is
+four things kept on the device (five on iOS, with the update check's settings) and what
+the app asks the internet for: nothing in a browser, and on iOS one optional App Store
+version check, with a button that erases the lot after an iOS alert asks first; and the licence conditions in full - the app is
 proprietary, owned by Ira Learning LLC - with the typeface's own licence and the
 trademark notes. `#parents`, `#privacy` and `#licence` open it at the right
 section, and anything unrecognised in the hash lands on the lessons.
@@ -386,7 +387,7 @@ rather than a website's:
 
 ### Nothing reaches the network
 
-The app makes no requests at all, and three separate things keep it that way, because a
+The page makes no requests at all, and three separate things keep it that way, because a
 privacy promise held up only by nobody having typed a URL is not worth making to a
 parent.
 
@@ -409,6 +410,12 @@ parent.
 A test in each of the three suites holds this down — see R24 and the offline group in
 §5. The published single-page artifact inlines the typeface as a `data:` URL for the
 same reason.
+
+The one exception is on iOS, outside the page: `UpdateChecker.swift` asks Apple's App
+Store, at most once a day, whether a newer version is out, and offers it with an iOS
+alert. It sends only the bundle ID and country, with no cookies; the About page has a
+switch to turn it off and a Check Now button, and the Privacy page says all of this (see
+`ios/GETTING-STARTED.md`, "Offering updates").
 
 ---
 
@@ -461,9 +468,15 @@ same reason.
   text within App Store Connect's limits and free of other companies' trademarks, and ten
   screenshots at exactly the two sizes Apple asks for.
 
-52 groups in all.
+* that the App Store update check is the one request and stays small: only Apple's
+  lookup address appears in any Swift file, it asks with nothing but the bundle ID and
+  country over an ephemeral, cookie-less session, at most daily, a week's quiet after Not
+  Now, never when switched off, offered in the store sheet inside the app, and nothing in
+  the page itself makes a request; and the Privacy page says all of that.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 340 checks.
+53 groups in all.
+
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 357 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -517,6 +530,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R49 | The app speaks to learners of every age: the footer says "a Cube tutor for all ages" and its link reads About; the info page is About the App and says anyone, of any age, with no upper age limit, and speaks to the learner rather than about "the child"; Privacy covers everyone who uses the app; the licence says it is made for a general audience; the safety advice for young children stays. |
 | R50 | In the guide's two-column list of move words, a list with a single move split that one item across both columns ("…the side ··· left." / "facing you, so its top goes to the"). Found in the iPad App Store screenshot. Each item now stays whole. |
 | R51 | Reset Cube in a lesson: it brings back the same practice puzzle (not a new one), clears Undo so a reset cannot be undone, puts an open hint and its highlight away, and after a win starts the puzzle again while keeping the stars (hints already seen for that puzzle still mean no 🧠); after Another Puzzle it returns to the new puzzle; pressed halfway through a trick's Watch it still lands on the start; in a lesson without a puzzle it makes the cube solved. |
+| R52 | The Updates section: none in a browser (whose Privacy page still says the page asks for nothing); in the iOS app it shows the version, a switch that starts as the app says and tells the app when flipped, and Check Now, which asks the app, waits, reports up to date / newer / unreachable, ignores answers nobody asked for, shows a version only as its leading number, and gives up after twelve seconds with no answer. The app's Privacy page and footer say what the check sends. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
@@ -524,7 +538,7 @@ the build phases, both configurations on iOS 17.0, no `#available` check the tar
 already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
 produces, by touch, on an iPhone and an iPad profile (each told it is the iOS app, as the
-real one is): 130 checks, including every screen at the largest Text Size on the narrowest
+real one is): 131 checks, including every screen at the largest Text Size on the narrowest
 iPhone, the tab bar at the bottom on iPhone and the top on iPad, the launch
 screen (Info.plist wired into both configurations, a background colour identical to the
 page's in light and dark, the logo at every scale and appearance and narrow enough for

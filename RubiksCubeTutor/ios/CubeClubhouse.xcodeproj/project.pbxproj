@@ -10,6 +10,7 @@
 		CB0000000000000000000021 /* CubeClubhouseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000011 /* CubeClubhouseApp.swift */; };
 		CB0000000000000000000022 /* WebAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000012 /* WebAppView.swift */; };
 		CB0000000000000000000023 /* BundleSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000013 /* BundleSchemeHandler.swift */; };
+		CB0000000000000000000027 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000019 /* UpdateChecker.swift */; };
 		CB0000000000000000000024 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000014 /* Assets.xcassets */; };
 		CB0000000000000000000026 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = CB0000000000000000000017 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -21,6 +22,7 @@
 		CB0000000000000000000017 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		CB0000000000000000000018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CB0000000000000000000013 /* BundleSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleSchemeHandler.swift; sourceTree = "<group>"; };
+		CB0000000000000000000019 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		CB0000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -57,6 +59,7 @@
 				CB0000000000000000000011 /* CubeClubhouseApp.swift */,
 				CB0000000000000000000012 /* WebAppView.swift */,
 				CB0000000000000000000013 /* BundleSchemeHandler.swift */,
+				CB0000000000000000000019 /* UpdateChecker.swift */,
 				CB0000000000000000000017 /* PrivacyInfo.xcprivacy */,
 				CB0000000000000000000018 /* Info.plist */,
 				CB0000000000000000000014 /* Assets.xcassets */,
@@ -156,6 +159,7 @@
 				CB0000000000000000000021 /* CubeClubhouseApp.swift in Sources */,
 				CB0000000000000000000022 /* WebAppView.swift in Sources */,
 				CB0000000000000000000023 /* BundleSchemeHandler.swift in Sources */,
+				CB0000000000000000000027 /* UpdateChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -111,11 +111,14 @@ Export compliance is answered in the build (`ITSAppUsesNonExemptEncryption = NO`
 uses no encryption at all), and the category is Education.
 
 The icon already meets Apple's requirement of 1024×1024 with no alpha channel. The app
-requests no permissions, collects nothing and makes no network requests whatsoever, so
-App Privacy is "Data Not Collected" with no caveats: the typeface ships inside the
-bundle, the page carries a `Content-Security-Policy` that forbids loading anything over
-http(s), and `WebAppView` installs a `WKContentRuleList` that blocks such loads at the
-WebKit level. You can demonstrate all of this by running the app in aeroplane mode.
+requests no permissions and collects nothing, so App Privacy is "Data Not Collected".
+The web page makes no network requests at all: the typeface ships inside the bundle, the
+page carries a `Content-Security-Policy` that forbids loading anything over http(s), and
+`WebAppView` installs a `WKContentRuleList` that blocks such loads at the WebKit level.
+The one request the app makes is `UpdateChecker`'s, from Swift, not the page: at most
+once a day it asks Apple's App Store lookup service whether a newer version is out,
+sending only the bundle ID and country, with no cookies (see "Offering updates" below).
+Everything except that check works in aeroplane mode.
 
 The **Copyright** field App Store Connect asks for is already set in the target's build
 settings as "Copyright © 2026 Ira Learning LLC. All rights reserved."; the app is
@@ -200,7 +203,28 @@ Things the audit changed:
 * **The last outbound request is gone.** The typeface used to come from Google Fonts.
   It is now in `fonts/`, the page carries a `Content-Security-Policy` that allows no
   http(s) source, and `WebAppView` compiles a `WKContentRuleList` that blocks any such
-  load inside the web view. The app makes no network requests at all.
+  load inside the web view. The web page makes no network requests at all; the only
+  request is the optional App Store update check, made by the Swift side.
+
+## Offering updates
+
+`UpdateChecker.swift` asks Apple's App Store whether a newer version is out, and if so
+shows an iOS alert: **Update** opens the App Store's own sheet inside the app
+(`SKStoreProductViewController`), **Not Now** keeps quiet about that version for a week.
+
+- It runs once the lessons are showing, at most once a day (after a check that got an
+  answer), and not at all when **About › Updates › Check for New Versions** is off.
+  **Check Now** on that page asks straight away and says what it found.
+- It asks `https://itunes.apple.com/lookup?bundleId=…&country=…` over an ephemeral
+  session: no cookies, no cache. Nothing about the person is sent.
+- It offers a version only if it is newer (compared number by number, so 1.10 beats
+  1.9) and this device's iOS can install it.
+- It keeps three things in `UserDefaults`: the switch, the date of the last check, and a
+  version someone said Not Now to. That is why `PrivacyInfo.xcprivacy` declares
+  UserDefaults with reason CA92.1.
+- Before the first release there is nothing in the store to find, so it stays quiet.
+  To see the alert, release 1.0, then run a build whose `MARKETING_VERSION` is lower,
+  such as 0.9, on a device.
 
 `SWIFT_VERSION` is 5.0, so building with Xcode 16 does not drag the code into Swift 6's
 strict concurrency checking. Note that App Store Connect has required builds made with

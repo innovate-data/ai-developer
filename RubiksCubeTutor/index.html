@@ -297,16 +297,30 @@
             <li><b>Dark Mode</b>: the app changes with the device, in Settings › Display &amp;
               Brightness.</li>
           </ul>
+
+          <div id="updates-section" hidden>
+            <h3>Updates</h3>
+            <p>This is version <b id="app-version">1.0</b>. Once a day at most, the app asks
+              Apple's App Store whether a newer version is out, and if there is one, it asks
+              whether you would like to update. Stars and times stay on this
+              <span class="device-name">device</span> when you do. The <a href="#privacy">Privacy</a>
+              section says exactly what the check sends.</p>
+            <div class="btn-row">
+              <button type="button" id="update-check-switch" class="switch-row" role="switch" aria-checked="true"><span class="switch-label">🔔 Check for New Versions</span><span class="switch" aria-hidden="true"><span class="switch-knob"></span></span></button>
+            </div>
+            <p><button type="button" id="update-check-now" class="btn ghost">Check Now</button></p>
+            <p id="update-check-msg" class="msg" aria-live="polite"></p>
+          </div>
         </article>
 
         <article id="privacy" class="info-card">
           <h2>Privacy</h2>
           <p class="info-strong">This version of Cube Clubhouse (1.0) collects nothing about the people who use it and sends
-            nothing anywhere. There are no accounts, no adverts, no analytics, no purchases and no tracking
+            nothing about them anywhere. There are no accounts, no adverts, no analytics, no purchases and no tracking
             of any kind.</p>
 
           <h3>What is saved, and where</h3>
-          <p>Four small things are kept <span class="w-web">in this browser's own storage, </span>on this
+          <p><span class="w-web">Four</span><span class="w-ios">Five</span> small things are kept <span class="w-web">in this browser's own storage, </span>on this
             <span class="device-name">device</span><span class="w-ios">, inside the app</span>, so the app is where you left it:</p>
           <ul>
             <li>which lessons have been practised, their stars, and the 🧠 badge for any finished
@@ -316,6 +330,9 @@
             <li>the times from the Timer screen, so it can show your best: each time with its
               cube size and any +2 or DNF, plus the cube size last chosen there and whether
               <b>15 Seconds to Look First</b> is switched on. No dates, no names.</li>
+            <li class="w-ios">for the update check: whether it is switched on, the date it last
+              asked the App Store, and a version you tapped <b>Not Now</b> for, so it does not ask
+              again that week.</li>
           </ul>
           <p>That is all of it. No names, no ages, no messages, no photos, no location, no identifiers.
             The app sends none of it anywhere and shares none of it between devices. The one way a copy
@@ -326,12 +343,22 @@
             whatever it held when it was made, until you delete that backup.</p>
 
           <h3>What the app asks the internet for</h3>
-          <p><strong>Nothing.</strong> Not one request, not even for the typeface it is drawn in —
-            that is stored inside the app like the lessons are. You can turn on Aeroplane Mode before
-            anyone opens it and every part of the app still works.</p>
+          <p><span class="w-web"><strong>Nothing.</strong> Not one request, not even for the typeface it
+            is drawn in — that is stored inside the app like the lessons are.</span><span class="w-ios"><strong>One
+            question, to Apple, and you can switch it off.</strong> About once a day the app asks Apple's
+            App Store whether a newer version of Cube Clubhouse is out, so it can offer the update. The
+            question carries only the app's App Store name (its bundle identifier) and this
+            <span class="device-name">device</span>’s country or region, so it asks the right store. It carries nothing about the
+            person using the app: no name, no progress, no times, and no identifier of anyone or of
+            the <span class="device-name">device</span>. Like any request on the internet it reaches Apple from your network's
+            address; it never reaches us. Switch it off under <b>About › Updates</b>. Nothing else is
+            ever requested, not even the typeface, which is stored inside the app like the lessons
+            are.</span> You can turn on Aeroplane Mode before anyone opens it and every part of the app
+            still works<span class="w-ios">; only the update check waits for a connection</span>.</p>
           <p>We did not simply leave the requests out; the app is built to block them. The page carries a
             rule that forbids it from loading anything from the web, and on iPhone and iPad the app
-            tells the system to refuse any web address on its behalf as well. If a later version ever
+            tells the system to refuse any web address on its behalf as well.<span class="w-ios"> The update
+            check is made by the app itself, not by the page, and goes only to Apple.</span> If a later version ever
             changes what the app does with information, we will update this page first.</p>
 
           <h3>Nothing to buy</h3>
@@ -348,7 +375,8 @@
           <h3>What the app never touches</h3>
           <p>No camera, microphone, location, contacts, photos or notifications. No cookies. No
             third-party code and no third-party servers: the one outside ingredient is the
-            typeface, which is an open-source file stored inside the app and talks to nobody. The app does not show anything you do in it
+            typeface, which is an open-source file stored inside the app and talks to nobody.<span class="w-ios">
+            The only server the app ever talks to is Apple's App Store, for the update check.</span> The app does not show anything you do in it
             to anyone else.</p>
 
           <h3>Who we are, and how to reach us</h3>
@@ -363,7 +391,7 @@
             it will be children. Because nothing is collected from anyone, there is nothing to consent to, nothing to request and
             nothing for us to delete — it is all on your device, and in your own backup of it if you
             make one, under your control.</p>
-          <p class="info-note">Last updated: 25 September 2026.</p>
+          <p class="info-note">Last updated: 26 September 2026.</p>
         </article>
 
         <article id="licence" class="info-card">
@@ -569,7 +597,7 @@ use. If you do not agree, do not install or use the Software.
   </main>
 
   <footer class="foot">
-    <span>Cube Clubhouse<sup class="reg">®</sup> · a Cube tutor for all ages · <span class="w-web">everything runs in your browser</span><span class="w-ios">the app keeps everything on this <span class="device-name">device</span></span>, and sends nothing anywhere.</span>
+    <span>Cube Clubhouse<sup class="reg">®</sup> · a Cube tutor for all ages · <span class="w-web">everything runs in your browser, and nothing is sent anywhere</span><span class="w-ios">the app keeps everything on this <span class="device-name">device</span> and sends nothing about you anywhere</span>.</span>
     <span class="foot-copy">© 2026 Ira Learning LLC. All rights reserved. Cube Clubhouse® is a registered trademark of Ira Learning LLC.</span>
     <span class="foot-links">
       <button type="button" class="linkish" data-info="parents">About</button>

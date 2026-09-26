@@ -155,6 +155,7 @@ button, nav, .pad-btn, .chip, .mix-turn, .net-cell, .swatch, .timer-pad { -webki
 /* words that only make sense in a browser, or only in the iOS app (app.js marks the app) */
 .w-ios { display: none; }
 html.ios-app .w-ios { display: inline; }
+html.ios-app li.w-ios { display: list-item; }
 html.ios-app .w-web { display: none; }
 
 /* ---- top bar */
@@ -238,6 +239,7 @@ main {
 .info-card li { margin: 4px 0; }
 .info-strong { font-weight: 600; }
 .info-note { color: var(--muted); font-size: 0.92rem; }
+.info-card a { color: var(--accent); font-weight: 600; }
 .licence-text {
   white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.78rem; line-height: 1.5; background: var(--accent-soft); color: var(--ink);

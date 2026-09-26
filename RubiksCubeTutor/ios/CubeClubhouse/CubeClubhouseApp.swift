@@ -30,6 +30,7 @@ struct CubeClubhouseApp: App {
 struct RootView: View {
     @State private var ready = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var updates = UpdateChecker.shared
 
     var body: some View {
         ZStack {
@@ -44,6 +45,15 @@ struct RootView: View {
         // The page paints its own background and handles the notch and the home
         // indicator through CSS env(safe-area-inset-*), so let it run edge to edge.
         .ignoresSafeArea()
+        // A newer version in the App Store, offered only once the lessons are showing.
+        .alert("A New Version Is Ready",
+               isPresented: Binding(get: { ready && updates.offer != nil }, set: { _ in }),
+               presenting: updates.offer) { _ in
+            Button("Not Now", role: .cancel) { updates.notNow() }
+            Button("Update") { updates.openStore() }
+        } message: { release in
+            Text("Cube Clubhouse \(release.version) is in the App Store. Stars and times stay on this device when you update.")
+        }
         .onAppear {
             // The page always reports back, but a child must never be left looking at
             // the logo if it somehow does not: uncover after a few seconds regardless.
@@ -58,6 +68,8 @@ struct RootView: View {
         } else {
             withAnimation(.easeOut(duration: 0.35)) { ready = true }
         }
+        // At most once a day, and not at all if it is switched off (UpdateChecker).
+        updates.checkIfDue()
     }
 }
 
