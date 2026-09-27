@@ -126,6 +126,34 @@ order. `npm run build:screenshots` draws them again after the app changes.
 
 **App icon**: comes from the build; nothing to upload.
 
+## Promo video
+
+`promo/promo.mp4` is a 20-second advert: 1080 × 1920 portrait, 30 fps, H.264 with AAC
+stereo, about 4 MB, sound at −15 LUFS. That is the shape Instagram Reels, TikTok and
+YouTube Shorts want, and it plays on a website as it is. `promo/promo-poster.png` is its
+last frame, for a thumbnail.
+
+| Time | On screen |
+|---|---|
+| 0–2 s | The icon and name: "Learn to solve the Cube, one step at a time." |
+| 2–5.6 s | "Ten short lessons": the lesson list, then a lesson's cube turning |
+| 5.6–9.8 s | "Stuck? Help Me Solve It": a cube mixes itself, then solves itself |
+| 9.8–12.6 s | "Paint in your cube": the flat cube fills with colours and is checked |
+| 12.6–16.5 s | "Time it. Beat your best.": mix turns ticked off, then the clock running |
+| 16.8–20 s | End card: Free · No ads · No account · Works offline · For iPhone and iPad · All ages |
+
+Everything in the phone is the real app, filmed running. The music is made from sine
+waves and noise in `promo/music.js`, so there is nothing to license. The advert makes
+no promise about results, names no other company's product, and says the cube is not
+included.
+
+It is not an App Store **App Preview**: those must show only the app's own screen, with
+no device frame, at Apple's preview sizes. Use it for social posts and your website.
+
+To make it again after the app changes: `npm i --no-save playwright-core`, then
+`FFMPEG=/path/to/ffmpeg npm run build:promo`. It needs Chrome or Chromium and ffmpeg
+with libx264. The stage is `promo/promo.html`; the timeline is in `promo/record.js`.
+
 ## 5. App Privacy
 
 - Privacy Policy URL: your hosted `privacy-policy.html`.

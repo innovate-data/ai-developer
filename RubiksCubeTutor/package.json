@@ -15,6 +15,7 @@
     "build:launch": "node ios/launch-art/render.js",
     "build:store-pages": "node ios/app-store/build-pages.js",
     "build:screenshots": "node ios/app-store/screenshots.js",
+    "build:promo": "node ios/app-store/promo/record.js",
     "release:ios": "ios/release.sh"
   }
 }

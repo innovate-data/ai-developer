@@ -1,0 +1,146 @@
+<!doctype html>
+<!--
+  Cube Clubhouse - Copyright (c) 2026 Ira Learning LLC. All rights reserved.
+  The stage for the 20-second promo video: the real app running in a phone frame, with
+  captions, a tap marker and a title and end card. record.js drives it and films it at
+  1080 x 1920. It is never shipped with the app.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cube Clubhouse promo</title>
+<style>
+  @font-face {
+    font-family: 'Fredoka';
+    font-weight: 400 700;
+    src: url('../../../fonts/fredoka-latin-var.woff2') format('woff2');
+  }
+  :root {
+    --bg: #f6f3ea; --glow: #efe8d8; --card: #fffdf7; --ink: #2b3040; --muted: #5c6374;
+    --accent: #2f68ab; --accent-soft: #e6eef8; --star: #9a6b00;
+    --R: #c62d38; --G: #1f9a50; --B: #2355b8; --Y: #f2c41c; --O: #f07c1a; --W: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  /* Laid out at 540 x 960 and drawn twice the size, so the film is a true 1080 x 1920. */
+  html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; }
+  #stage {
+    width: 540px; height: 960px; transform: scale(2); transform-origin: 0 0; position: relative; overflow: hidden;
+    font-family: 'Fredoka', system-ui, sans-serif; color: var(--ink);
+    background: radial-gradient(120% 80% at 50% 30%, var(--card) 0%, var(--bg) 55%, var(--glow) 100%);
+  }
+
+  /* drifting stickers, so the background is never quite still */
+  .sticker { position: absolute; width: 46px; height: 46px; border-radius: 11px; opacity: 0.22;
+    box-shadow: inset 0 0 0 4px rgba(0,0,0,0.18); animation: drift 14s ease-in-out infinite alternate; }
+  @keyframes drift { from { transform: translateY(0) rotate(0deg); } to { transform: translateY(-60px) rotate(25deg); } }
+
+  /* ---- title card ---- */
+  #title { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 18px; text-align: center; opacity: 0; transition: opacity .5s ease, transform .6s ease; }
+  #title.on { opacity: 1; }
+  #title.away { opacity: 0; transform: translateY(-120px) scale(.85); }
+  .icon { width: 150px; height: 150px; border-radius: 34px; box-shadow: 0 18px 40px rgba(40,40,60,.22);
+    transform: scale(.6) rotate(-12deg); transition: transform .9s cubic-bezier(.2,1.4,.4,1); }
+  #title.on .icon { transform: none; }
+  .name { font-size: 46px; font-weight: 700; letter-spacing: -.5px; }
+  .name sup { font-size: 18px; }
+  .tag { font-size: 26px; color: var(--muted); max-width: 420px; line-height: 1.25; }
+
+  /* ---- the phone ---- */
+  #phone { position: absolute; left: 50%; top: 262px; width: 318px; height: 670px; margin-left: -159px;
+    border-radius: 50px; background: #111; padding: 12px;
+    box-shadow: 0 30px 60px rgba(30,30,50,.28), inset 0 0 0 2px #333;
+    transform: translateY(820px); transition: transform .8s cubic-bezier(.2,.9,.25,1); }
+  #phone.on { transform: none; }
+  #phone.off { transform: translateY(820px); transition-duration: .6s; transition-timing-function: ease-in; }
+  .screen { width: 294px; height: 646px; border-radius: 38px; overflow: hidden; position: relative; background: var(--bg); }
+  .screen iframe { border: 0; width: 390px; height: 857px; transform: scale(.7538); transform-origin: 0 0; }
+  .island { position: absolute; top: 20px; left: 50%; width: 88px; height: 25px; margin-left: -44px;
+    background: #111; border-radius: 20px; z-index: 2; }
+
+  /* ---- captions ---- */
+  .cap { position: absolute; left: 30px; right: 30px; top: 58px; text-align: center; opacity: 0;
+    transform: translateY(24px); transition: opacity .45s ease, transform .45s ease; }
+  .cap.on { opacity: 1; transform: none; }
+  .cap.off { opacity: 0; transform: translateY(-24px); }
+  .cap h2 { margin: 0; font-size: 42px; line-height: 1.08; font-weight: 700; letter-spacing: -.5px; }
+  .cap p { margin: 12px 0 0; font-size: 23px; color: var(--muted); line-height: 1.25; }
+  .cap .hi { color: var(--accent); }
+
+  /* ---- the tap marker ---- */
+  #tap { position: absolute; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%;
+    background: rgba(255,255,255,.55); box-shadow: 0 0 0 3px rgba(47,104,171,.75), 0 4px 14px rgba(0,0,0,.25);
+    opacity: 0; transform: scale(.4); pointer-events: none; z-index: 10; }
+  #tap.go { animation: tap .55s ease-out; }
+  @keyframes tap { 0% { opacity: 0; transform: scale(1.3); } 25% { opacity: 1; transform: scale(.9); }
+    60% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
+
+  /* ---- end card ---- */
+  #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; gap: 16px; opacity: 0; transition: opacity .6s ease; }
+  #end.on { opacity: 1; }
+  #end .icon { width: 132px; height: 132px; border-radius: 30px; }
+  #end.on .icon { transform: none; }
+  #end .name { font-size: 50px; }
+  #end .tag { font-size: 25px; margin-top: -6px; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 470px; margin-top: 10px; }
+  .chip { background: var(--card); border: 2px solid #e4dfd2; border-radius: 999px; padding: 8px 18px;
+    font-size: 21px; font-weight: 600; opacity: 0; transform: translateY(14px); transition: opacity .4s ease, transform .4s ease; }
+  #end.on .chip { opacity: 1; transform: none; }
+  #end.on .chip:nth-child(2) { transition-delay: .12s; } #end.on .chip:nth-child(3) { transition-delay: .24s; }
+  #end.on .chip:nth-child(4) { transition-delay: .36s; }
+  .where { font-size: 26px; font-weight: 700; color: var(--accent); margin-top: 18px; opacity: 0; transition: opacity .5s ease .6s; }
+  #end.on .where { opacity: 1; }
+  .fine { position: absolute; bottom: 26px; left: 0; right: 0; text-align: center; font-size: 13px; color: var(--muted); line-height: 1.4; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="sticker" style="left:28px;top:90px;background:var(--R)"></div>
+  <div class="sticker" style="left:462px;top:150px;background:var(--B);animation-delay:-4s"></div>
+  <div class="sticker" style="left:40px;top:560px;background:var(--Y);animation-delay:-8s"></div>
+  <div class="sticker" style="left:470px;top:640px;background:var(--G);animation-delay:-2s"></div>
+  <div class="sticker" style="left:448px;top:820px;background:var(--O);animation-delay:-6s"></div>
+  <div class="sticker" style="left:180px;top:28px;background:var(--G);animation-delay:-10s;opacity:.14"></div>
+
+  <div id="title">
+    <img class="icon" src="../../CubeClubhouse/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="">
+    <div class="name">Cube Clubhouse<sup>®</sup></div>
+    <div class="tag">Learn to solve the Cube,<br>one step at a time.</div>
+  </div>
+
+  <div class="cap" id="cap-learn"><h2>Ten short lessons</h2><p>From your very first turn<br>to your first full solve</p></div>
+  <div class="cap" id="cap-play"><h2>Stuck? <span class="hi">Help Me<br>Solve It</span></h2><p>Every turn, shown one step at a time</p></div>
+  <div class="cap" id="cap-real"><h2>Paint in <span class="hi">your</span> cube</h2><p>and get the steps for the one in your hand</p></div>
+  <div class="cap" id="cap-timer"><h2>Time it. <span class="hi">Beat your best.</span></h2><p>A real speedcubing timer, with your records</p></div>
+
+  <div id="phone"><div class="screen"><div class="island"></div><iframe id="app" title="Cube Clubhouse"></iframe></div></div>
+  <div id="tap"></div>
+
+  <div id="end">
+    <img class="icon" src="../../CubeClubhouse/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="">
+    <div class="name">Cube Clubhouse<sup>®</sup></div>
+    <div class="tag">Learn to solve the Cube, step by step</div>
+    <div class="chips"><span class="chip">Free</span><span class="chip">No ads</span><span class="chip">No account</span><span class="chip">Works offline</span></div>
+    <div class="where">For iPhone and iPad · All ages</div>
+    <div class="fine">© 2026 Ira Learning LLC. Cube Clubhouse® is a registered trademark of Ira Learning LLC.<br>Cube not included.</div>
+  </div>
+
+</div>
+<script>
+  // record.js calls these at the right moments.
+  const $ = (s) => document.querySelector(s);
+  window.promo = {
+    show(id) { $(id).classList.remove('off', 'away'); $(id).classList.add('on'); },
+    hide(id, how) { $(id).classList.remove('on'); $(id).classList.add(how || 'off'); },
+    // x and y in the page's pixels, which are twice the stage's
+    tap(x, y) {
+      x /= 2; y /= 2;
+      const t = $('#tap');
+      t.style.left = x + 'px'; t.style.top = y + 'px';
+      t.classList.remove('go'); void t.offsetWidth; t.classList.add('go');
+    },
+  };
+</script>
+</body>
+</html>

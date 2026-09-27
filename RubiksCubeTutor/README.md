@@ -26,7 +26,8 @@ RubiksCubeTutor/
 ├── build-artifact.js     bundles index.html + css into a single publishable page
 ├── ios/                  Xcode project: the same web app as a native iPhone/iPad app
 │   ├── release.sh        one-step archive + App Store upload (on a Mac with Xcode)
-│   └── app-store/        release guide, listing text, hosted privacy/support pages, screenshots
+│   └── app-store/        release guide, listing text, hosted privacy/support pages, screenshots,
+│                         and promo/: the 20-second promo video and what films it
 ├── tests/run-tests.js    model and solver tests (Node only, no packages)
 ├── tests/browser-tests.js end-to-end regression tests (needs Chromium)
 └── tests/ios-bundle-tests.js  checks what the Xcode build phase would ship
