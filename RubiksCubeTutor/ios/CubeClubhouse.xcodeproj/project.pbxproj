@@ -147,7 +147,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nSRC=\"$SRCROOT/..\"\nDEST=\"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Web\"\n\n# One source of truth: the web app lives in RubiksCubeTutor/, not duplicated in here.\nif [ ! -f \"$SRC/index.html\" ]; then\n  echo \"error: no web app at $SRC - keep CubeClubhouse.xcodeproj inside RubiksCubeTutor/ios/\"\n  exit 1\nfi\n\nrm -rf \"$DEST\"\nmkdir -p \"$DEST\"\ncp \"$SRC/index.html\" \"$DEST/index.html\"\ncp -R \"$SRC/css\" \"$DEST/css\"\ncp -R \"$SRC/js\" \"$DEST/js\"\nmkdir -p \"$DEST/fonts\"\ncp \"$SRC/fonts/fredoka-latin-var.woff2\" \"$DEST/fonts/fredoka-latin-var.woff2\"\ncp \"$SRC/fonts/OFL.txt\" \"$DEST/fonts/OFL.txt\"\necho \"note: copied the web app into $DEST\"\n";
+			shellScript = "set -e\nSRC=\"$SRCROOT/..\"\nDEST=\"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Web\"\n\n# One source of truth: the web app lives in RubiksCubeTutor/, not duplicated in here.\nif [ ! -f \"$SRC/index.html\" ]; then\n  echo \"error: no web app at $SRC - keep CubeClubhouse.xcodeproj inside RubiksCubeTutor/ios/\"\n  exit 1\nfi\n\nrm -rf \"$DEST\"\nmkdir -p \"$DEST\"\ncp \"$SRC/index.html\" \"$DEST/index.html\"\ncp -R \"$SRC/css\" \"$DEST/css\"\ncp -R \"$SRC/js\" \"$DEST/js\"\nmkdir -p \"$DEST/fonts\"\ncp \"$SRC/fonts/fredoka-latin-var.woff2\" \"$DEST/fonts/fredoka-latin-var.woff2\"\ncp \"$SRC/fonts/OFL.txt\" \"$DEST/fonts/OFL.txt\"\nmkdir -p \"$DEST/media\"\ncp \"$SRC/media/intro.mp4\" \"$DEST/media/intro.mp4\"\ncp \"$SRC/media/intro-poster.jpg\" \"$DEST/media/intro-poster.jpg\"\necho \"note: copied the web app into $DEST\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

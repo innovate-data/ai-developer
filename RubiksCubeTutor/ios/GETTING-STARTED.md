@@ -206,6 +206,16 @@ Things the audit changed:
   load inside the web view. The web page makes no network requests at all; the only
   request is the optional App Store update check, made by the Swift side.
 
+## The tour video
+
+The About page opens with a 20-second tour, `media/intro.mp4` (3.8 MB, so the app is
+that much bigger). The copy phase bundles it with its poster. WebKit plays a video
+from the app's own `cubeclubhouse://` scheme only if the loader answers byte-range
+requests, so `BundleSchemeHandler` does: `Range: bytes=0-1` gets `206 Partial Content`
+with a `Content-Range`, and the file is memory-mapped, so a slice does not load it all.
+It never plays by itself, it plays in place (`playsinline`), and leaving the About
+screen pauses it. `npm run build:promo` remakes it.
+
 ## Offering updates
 
 `UpdateChecker.swift` asks Apple's App Store whether a newer version is out, and if so

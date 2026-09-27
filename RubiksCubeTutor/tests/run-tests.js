@@ -953,6 +953,43 @@ test('updates: the App Store check is the one request, made by the app, small an
 });
 
 
+test('the About page tour: one local video, ready to stream, allowed by the policy, shipped and served', () => {
+  const mp4 = fs.readFileSync(path.join(ROOT, 'media/intro.mp4'));
+  // top-level MP4 boxes, in order: the index (moov) must come before the data (mdat), so
+  // playback starts before the whole file has been read
+  const boxes = [];
+  for (let at = 0; at + 8 <= mp4.length && boxes.length < 20;) {
+    let size = mp4.readUInt32BE(at);
+    const type = mp4.subarray(at + 4, at + 8).toString('latin1');
+    if (size === 1) size = Number(mp4.readBigUInt64BE(at + 8));
+    boxes.push(type);
+    if (size < 8) break;
+    at += size;
+  }
+  assert.strictEqual(boxes[0], 'ftyp', 'not an MP4: ' + boxes.join(' '));
+  assert(boxes.indexOf('moov') > 0 && boxes.indexOf('moov') < boxes.indexOf('mdat'), 'moov must come before mdat: ' + boxes.join(' '));
+  assert(mp4.length < 6 * 1024 * 1024, 'the video is ' + (mp4.length / 1048576).toFixed(1) + ' MB');
+  const poster = fs.readFileSync(path.join(ROOT, 'media/intro-poster.jpg'));
+  assert(poster[0] === 0xff && poster[1] === 0xd8 && poster.length < 100 * 1024, 'the poster is not a small JPEG');
+
+  const html = read('index.html');
+  const csp = /content="(default-src[^"]+)"/.exec(html)[1];
+  assert(/media-src 'self' cubeclubhouse: file:;/.test(csp), 'the policy does not allow local media, or allows more');
+  const tag = /<video[^>]*>/.exec(html)[0];
+  for (const need of ['controls', 'playsinline', 'preload="metadata"', 'poster="media/intro-poster.jpg"']) assert(tag.includes(need), 'video tag lacks ' + need);
+  assert(!/autoplay|muted|loop/.test(tag), 'the tour must not start on its own');
+  assert(/<source src="media\/intro\.mp4" type="video\/mp4">/.test(html), 'the source');
+  assert((html.match(/<video/g) || []).length === 1, 'one video only');
+
+  const copy = read('ios/CubeClubhouse.xcodeproj/project.pbxproj');
+  assert(/media\/intro\.mp4/.test(copy) && /media\/intro-poster\.jpg/.test(copy), 'the copy phase does not bundle the tour');
+  const handler = read('ios/CubeClubhouse/BundleSchemeHandler.swift');
+  for (const need of ['"mp4": "video/mp4"', 'statusCode: status', 'status = 206', '"Content-Range"', '"Accept-Ranges": "bytes"', 'options: .mappedIfSafe']) {
+    assert(handler.includes(need), 'the scheme handler cannot stream video: missing ' + need);
+  }
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

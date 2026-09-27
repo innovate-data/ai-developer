@@ -1603,6 +1603,31 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       && !(await off.locator('#update-check-now').isDisabled()));
     await off.context().close(); }
 
+  console.log('R53 the About page has the tour, which waits to be played and stops when you leave');
+  { const p = await newPage();
+    await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(200);
+    const v = p.locator('#parents video');
+    ck('the tour is at the top of What this is', await v.count() === 1
+      && await p.evaluate(() => document.querySelector('#parents h3').nextElementSibling.matches('figure.intro-video')));
+    ck('it has controls, plays in place, and does not start on its own', await v.evaluate((e) => e.controls && e.playsInline && !e.autoplay && !e.muted && !e.loop && e.paused));
+    ck('its poster is shown until then', await p.evaluate(() => new Promise((ok) => { const i = document.createElement('img'); i.onload = () => ok(i.naturalWidth === 540); i.onerror = () => ok(false); i.src = document.getElementById('intro-video').poster; })));
+    ck('it comes from inside the app', /\/media\/intro\.mp4$/.test(await v.evaluate((e) => e.querySelector('source').src)) && /^file:/.test(await v.evaluate((e) => e.querySelector('source').src)));
+    ck('it is described in words, and in full for anyone who cannot watch it', /20-second tour/.test(await p.locator('#intro-video-about').textContent())
+      && (await v.getAttribute('aria-describedby')) === 'intro-video-about' && await p.locator('.intro-video-words li').count() === 6);
+    const box = await v.boundingBox();
+    ck('portrait and phone-sized on a wide screen', box && box.width <= 301 && Math.abs(box.height / box.width - 16 / 9) < 0.02, box && Math.round(box.width) + 'x' + Math.round(box.height));
+    // this Chromium cannot decode H.264 (Safari and WKWebView can), so stand in for a playing video
+    await v.evaluate((e) => { Object.defineProperty(e, 'paused', { configurable: true, get: () => !!window.__stopped }); e.pause = () => { window.__stopped = true; }; });
+    await p.locator('nav button[data-screen="learn"]').click(); await p.waitForTimeout(150);
+    ck('leaving the About screen stops it', await p.evaluate(() => window.__stopped === true));
+    await p.close();
+    const q = await b.newPage({ viewport: { width: 320, height: 640 } });
+    await q.goto(URL); await q.waitForTimeout(250);
+    await q.locator('.foot-links [data-info="parents"]').click(); await q.waitForTimeout(200);
+    const w = await q.locator('#parents video').boundingBox();
+    ck('on the narrowest phone it fits', w && w.x >= 0 && w.x + w.width <= 320 && await q.evaluate(() => document.documentElement.scrollWidth <= 320));
+    await q.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

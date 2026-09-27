@@ -2,7 +2,8 @@
 /*
  * record.js - films the 20-second promo: promo.html with the real app running inside
  * its phone frame, driven on a fixed timeline, captured through Chrome's screencast at
- * 1080 x 1920, then encoded with the music from music.js into promo.mp4.
+ * 1080 x 1920, then encoded with the music from music.js into media/intro.mp4, where
+ * the app's About page plays it and the App Store kit points at it.
  *
  *     npm i --no-save playwright-core
  *     FFMPEG=/path/to/ffmpeg node ios/app-store/promo/record.js
@@ -20,7 +21,7 @@ const { execFileSync } = require('child_process');
 const { writeMusic } = require('./music.js');
 
 const HERE = __dirname;
-const OUT = process.env.OUT || path.join(HERE, 'promo.mp4');
+const OUT = process.env.OUT || path.join(HERE, '..', '..', '..', 'media', 'intro.mp4');
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const LENGTH = 20;                                  // seconds
 const EXE = process.env.CHROME || [

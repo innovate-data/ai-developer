@@ -28,6 +28,7 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         "svg": "image/svg+xml",
         "png": "image/png",
         "jpg": "image/jpeg",
+        "mp4": "video/mp4",
         "woff2": "font/woff2",
     ]
 
@@ -45,18 +46,48 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
             fail(task, "Refused a path outside the bundle: \(path)")
             return
         }
-        guard let data = try? Data(contentsOf: file) else {
+        // Mapped rather than read, so asking for a slice of the video does not load it all.
+        guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else {
             fail(task, "Not in the bundle: \(path)")
             return
         }
 
         let mime = Self.mimeTypes[file.pathExtension.lowercased()] ?? "application/octet-stream"
-        let response = HTTPURLResponse(
-            url: url, statusCode: 200, httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": mime, "Content-Length": String(data.count)])!
+        var status = 200
+        var body = data
+        var headers = ["Content-Type": mime, "Accept-Ranges": "bytes"]
+        // A video asks for its bytes a piece at a time ("Range: bytes=0-1"), and WebKit will
+        // not play one whose loader cannot answer that. Everything else takes the whole file.
+        if let header = task.request.value(forHTTPHeaderField: "Range"),
+           let range = Self.byteRange(header, size: data.count) {
+            status = 206
+            body = data.subdata(in: range.from ..< range.to + 1)
+            headers["Content-Range"] = "bytes \(range.from)-\(range.to)/\(data.count)"
+        }
+        headers["Content-Length"] = String(body.count)
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1",
+                                       headerFields: headers)!
         task.didReceive(response)
-        task.didReceive(data)
+        task.didReceive(body)
         task.didFinish()
+    }
+
+    /// "bytes=100-199", "bytes=100-" (to the end) or "bytes=-500" (the last 500), kept
+    /// inside the file. Anything else, including several ranges at once, is nil, and is
+    /// answered with the whole file. tests/ios-bundle-tests.js serves ranges the same way.
+    static func byteRange(_ header: String, size: Int) -> (from: Int, to: Int)? {
+        guard size > 0, header.hasPrefix("bytes="), !header.contains(",") else { return nil }
+        let spec = header.dropFirst(6).split(separator: "-", omittingEmptySubsequences: false)
+        guard spec.count == 2 else { return nil }
+        let first = spec[0].trimmingCharacters(in: .whitespaces)
+        let last = spec[1].trimmingCharacters(in: .whitespaces)
+        if first.isEmpty {
+            guard let count = Int(last), count > 0 else { return nil }
+            return (from: max(0, size - count), to: size - 1)
+        }
+        guard let from = Int(first), from >= 0, from < size else { return nil }
+        let to = last.isEmpty ? size - 1 : min(Int(last) ?? size - 1, size - 1)
+        return to >= from ? (from: from, to: to) : nil
     }
 
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}

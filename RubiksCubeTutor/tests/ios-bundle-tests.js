@@ -43,7 +43,19 @@ const PBXPROJ = path.join(IOS, 'CubeClubhouse.xcodeproj', 'project.pbxproj');
 // mirrors BundleSchemeHandler.mimeTypes
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
                '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
-               '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
+               '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.mp4': 'video/mp4', '.jpg': 'image/jpeg' };
+// mirrors BundleSchemeHandler.byteRange
+function byteRange(header, size) {
+  if (!(size > 0) || !/^bytes=/.test(header) || header.includes(',')) return null;
+  const spec = header.slice(6).split('-');
+  if (spec.length !== 2) return null;
+  const first = spec[0].trim(), last = spec[1].trim();
+  if (first === '') { const n = Number(last); return Number.isInteger(n) && n > 0 ? { from: Math.max(0, size - n), to: size - 1 } : null; }
+  const from = Number(first);
+  if (!Number.isInteger(from) || from < 0 || from >= size) return null;
+  const to = last === '' ? size - 1 : Math.min(Number.isInteger(Number(last)) ? Number(last) : size - 1, size - 1);
+  return to >= from ? { from, to } : null;
+}
 
 let pass = 0, fail = 0;
 const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  PASS ' : '  FAIL ') + name + (extra !== undefined ? '  [' + extra + ']' : '')); };
@@ -174,10 +186,11 @@ function runCopyPhase() {
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
   for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/timer.js', 'js/app.js',
-                   'fonts/fredoka-latin-var.woff2', 'fonts/OFL.txt']) {
+                   'fonts/fredoka-latin-var.woff2', 'fonts/OFL.txt', 'media/intro.mp4', 'media/intro-poster.jpg']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));
   }
 
+  const ranged = [];                                   // paths asked for a piece at a time
   const server = http.createServer((req, res) => {
     let p = decodeURIComponent(req.url.split('?')[0]);
     if (p === '/' || p === '') p = '/index.html';
@@ -185,12 +198,38 @@ function runCopyPhase() {
     if (!file.startsWith(root)) { res.writeHead(403).end(); return; }   // the handler's guard
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404).end('not in bundle'); return; }
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+      const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Accept-Ranges': 'bytes' };
+      const range = req.headers.range && byteRange(req.headers.range, data.length);
+      if (range) {
+        ranged.push(p);
+        headers['Content-Range'] = 'bytes ' + range.from + '-' + range.to + '/' + data.length;
+        res.writeHead(206, headers);
+        res.end(data.subarray(range.from, range.to + 1));
+        return;
+      }
+      res.writeHead(200, headers);
       res.end(data);
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = 'http://127.0.0.1:' + server.address().port;
+
+  console.log('\nthe tour video, served the way WebKit asks for it');
+  {
+    const size = fs.statSync(path.join(root, 'media/intro.mp4')).size;
+    const piece = async (range) => { const r = await fetch(base + '/media/intro.mp4', { headers: { Range: range } });
+      return { status: r.status, cr: r.headers.get('content-range'), len: (await r.arrayBuffer()).byteLength, type: r.headers.get('content-type') }; };
+    const first = await piece('bytes=0-1');
+    ck('the first two bytes, as WebKit asks first', first.status === 206 && first.cr === 'bytes 0-1/' + size && first.len === 2 && first.type === 'video/mp4', JSON.stringify(first));
+    const tail = await piece('bytes=-100');
+    ck('the last hundred', tail.status === 206 && tail.cr === 'bytes ' + (size - 100) + '-' + (size - 1) + '/' + size && tail.len === 100);
+    const rest = await piece('bytes=1000-');
+    ck('from a point to the end', rest.status === 206 && rest.len === size - 1000);
+    const odd = await piece('bytes=0-1,5-6');
+    ck('several ranges at once get the whole file', odd.status === 200 && odd.len === size);
+    const whole = await fetch(base + '/media/intro.mp4');
+    ck('without a range, the whole file, saying ranges work', whole.status === 200 && whole.headers.get('accept-ranges') === 'bytes' && (await whole.arrayBuffer()).byteLength === size);
+  }
 
   const b = await chromium.launch({ executablePath: EXE, args: ['--no-sandbox'] });
   for (const profile of ['iPhone 12', 'iPad Pro 11']) {

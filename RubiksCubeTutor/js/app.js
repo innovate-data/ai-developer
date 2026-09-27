@@ -1810,7 +1810,9 @@
     });
     section.querySelectorAll('.back-to-app').forEach((b) => b.addEventListener('click', () => showScreen('learn')));
 
-    screens.grownups = { section };
+    // Leaving the About screen stops the tour, as leaving any iOS screen stops its video.
+    const tour = $('#intro-video');
+    screens.grownups = { section, onHide: () => { if (tour && !tour.paused) tour.pause(); } };
   }
   const openGrownUps = (part) => {
     showScreen('grownups');

@@ -23,6 +23,7 @@ RubiksCubeTutor/
 ├── js/view.js            3D cube (CSS transforms) and 2D net view
 ├── js/lessons.js         the course content (plain data, easy to edit or translate)
 ├── js/app.js             screens, move pad, guided walkthrough, practice, quiz
+├── media/                the About page's 20-second tour (intro.mp4) and its poster
 ├── build-artifact.js     bundles index.html + css into a single publishable page
 ├── ios/                  Xcode project: the same web app as a native iPhone/iPad app
 │   ├── release.sh        one-step archive + App Store upload (on a Mac with Xcode)
@@ -475,9 +476,14 @@ switch to turn it off and a Check Now button, and the Privacy page says all of t
   Now, never when switched off, offered in the store sheet inside the app, and nothing in
   the page itself makes a request; and the Privacy page says all of that.
 
-53 groups in all.
+* that the About page's tour is one local video, stored so it starts at once (its index
+  before its data), allowed by the page's policy as media from the app itself and nothing
+  else, never starting on its own, bundled by the Xcode copy phase, and streamable by the
+  iOS scheme handler, which answers byte-range requests with 206.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 357 checks.
+54 groups in all.
+
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 365 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -532,6 +538,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R50 | In the guide's two-column list of move words, a list with a single move split that one item across both columns ("…the side ··· left." / "facing you, so its top goes to the"). Found in the iPad App Store screenshot. Each item now stays whole. |
 | R51 | Reset Cube in a lesson: it brings back the same practice puzzle (not a new one), clears Undo so a reset cannot be undone, puts an open hint and its highlight away, and after a win starts the puzzle again while keeping the stars (hints already seen for that puzzle still mean no 🧠); after Another Puzzle it returns to the new puzzle; pressed halfway through a trick's Watch it still lands on the start; in a lesson without a puzzle it makes the cube solved. |
 | R52 | The Updates section: none in a browser (whose Privacy page still says the page asks for nothing); in the iOS app it shows the version, a switch that starts as the app says and tells the app when flipped, and Check Now, which asks the app, waits, reports up to date / newer / unreachable, ignores answers nobody asked for, shows a version only as its leading number, and gives up after twelve seconds with no answer. The app's Privacy page and footer say what the check sends. |
+| R53 | The About page's tour: at the top of What this is, with controls, playing in place, never starting on its own, showing its poster until played, loaded from inside the app, described in words with a full transcript, portrait and phone-sized on a wide screen, fitting the narrowest phone, and paused on leaving the About screen. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
@@ -539,7 +546,7 @@ the build phases, both configurations on iOS 17.0, no `#available` check the tar
 already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
 produces, by touch, on an iPhone and an iPad profile (each told it is the iOS app, as the
-real one is): 131 checks, including every screen at the largest Text Size on the narrowest
+real one is): 138 checks, including every screen at the largest Text Size on the narrowest
 iPhone, the tab bar at the bottom on iPhone and the top on iPad, the launch
 screen (Info.plist wired into both configurations, a background colour identical to the
 page's in light and dark, the logo at every scale and appearance and narrow enough for
