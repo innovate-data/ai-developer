@@ -1,0 +1,182 @@
+-- =====================================================================
+-- Compositional gas / water (WAG) injection, after the SPE5 comparative
+-- project (Killough & Kossack, 1987): 6-component Peng-Robinson fluid,
+-- 7 x 7 x 3 grid, injector in the corner of the top layer and producer in
+-- the opposite corner of the bottom layer.
+-- =====================================================================
+RUNSPEC
+TITLE
+   SPE5-type WAG injection (compositional)
+
+DIMENS
+   7 7 3 /
+
+OIL
+WATER
+GAS
+
+FIELD
+
+COMPS
+   6 /
+
+TABDIMS
+ 1 1 20 20 /
+
+WELLDIMS
+ 2 3 1 2 /
+
+START
+   1 'JAN' 2020 /
+
+GRID
+
+DX
+   147*500 /
+DY
+   147*500 /
+DZ
+   49*20 49*30 49*50 /
+TOPS
+   49*8325 /
+PORO
+   147*0.30 /
+PERMX
+   49*500 49*50 49*200 /
+PERMY
+   49*500 49*50 49*200 /
+PERMZ
+   49*50 49*50 49*25 /
+
+PROPS
+
+EOS
+   PR /
+
+CNAMES
+   'C1' 'C3' 'C6' 'C10' 'C15' 'C20' /
+
+-- critical temperatures (deg R), pressures (psia), acentric factors, mol. weights
+TCRIT
+   343.0  665.7  913.4  1111.8  1270.0  1380.0 /
+PCRIT
+   667.8  616.3  436.9  304.0   200.0   162.0 /
+ACF
+   0.013  0.1524 0.3007 0.4885  0.6500  0.8500 /
+MW
+   16.04  44.10  86.18  142.29  206.00  282.00 /
+ZCRIT
+   0.290  0.277  0.264  0.257   0.245   0.235 /
+
+-- binary interaction coefficients (lower triangle)
+BIC
+   0.0
+   0.0    0.0
+   0.0    0.0    0.0
+   0.05   0.005  0.0   0.0
+   0.05   0.005  0.0   0.0   0.0 /
+
+RTEMP
+   160 /
+
+STCOND
+   60 14.7 /
+
+PVTW
+   4000  1.0  3.3E-6  0.70  0 /
+
+DENSITY
+   1* 62.4 1* /
+
+ROCK
+   4000  5.0E-6 /
+
+SWOF
+-- Sw     krw     krow    Pcow
+   0.20   0.0     1.0     0
+   0.25   0.002   0.80    0
+   0.30   0.008   0.63    0
+   0.40   0.030   0.37    0
+   0.50   0.075   0.18    0
+   0.60   0.150   0.06    0
+   0.70   0.260   0.01    0
+   0.80   0.420   0.0     0
+   1.00   1.000   0.0     0 /
+
+SGOF
+-- Sg     krg     krog    Pcgo
+   0.00   0.0     1.0     0
+   0.05   0.0     0.88    0
+   0.10   0.02    0.70    0
+   0.20   0.08    0.45    0
+   0.30   0.18    0.25    0
+   0.40   0.32    0.12    0
+   0.50   0.50    0.04    0
+   0.60   0.70    0.0     0
+   0.80   1.00    0.0     0 /
+
+SOLUTION
+
+-- initial composition of the reservoir oil (bubble point ~2300 psia)
+ZI
+   0.50 0.03 0.07 0.20 0.15 0.05 /
+
+EQUIL
+-- datum  pres  WOC   Pcow  GOC   Pcgo
+   8400   4000  9000  0     7000  0 /
+
+SUMMARY
+FOPR
+FGPR
+FWPR
+FGIR
+FWIR
+FPR
+FGOR
+
+SCHEDULE
+
+WELSPECS
+   'INJ'  'G1'  1  1  8335  'GAS' /
+   'PROD' 'G1'  7  7  8400  'OIL' /
+/
+
+COMPDAT
+   'INJ'   1  1  1  1  'OPEN'  1*  1*  0.5 /
+   'PROD'  7  7  3  3  'OPEN'  1*  1*  0.5 /
+/
+
+WELLSTRE
+-- injection gas: C1 / C3 rich solvent
+   'SOLVENT'  0.77 0.20 0.03 0.0 0.0 0.0 /
+/
+
+WCONPROD
+   'PROD' 'OPEN' 'ORAT' 12000 4* 1000 /
+/
+
+-- ---------- year 1: gas injection
+WCONINJE
+   'INJ' 'GAS' 'OPEN' 'RATE' 12000 1* 10000 /
+/
+WINJGAS
+   'INJ' 'STREAM' 'SOLVENT' /
+/
+TSTEP
+   4*91.25 /
+
+-- ---------- year 2: water injection
+WCONINJE
+   'INJ' 'WATER' 'OPEN' 'RATE' 12000 1* 10000 /
+/
+TSTEP
+   4*91.25 /
+
+-- ---------- year 3: gas injection
+WCONINJE
+   'INJ' 'GAS' 'OPEN' 'RATE' 12000 1* 10000 /
+/
+TSTEP
+   4*91.25 /
+
+END

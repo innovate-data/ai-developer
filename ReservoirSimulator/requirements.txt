@@ -1,0 +1,6 @@
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+PyQt5>=5.15
+# optional: interactive 3D VTK window
+pyvista>=0.40

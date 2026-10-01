@@ -1,0 +1,169 @@
+-- =====================================================================
+-- Five-spot waterflood of a dead-oil reservoir (METRIC units)
+-- 15 x 15 x 4 grid with a high-permeability streak defined via BOX/EQUALS
+-- and MULTIPLY, one central water injector and four corner producers.
+-- =====================================================================
+RUNSPEC
+TITLE
+   Five-spot waterflood (dead oil)
+
+DIMENS
+   15 15 4 /
+
+OIL
+WATER
+
+METRIC
+
+TABDIMS
+   1 1 /
+
+WELLDIMS
+   5 4 1 5 /
+
+START
+   1 'JAN' 2024 /
+
+GRID
+
+DXV
+   15*30 /
+DYV
+   15*30 /
+DZV
+   5 4 6 5 /
+
+TOPS
+   225*2000 /
+
+EQUALS
+-- array  value  I1 I2 J1 J2 K1 K2
+   PORO   0.22   /
+   PERMX  150    /
+   PERMX  600    1 15 1 15 2 2 /
+   PORO   0.27   1 15 1 15 2 2 /
+   PERMX  40     1 15 1 15 4 4 /
+/
+
+COPY
+   PERMX PERMY /
+   PERMX PERMZ /
+/
+
+MULTIPLY
+   PERMZ  0.1 /
+/
+
+-- a low-permeability barrier between layers 3 and 4
+MULTZ
+   450*1.0 225*0.05 225*1.0 /
+
+PROPS
+
+PVTW
+-- pref   Bw     cw       muw   cv
+   200    1.01   4.5E-5   0.45  0 /
+
+PVDO
+-- p      Bo      muo
+    50    1.065   2.40
+   100    1.060   2.45
+   200    1.050   2.55
+   300    1.040   2.65
+   400    1.030   2.75 /
+
+DENSITY
+-- oil  water  gas
+   870  1030   0.85 /
+
+ROCK
+   200  5.0E-5 /
+
+SWOF
+-- Sw     krw      krow     Pcow (bar)
+   0.20   0.0000   1.0000   0.80
+   0.25   0.0025   0.8100   0.45
+   0.30   0.0100   0.6400   0.30
+   0.35   0.0225   0.4900   0.20
+   0.40   0.0400   0.3600   0.15
+   0.45   0.0625   0.2500   0.10
+   0.50   0.0900   0.1600   0.07
+   0.55   0.1225   0.0900   0.05
+   0.60   0.1600   0.0400   0.03
+   0.65   0.2025   0.0100   0.02
+   0.70   0.2500   0.0000   0.01
+   1.00   1.0000   0.0000   0.00 /
+
+SOLUTION
+
+EQUIL
+-- datum  pressure  WOC    Pcow
+   2010   210       2030   0 /
+
+SUMMARY
+FOPR
+FWPR
+FWIR
+FWCT
+FPR
+WOPR
+ /
+WWCT
+ /
+WBHP
+ /
+
+SCHEDULE
+
+WELSPECS
+   'I1'  'G'   8  8  2000 'WATER' /
+   'P1'  'G'   1  1  2000 'OIL' /
+   'P2'  'G'  15  1  2000 'OIL' /
+   'P3'  'G'   1 15  2000 'OIL' /
+   'P4'  'G'  15 15  2000 'OIL' /
+/
+
+COMPDAT
+   'I1'  2* 1 4 'OPEN' 2* 0.2 /
+   'P*'  2* 1 4 'OPEN' 2* 0.2 /
+/
+
+WCONPROD
+   'P*'  'OPEN' 'LRAT' 3* 150 1* 120 /
+/
+
+WCONINJE
+   'I1' 'WATER' 'OPEN' 'RATE' 600 1* 350 /
+/
+
+TSTEP
+   10 20 30 30 /
+
+DATES
+   1 'JUN' 2024 /
+   1 'SEP' 2024 /
+   1 'JAN' 2025 /
+   1 'JUL' 2025 /
+   1 'JAN' 2026 /
+/
+
+-- shut one producer for a workover and raise injection
+WELOPEN
+   'P4' 'SHUT' /
+/
+
+WELTARG
+   'I1' 'RATE' 800 /
+/
+
+TSTEP
+   6*61 /
+
+WELOPEN
+   'P4' 'OPEN' /
+/
+
+TSTEP
+   12*61 /
+
+END
