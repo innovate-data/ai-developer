@@ -15,7 +15,7 @@ so they open in ResInsight and other ECLIPSE post-processors.
 | Deck reader | Full ECLIPSE syntax: `--` comments, repeat counts (`3*0.25`, `2*`), quoted/unquoted strings, `INCLUDE` (relative paths, `PATHS` aliases), sections, multi-record keywords, numbered tables, `PVTO`/`PVTG` record tables. Unknown keywords are skipped with a warning. |
 | Grids | Block-centred (`DX/DY/DZ/TOPS`, `DXV/DYV/DZV`) and corner-point (`SPECGRID`, `COORD/ZCORN`, `COORDSYS`), `ACTNUM`, `MINPV`, `NTG`, `MULTX/Y/Z`, `MULTX-/Y-/Z-`, `MULTPV`, `PORV`, `TRANX/Y/Z` overrides, `MULTREGT` between `MULTNUM`/`FLUXNUM`/`OPERNUM` regions; `BOX`, `EQUALS`, `MULTIPLY`, `ADD`, `COPY`, `MINVALUE`, `MAXVALUE` operators. **Faults**: exact face overlaps across displaced (faulted) corner-point columns with non-neighbour connections, `FAULTS` + `MULTFLT`; `PINCH` connections across pinched-out cells (threshold, `GAP`/`NOGAP`, maximum gap, `TOPBOT`/`ALL`); exact trilinear cell volumes. Transmissibilities and pore volumes match ECLIPSE's for the Brugge grid and OPM Flow's for Norne |
 | Black-oil (E100) | Fully implicit 3-phase water/oil/gas with dissolved gas (`DISGAS`) and **vaporised oil** (`VAPOIL`, wet gas `PVTG`), dead oil (`PVDO`, `PVCDO`), live oil (`PVTO` with undersaturated branches), dry gas (`PVDG`), `PVTW`, `ROCK` (`ROCKOPTS`: `PVTNUM`/`SATNUM`/`ROCKNUM` tables, `STORE`), `DENSITY`/`GRAVITY`; 2-phase oil-water and oil-gas also work |
-| Thermal | `THERMAL`: fully implicit energy equation (temperature as a 4th unknown) with convection, conduction (`THCONR`), rock heat capacity (`HEATCR`), fluid specific heats (`SPECHEAT`), viscosity vs temperature (`OILVISCT`/`WATVISCT`/`GASVISCT`), water expansion (`WATDENT`), ideal-gas expansion of gas, initial temperature (`RTEMP`, `TEMPI`, `RTEMPVD`) and injection temperature (`WTEMP`) |
+| Thermal | `THERMAL`: fully implicit energy equation (temperature as a 4th unknown) with convection, conduction (`THCONR`), rock heat capacity (`HEATCR`), fluid specific heats (`SPECHEAT`), viscosity vs temperature (`OILVISCT`/`WATVISCT`/`GASVISCT`), water expansion (`WATDENT`), ideal-gas expansion of gas, initial temperature (`RTEMP`, `TEMPI`, `RTEMPVD`) and injection temperature (`WTEMP`). **Steam injection**: with `GAS` but no gas PVT table, the gas phase is steam. Water evaporates and condenses at the saturation temperature of the local pressure (IAPWS-IF97 steam tables: saturation line, latent heat, steam density and viscosity, liquid enthalpy and density). The model has liquid, two-phase and superheated states, wet or superheated steam injection (`WINJTEMP` quality, temperature, pressure, enthalpy), and steam rates reported as cold-water equivalent |
 | CO2 storage (CCUS) | `CO2STORE` with `GAS` + `WATER`: built-in CO2-brine properties (Spycher-Pruess solubility with salinity `SALINITY`, water vaporisation `VAPWAT`, volume-shifted Peng-Robinson CO2 density, Batzle-Wang brine), gas-brine saturation functions (`SGWFN`, `WSF`/`GSF`), CO2 inventory split into dissolved, mobile and residually trapped CO2 (`FGIPL`, `FGIPG`, `FGIPM`, `FGIPR`, `FCO2M`) |
 | Compositional (E300) | `COMPS`, `EOS` (PR/SRK), `CNAMES`, `TCRIT`, `PCRIT`, `VCRIT`/`ZCRIT`, `ACF`, `MW`, `BIC`, `OMEGAA/B`, `SSHIFT`, `ZI`/`ZMFVD`, `RTEMP`, `STCOND`, `WELLSTRE` + `WINJGAS` injection streams; Michelsen stability test + successive-substitution flash; Lohrenz-Bray-Clark viscosity; immiscible water phase |
 | Saturation functions | `SWOF`/`SGOF` or `SWFN`/`SGFN`/`SOF3`/`SOF2`, capillary pressure, ECLIPSE default 3-phase oil rel-perm model, `SATNUM`/`PVTNUM` regions. **End-point scaling** (`ENDSCALE`; `SWL SWCR SWU SGL SGCR SGU SOWCR SOGCR PCW PCG`, two- or three-point with `SCALECRS`) and **hysteresis** (`SATOPTS HYSTER`, `EHYSTR`: Carlson or Killough relative-permeability scanning curves for the non-wetting phases, Killough capillary-pressure scanning curves for `PC`/`BOTH`, `IMBNUM` with imbibition end points `ISWL ISGCR ... IPCW IPCG`) |
@@ -99,6 +99,7 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 | `CORNERPOINT_DOME.DATA` | Corner-point dome (COORD/ZCORN via `INCLUDE`) with gas cap, aquifer and capillary transition zones |
 | `GASCOND_VAPOIL.DATA` | Gas condensate at its dew point (`VAPOIL`, `PVTG`, `RVVD`): depletion drops condensate near the producer, then dry-gas cycling |
 | `THERMAL_HOTWATER.DATA` | Hot-water (180 C) injection into 600 cP heavy oil at 40 C (`THERMAL`, `OILVISCT`, `WTEMP`) |
+| `THERMAL_STEAMFLOOD.DATA` | Steamflood of 600 cP oil at 30 C, quarter five-spot. Wet steam (quality 0.7) is injected (`THERMAL` + `GAS` = steam, `WINJTEMP`): a steam chest forms at Tsat, overrides in the top layer, and breaks through after about 2.5 years |
 | `CO2_STORAGE.DATA` | 1 Mt of CO2 injected over 10 years into a saline aquifer, then 40 years of plume migration, dissolution and trapping (`CO2STORE`) |
 | `SPE3/SPE3CASE1.DATA`, `SPE3CASE2.DATA` | **SPE3** (Kenyon & Behie 1987), OPM black-oil decks, unchanged: gas-condensate cycling with dry-gas reinjection, then blowdown, 15 years; matches the published ECLIPSE results (BHP within 1-1.3 psi on average, cumulative oil within 0.1 %). See `examples/SPE3/README.md` |
 | `SPE9/SPE9_CP.DATA` | **SPE9** (Killough 1995), OPM corner-point deck, unchanged: 24×25×15, three-phase live oil, 25 producers and one water injector for 900 days; matches the published ECLIPSE results (field rates within 0.5-1.5 %). See `examples/SPE9/README.md` |
@@ -127,6 +128,12 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
   perturbed flashes, upwind directions are re-checked after the pressure solve, and the explicit
   composition update has CFL and composition-change time-step control. Surface rates use a
   single-stage separator flash at `STCOND`.
+* **Steam**: the water component (liquid + steam) is conserved, and the gas equation becomes the
+  phase-equilibrium constraint for the cell's state. A liquid-only cell has Sg = 0. A two-phase cell has
+  T = Tsat(p). A superheated cell has Sw = 0. States switch between Newton iterations: steam appears
+  above Tsat, condenses when Sg turns negative, and superheats when the liquid is used up. Steam
+  enthalpy is that of saturated vapour at Tsat(p) plus a superheat term; the liquid enthalpy is the
+  IAPWS-IF97 one.
 * **Time stepping**: adaptive steps driven by the change in saturation and pressure and by the Newton
   iteration count, with step cuts on non-convergence. `TUNING` TSINIT/TSMAXZ are honoured.
 
@@ -148,6 +155,12 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
   falls as condensate drops out; oil and gas balance errors < 1e-5.
 * **Thermal**: a closed box conserves total energy to 1e-6 while conduction equalises temperature; hot-water
   injection raises injectivity as oil viscosity falls.
+* **Steam**:
+  * Saturation pressure and temperature match IAPWS-IF97 exactly, latent heat to 1e-4, and superheated
+    steam density to within 1 % (to 4 % at 100 K of superheat).
+  * In a 1D steam injection, the steam zone reaches the producer, with every steam cell at Tsat(p). A
+    cold-water chase then condenses it completely.
+  * Water (liquid + steam) and energy balance against the well terms to 1e-7.
 * **CO2-brine**: CO2 density within 3 % of NIST (50 C, 150 bar); solubility within 6 % of Duan & Sun (2003)
   at 50 C, 100-400 bar; CO2 inventory balance < 1e-5.
 
@@ -177,6 +190,7 @@ the ECLIPSE 100 results of that deck. ReSim reads every keyword in it, and the r
 | SPE5-type compositional WAG (IMPEC, 6 comp.) | 147 | 3 years, 138 steps | ~40 s |
 | Gas condensate (VAPOIL), 6 years | 432 | 88 steps | ~14 s |
 | Thermal hot-water flood, 3 years | 675 | 87 steps | ~21 s |
+| Steamflood (steam phase), 2.7 years | 484 | 207 steps | ~100 s |
 | CO2 storage, 50 years | 1,350 | 199 steps | ~28 s |
 | SPE1 fluid on a refined 40×40×10 grid | 16,000 | 1 year, 53 steps (CPR-AMG) | ~14 min |
 | **Brugge field** (TNO benchmark), corner-point with fault | 43,474 | 10 years, 161 steps, 823 Newton iterations (CPR-AMG) | ~7 min |
@@ -188,8 +202,8 @@ analytical aquifers, group production controls (`GCONPROD`), guide rates and net
 limits scale the injectors' targets in proportion), LGRs, multi-segment wells, directional/irreversible
 end-point scaling and vertical scaling of relative permeabilities (`KRW`, `KRO`, ...), wetting-phase
 imbibition relative permeabilities and secondary capillary-pressure scanning curves (residual CO2 trapping
-is reported from the critical gas saturation), partitioned tracers, steam/phase change and heat loss to
-over- and underburden in thermal runs, thermal compositional (E300 THERMAL), polymer/solvent
+is reported from the critical gas saturation), partitioned tracers. Thermal runs lack heat loss to
+over- and underburden, non-condensable gas or volatile oil components together with steam (steam runs use dead oil), steam distillation, thermal compositional (E300 THERMAL), polymer/solvent
 options, `MULTFLT` changes inside the SCHEDULE section, and WECON follow-on wells. The compositional solver is IMPEC, so very fine grids
 or high-throughput cells force small time steps. Unsupported keywords are reported as warnings and do
 not stop a run.

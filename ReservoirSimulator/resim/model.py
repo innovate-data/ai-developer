@@ -15,6 +15,8 @@ from .props.blackoil_pvt import (BlackOilPVT, ConstCompressibilityFluid, DeadOil
                                  TemperatureFunction, WetGas)
 from .props.tables import interp as _interp
 from .props.eos import CubicEOS
+from .props import steam as steam_props
+from .props.steam import SteamGas
 from .props.relperm import SaturationTable, default_sgof, default_swof, family2_to_family1
 from .props.satfunc import EP_NAMES, SatFunctions
 from .schedule import ScheduleBuilder, parse_start
@@ -33,7 +35,7 @@ HANDLED = {
     "UNIFIN", "UNIFOUT", "GRIDOPTS", "ZIPPY2", "NETBALAN", "WRFTPLT", "WRFT", "END", "NOSIM",
     # PROPS
     "THERMAL", "CO2STORE", "VAPOIL", "VAPWAT", "DISGASW", "SALINITY", "SPECHEAT", "HEATCR", "THCONR",
-    "OILVISCT", "WATVISCT", "GASVISCT", "WATDENT", "RTEMPVD", "WTEMP", "RVVD", "SGWFN", "WSF", "GSF",
+    "OILVISCT", "WATVISCT", "GASVISCT", "WATDENT", "RTEMPVD", "WTEMP", "WINJTEMP", "RVVD", "SGWFN", "WSF", "GSF",
     "SWOF", "SGOF", "SWFN", "SGFN", "SOF3", "SOF2", "PVTW", "PVDO", "PVCDO", "PVTO", "PVDG", "PVTG", "DENSITY",
     "GRAVITY", "ROCK", "RPTPROPS", "CNAMES", "TCRIT", "PCRIT", "VCRIT", "ZCRIT", "ACF", "MW", "BIC", "OMEGAA",
     "OMEGAB", "SSHIFT", "STCOND", "RTEMP", "TEMPI", "ZI", "PARACHOR", "VCRITVIS", "ZCRITVIS", "LBCCOEF",
@@ -95,6 +97,7 @@ class SimulationModel:
     gravity: float = GRAVITY
     thermal: Optional[dict] = None      # energy equation data (THERMAL)
     co2store: bool = False              # CO2-brine storage mode (CO2STORE)
+    steam: bool = False                 # THERMAL with a steam (water vapour) gas phase
     salinity: float = 0.0               # mol NaCl per kg water (CO2STORE)
     rvvd: list = field(default_factory=list)
     satfunc: object = None              # per-cell saturation functions (props.satfunc.SatFunctions)
@@ -161,6 +164,13 @@ class ModelBuilder:
             thermal = False
         if not phases["oil"]:
             raise ValueError("Models without an oil phase are not supported")
+        # THERMAL with water and a gas phase that has no gas PVT table: the gas phase is steam
+        steam = (thermal and not co2 and phases["water"] and phases["gas"]
+                 and not any(k in d for k in ("PVDG", "PVTG")))
+        if steam:
+            if phases["disgas"] or phases["vapoil"]:
+                self.warn("Steam runs use dead oil; DISGAS/VAPOIL ignored")
+            phases["disgas"] = phases["vapoil"] = False
 
         # ---------------- grid & properties
         gp = GridProperties(nx, ny, nz, self.warn)
@@ -410,6 +420,7 @@ class ModelBuilder:
             eqlnum=region("EQLNUM"),
         )
         model.co2store = co2
+        model.steam = steam
         model.nnc = self.nnc                 # [(natural cell a, natural cell b, T in SI, direction)]
         model.faults = self.faults
         # ROCKOPTS: which region array selects the ROCK table, and STORE (reference pressure = initial pressure)
@@ -693,9 +704,13 @@ class ModelBuilder:
                         rows.append((rec[0], rec[2], rec[3]))
                     rows = np.array(rows)
                     gas = DryGas(TabulatedFluid(rows[:, 0] * P, rows[:, 1] * bg_u, rows[:, 2] * mu_u))
+                elif model.steam:
+                    gas = SteamGas(densities[r][1])
                 else:
                     raise ValueError("GAS phase active but no PVDG/PVTG table")
             o, w, g = densities[r]
+            if model.steam:
+                g = w            # steam volumes are reported as cold-water equivalent
             pvts.append(BlackOilPVT(waters[r], oil, gas, o, w, g))
         model.pvt = pvts
         model.phases["disgas"] = model.phases["disgas"] and all(p.live for p in pvts)
@@ -768,6 +783,12 @@ class ModelBuilder:
         defaults = {"o": 2100.0, "w": 4180.0, "g": 1100.0}
         cp = {}
         for col, ph in ((1, "o"), (2, "w"), (3, "g")):
+            if model.steam and ph == "w":
+                cp[ph] = steam_props.liquid_cp      # steam runs: IAPWS-IF97 liquid enthalpy
+                continue
+            if model.steam and ph == "g" and spec is None:
+                cp[ph] = lambda T: (np.full_like(np.asarray(T, float), 2.0e3), np.zeros_like(np.asarray(T, float)))
+                continue                            # superheated steam
             if spec is not None:
                 t = spec[0]
                 tt, cc = Tq(t[:, 0]), t[:, col] * cpu
@@ -775,7 +796,9 @@ class ModelBuilder:
             else:
                 c0 = defaults[ph]
                 cp[ph] = (lambda T, c0=c0: (np.full_like(np.asarray(T, float), c0), np.zeros_like(np.asarray(T, float))))
-        if spec is None:
+        if spec is None and model.steam:
+            self.warn("SPECHEAT missing; using an oil specific heat of 2.1 kJ/kg/K")
+        elif spec is None:
             self.warn("SPECHEAT missing; using specific heats oil 2.1, water 4.18, gas 1.1 kJ/kg/K")
         th["cp"] = cp
         # rock heat capacity per unit rock volume
@@ -798,6 +821,8 @@ class ModelBuilder:
             row = np.nan_to_num(wd[0])
             dtu = u.to_si(1.0, "temperature") - u.to_si(0.0, "temperature")
             th["watdent"] = (Tq(row[0]), row[1] / dtu, row[2] / dtu ** 2)
+        elif model.steam:
+            th["water_expansion"] = steam_props.liquid_density_ratio     # saturated-liquid density
         # initial temperature
         if gp.has("TEMPI"):
             T0 = Tq(gp.get("TEMPI"))[model.active_cells]

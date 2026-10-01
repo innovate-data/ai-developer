@@ -21,6 +21,7 @@ import scipy.sparse as sp
 
 from .. import ad as A
 from ..ad import AD, combine, where
+from ..props import steam as steam_props
 from ..wells import build_perforations
 from .linear import STATS as LINEAR_STATS, solve_linear
 from .wellcontrol import check_controls
@@ -29,6 +30,7 @@ T0 = 273.15            # enthalpy reference temperature [K]
 
 
 SWITCH_BAND = 1e-3      # relative excess over saturation before a missing phase re-appears
+STEAM_BAND = 1e-3       # K above (below) the saturation temperature before steam (liquid) appears
 
 
 class BlackOilSolver:
@@ -42,6 +44,9 @@ class BlackOilSolver:
         self.disgas = ph["disgas"] and self.has_g
         self.vapoil = ph.get("vapoil", False) and self.has_g
         self.thermal = bool(getattr(model, "thermal", None))
+        # steam runs: the gas phase is water vapour, the gas equation is the phase-equilibrium
+        # constraint (liquid only: Sg = 0; two-phase: T = Tsat(p); superheated: Sw = 0)
+        self.steam = self.thermal and bool(getattr(model, "steam", False))
         self.co2 = bool(getattr(model, "co2store", False))
         n = model.n_active
         self.n = n
@@ -101,6 +106,14 @@ class BlackOilSolver:
         if self.disgas:
             st["rs"] = np.where(state == 1, st["rs"], self.rs_sat(st["p"])[0])
         st["state"] = state
+        if self.steam:
+            ts = steam_props.tsat(st["p"])[0]
+            hot = (st["sg"] <= 0) & (st["T"] > ts)
+            if hot.any():
+                self.log(f"Initial temperature above the saturation temperature in {int(hot.sum())} cells; "
+                         f"limited to Tsat")
+            st["sstate"] = np.where(st["sg"] > 0, 1, 0).astype(np.int8)
+            st["T"] = np.where((st["sg"] > 0) | hot, ts, st["T"])
         self.state = st
         sf = getattr(self.m, "satfunc", None)
         self.hyst = sf.init_hysteresis(st["sw"], st["sg"]) if sf is not None and not self.co2 else None
@@ -184,7 +197,7 @@ class BlackOilSolver:
             out["bg"] = combine(b, (dbp, p), (dbr, rv))
             out["mug"] = combine(mu, (dmup, p), (dmur, rv))
         if self.thermal:
-            self._thermal_pvt(out, T)
+            self._thermal_pvt(out, T, p)
 
         # ---- relative permeability & capillary pressure
         def sfun(r, s_w, s_g):
@@ -237,25 +250,42 @@ class BlackOilSolver:
             out["rho_g"] = out["bg"] * out["mg"]
         return out
 
-    def _thermal_pvt(self, out, T):
-        """Temperature effects: viscosity multipliers, water and gas thermal expansion, enthalpies."""
+    def _thermal_pvt(self, out, T, p):
+        """Temperature effects: viscosity multipliers, water and gas thermal expansion, enthalpies;
+        in steam runs the steam density, viscosity and enthalpy (liquid enthalpy + latent heat)."""
         th = self.m.thermal
         Tv = A.value(T)
         for ph, key in (("o", "muo"), ("w", "muw"), ("g", "mug")):
             fn = th["visc"].get(ph)
-            if fn is not None and key in out:
+            if fn is not None and key in out and not (self.steam and ph == "g"):
                 f, df = fn.eval(Tv)
                 out[key] = out[key] * combine(f, (df, T))
         if self.has_w and th.get("watdent"):
             tref, c1, c2 = th["watdent"]
             dT = T - tref
             out["bw"] = out["bw"] / (1.0 + dT * c1 + dT * dT * c2)
-        if self.has_g:
+        elif self.has_w and th.get("water_expansion"):
+            f, df = th["water_expansion"](Tv, th["t_ref"])
+            out["bw"] = out["bw"] * combine(f, (df, T))
+        if self.steam:
+            rws = self.rho_s["w"]
+            rho, dp, dT = steam_props.vapour_density(A.value(p), Tv)
+            out["bg"] = combine(rho / rws, (dp / rws, p), (dT / rws, T))
+            mu, dmu = steam_props.vapour_viscosity(Tv)
+            out["mug"] = combine(mu, (dmu, T))
+        elif self.has_g:
             out["bg"] = out["bg"] * (th["t_ref"] / T)            # ideal-gas thermal expansion
         cp = th["cp"]
         for ph in ("o", "w", "g"):
             c, dc = cp[ph](Tv)
             out["h" + ph] = combine(c * (Tv - T0), (c + dc * (Tv - T0), T))
+        if self.steam:
+            # steam: saturated-vapour enthalpy at Tsat(p) plus superheat (equal to
+            # h_liquid(T) + L(T) in two-phase cells, where T = Tsat)
+            ts, dts = steam_props.tsat(A.value(p))
+            hv, dhv = self._steam_hsat(ts)
+            cpv = cp["g"](Tv)[0]
+            out["hg"] = combine(hv + cpv * (Tv - ts), ((dhv - cpv) * dts, p), (cpv, T))
         out["T"] = T
 
     # ------------------------------------------------------------------ wells
@@ -387,7 +417,11 @@ class BlackOilSolver:
         q = {"o": qph["o"]}
         if self.has_w:
             q["w"] = qph["w"]
-        if self.has_g:
+        if self.steam:
+            q["w"] = q["w"] + qph["g"]                     # produced steam as cold-water equivalent
+            q["g"] = qph["g"] * 0.0
+            self._steam_q = qph["g"]
+        elif self.has_g:
             q["g"] = qph["g"] + pr["rs"][c] * qph["o"] if self.disgas else qph["g"]
             if self.vapoil:
                 q["o"] = q["o"] + pr["rv"][c] * qph["g"]
@@ -400,12 +434,19 @@ class BlackOilSolver:
         on_i = (inj & (ddv < 0)).astype(float) * wi
         inj_type = np.array([self.wells[n].inj_type for n in perf.names])[perf.well] if c.size else np.array([])
         qinj = {}
+        if self.steam:
+            t_inj, quality, h_inj = self._steam_injection(perf, bhp)
         for ph, key, bkey in (("w", "WATER", "bw"), ("g", "GAS", "bg"), ("o", "OIL", "bo")):
-            if ph not in q:
+            if ph not in q or (self.steam and ph == "g"):
                 continue
             sel = on_i * (inj_type == key)
             if sel.any():
-                qi = lt * pr[bkey][c] * dd * sel            # dd < 0 -> negative production
+                bi = pr[bkey][c]
+                if self.steam and ph == "w" and np.any(quality > 0):
+                    # wet steam: reservoir volume of liquid and vapour per unit cold-water volume
+                    bs = steam_props.vapour_density(A.value(p)[c], t_inj)[0] / self.rho_s["w"]
+                    bi = 1.0 / ((1.0 - quality) / bi + quality / bs)
+                qi = lt * bi * dd * sel            # dd < 0 -> negative production
                 q[ph] = q[ph] + qi
                 qinj[ph] = qi
         rate = {ph: A.matmul(self.Sw, q[ph]) for ph in q}
@@ -434,6 +475,8 @@ class BlackOilSolver:
                 cp = self.m.thermal["cp"]
                 for ph, qi in qinj.items():
                     hinj = cp[ph](t_inj)[0] * (t_inj - T0)
+                    if self.steam and ph == "w":
+                        hinj = h_inj
                     e = e + qi * self.rho_s[ph] * hinj
             q["e"] = e
         # control equations (vectorised over wells)
@@ -475,6 +518,35 @@ class BlackOilSolver:
         if sel.any():
             eq = eq + where(sel, -rate["resv"] - tgt, zero)
         return q, rate, eq
+
+    def _steam_hsat(self, ts):
+        """Saturated-vapour specific enthalpy (J/kg) at temperature ts and its derivative."""
+        c, dc = self.m.thermal["cp"]["w"](ts)
+        L, dL = steam_props.latent_heat(ts)
+        return c * (ts - T0) + L, c + dc * (ts - T0) + dL
+
+    def _steam_injection(self, perf, bhp):
+        """Per connection: injection temperature, steam quality and specific enthalpy (J/kg) of
+        water/steam injectors (WINJTEMP; a quality above zero without a temperature injects
+        saturated steam at the pressure given there, else at the bottom-hole pressure)."""
+        th = self.m.thermal
+        wl = [self.wells[n] for n in perf.names]
+        bv = A.value(bhp)
+        T, x, h = [], [], []
+        for i, w in enumerate(wl):
+            q = min(w.steam_quality or 0.0, 1.0)
+            ts = float(steam_props.tsat(w.inj_pres or bv[i])[0])
+            t = w.inj_temp or (ts if q > 0 else th["t_ref"])
+            tt = np.array([t])
+            if q >= 1.0 and t > ts:          # superheated steam at the injection pressure
+                hh = float(self._steam_hsat(np.array([ts]))[0][0]) + float(th["cp"]["g"](tt)[0][0]) * (t - ts)
+            else:                            # water, or wet steam at its saturation temperature t
+                hh = float(th["cp"]["w"](tt)[0][0]) * (t - T0) + q * float(steam_props.latent_heat(tt)[0][0])
+            T.append(t)
+            x.append(q)
+            h.append(w.inj_enthalpy if w.inj_enthalpy is not None else hh)
+        T, x, h = (np.array(v, float)[perf.well] for v in (T, x, h))
+        return T, x, h
 
     # ------------------------------------------------------------------ tracers
     def _transport_tracers(self, old, dt):
@@ -778,7 +850,10 @@ class BlackOilSolver:
             acc["o"] = acc["o"] + pr["pv"] * pr["bg"] * pr["sg"] * pr["rv"]
         if self.has_w:
             acc["w"] = pr["pv"] * pr["bw"] * pr["sw"]
-        if self.has_g:
+        if self.steam:
+            acc["g"] = pr["pv"] * pr["bg"] * pr["sg"]                # steam in place (reported as FGIP)
+            acc["w"] = acc["w"] + acc["g"]                           # water component: liquid + steam
+        elif self.has_g:
             acc["g"] = pr["pv"] * pr["bg"] * pr["sg"]
             if self.disgas:
                 acc["g"] = acc["g"] + pr["pv"] * pr["bo"] * pr["so"] * pr["rs"]
@@ -821,7 +896,9 @@ class BlackOilSolver:
         comp["o"] = fo
         if self.has_w:
             comp["w"] = flux["w"][0]
-        if self.has_g:
+        if self.steam:
+            comp["w"] = comp["w"] + flux["g"][0]
+        elif self.has_g:
             fg, upg = flux["g"]
             comp["g"] = fg
             if self.disgas:
@@ -851,8 +928,18 @@ class BlackOilSolver:
             self._comp_flux_last = {k: A.value(v).copy() for k, v in comp.items() if k in ("o", "w", "g")}
         eqs = {}
         for key in acc:
+            if self.steam and key == "g":
+                continue
             eqs[key] = (acc[key] - old[key]) * (1.0 / dt) + A.matmul(self.Ct, comp[key]) + A.matmul(self.Pc, q[key])
+        if self.steam:
+            eqs["g"] = self._steam_constraint(p, sw, x, T, st["sstate"])
         return eqs, weq, pr, rate
+
+    def _steam_constraint(self, p, sw, sg, T, ss):
+        """Phase-equilibrium equation of steam runs, by cell state (0 liquid, 1 two-phase,
+        2 superheated steam)."""
+        ts, dts = steam_props.tsat(A.value(p))
+        return where(ss == 1, T - combine(ts, (dts, p)), where(ss == 2, sw, sg))
 
     def accumulation_values(self, st):
         x = self._x_of(st)
@@ -915,7 +1002,7 @@ class BlackOilSolver:
             pvv = A.value(pr["pv"])
             cnv = mb = 0.0
             for ph, bk in (("o", "bo"), ("w", "bw"), ("g", "bg")):
-                if ph in eqs:
+                if ph in eqs and not (self.steam and ph == "g"):
                     r = eqs[ph].val
                     bref = np.maximum(A.value(pr[bk]), 1e-12)
                     cnv = max(cnv, np.max(np.abs(r) * dt / (pvv * bref)) if r.size else 0.0)
@@ -930,6 +1017,10 @@ class BlackOilSolver:
                 re = eqs["e"].val
                 econv = (np.max(np.abs(re) * dt / heat_cap) < self.opt.thermal_tol and
                          abs(np.sum(re)) * dt / np.sum(heat_cap) < 1e-6)
+            if self.steam:
+                rc = np.abs(eqs["g"].val)
+                two = st["sstate"] == 1
+                econv = econv and np.all(rc[two] < 1e-3) and np.all(rc[~two] < 1e-8)
             wres = 0.0
             if nw:
                 scale = np.array([self._eq_scale(n) for n in self.perf.names])
@@ -937,7 +1028,7 @@ class BlackOilSolver:
             if getattr(self.opt, "debug_newton", False):
                 worst = {}
                 for ph, bk in (("o", "bo"), ("w", "bw"), ("g", "bg")):
-                    if ph in eqs:
+                    if ph in eqs and not (self.steam and ph == "g"):
                         r_ = np.abs(eqs[ph].val) * dt / (pvv * np.maximum(A.value(pr[bk]), 1e-12))
                         worst[ph] = (float(r_.max()), int(np.argmax(r_)))
                 wworst = ""
@@ -1023,9 +1114,12 @@ class BlackOilSolver:
         dsg = np.where(sat, dX, 0.0)
         mx = np.maximum(np.abs(dsw), np.abs(dsg))
         fac = np.where(mx > self.opt.ds_max, self.opt.ds_max / np.maximum(mx, 1e-30), 1.0)
+        sw_raw = st["sw"] + fac * dsw
         if self.has_w:
-            st["sw"] = np.clip(st["sw"] + fac * dsw, 0.0, 1.0)
-        if self.has_g:
+            st["sw"] = np.clip(sw_raw, 0.0, 1.0)
+        if self.steam:
+            self._steam_update(st, sw_raw, st["sg"] + fac * dsg)
+        elif self.has_g:
             new_state = state.copy()
             sg_new = np.where(sat, st["sg"] + fac * dsg, st["sg"])
             sg_new = np.where(noo, 1.0 - st["sw"], sg_new)
@@ -1082,6 +1176,22 @@ class BlackOilSolver:
                 eps = 1e-9 * abs(b) + 1e-6
                 b = min(b, pc.max() - eps) if w.kind == "PROD" else max(b, pc.min() + eps)
             self.bhp[name] = max(b, 1e3)
+
+    def _steam_update(self, st, sw_raw, sg_raw):
+        """Steam appears where a liquid cell exceeds the saturation temperature, condenses
+        where its saturation turns negative, and becomes superheated where the liquid water
+        is used up."""
+        ss = st["sstate"]
+        ts = steam_props.tsat(st["p"])[0]
+        T = st["T"]
+        new = ss.copy()
+        new[(ss == 0) & (T > ts + STEAM_BAND)] = 1
+        new[(ss == 1) & (sg_raw < 0.0)] = 0
+        new[(ss == 1) & (sg_raw > 0.0) & (sw_raw < 0.0)] = 2
+        new[(ss == 2) & (T < ts - STEAM_BAND)] = 1
+        st["sstate"] = new
+        st["sg"] = np.where(new == 0, 0.0, np.clip(sg_raw, 0.0, 1.0))
+        st["sw"] = np.where(new == 2, 0.0, st["sw"])
 
     def _resv_factors(self, cells):
         """Formation volume factors (and saturated Rs, Rv) at the field hydrocarbon-weighted average

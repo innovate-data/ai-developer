@@ -53,7 +53,10 @@ class Well:
     inj_type: str = "WATER"
     inj_composition: Optional[np.ndarray] = None
     history: bool = False
-    inj_temp: Optional[float] = None    # injection temperature (K), WTEMP
+    inj_temp: Optional[float] = None    # injection temperature (K), WTEMP / WINJTEMP
+    steam_quality: Optional[float] = None   # WINJTEMP: injected steam quality (steam runs)
+    inj_pres: Optional[float] = None    # WINJTEMP: pressure fixing the saturation temperature (Pa)
+    inj_enthalpy: Optional[float] = None    # WINJTEMP: injected specific enthalpy (J/kg)
     auto_shut: str = "SHUT"             # WELSPECS item 9: SHUT or STOP when closed automatically
     crossflow: bool = True              # WELSPECS item 10
     vfp_table: int = 0                  # VFP table number (WCONPROD item 11 / WCONINJE item 9)
@@ -406,6 +409,18 @@ class ScheduleBuilder:
                 continue
             for name in self._match(rec[0]):
                 self.wells[name].inj_temp = self._num(rec, 1, "temperature")
+
+    def _kw_WINJTEMP(self, data):
+        """Injection temperature / steam quality / pressure / enthalpy (thermal option)."""
+        for rec in data:
+            if not rec:
+                continue
+            for name in self._match(rec[0]):
+                w = self.wells[name]
+                w.steam_quality = self._num(rec, 1, None, 1.0)
+                w.inj_temp = self._num(rec, 2, "temperature")
+                w.inj_pres = self._num(rec, 3, "pressure")
+                w.inj_enthalpy = self._num(rec, 4, "specific_enthalpy")
 
     def _kw_WECON(self, data):
         """Economic limits, checked at the end of every time step (see BlackOilSolver.economic_limits)."""

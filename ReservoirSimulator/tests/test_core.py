@@ -490,6 +490,169 @@ def test_thermal_hot_water_injection():
     assert abs(_mb(res, "oil")) < 1e-5 and abs(_mb(res, "water")) < 1e-5
 
 
+STEAM_BOX = """RUNSPEC
+DIMENS
+ 6 1 1 /
+OIL
+WATER
+GAS
+THERMAL
+METRIC
+START
+ 1 'JAN' 2025 /
+GRID
+DXV
+ 6*5 /
+DYV
+ 5 /
+DZV
+ 5 /
+TOPS
+ 6*300 /
+PORO
+ 6*0.3 /
+PERMX
+ 6*2000 /
+PERMY
+ 6*2000 /
+PERMZ
+ 6*2000 /
+HEATCR
+ 6*2400 /
+THCONR
+ 6*150 /
+PROPS
+PVTW
+ 20 1.0 4.5E-5 0.8 0 /
+PVDO
+ 1 1.02 50
+ 200 1.01 50 /
+DENSITY
+ 950 1000 1* /
+ROCK
+ 20 1.0E-4 /
+OILVISCT
+ 20 100
+ 300 2 /
+SPECHEAT
+ 20 2.0 4.2 2.0
+ 300 2.5 4.2 2.0 /
+SWOF
+ 0.2 0 1 0
+ 1.0 1 0 0 /
+SGOF
+ 0 0 1 0
+ 0.8 1 0 0 /
+SOLUTION
+EQUIL
+ 300 20 400 0 100 0 /
+RTEMP
+ 40 /
+SCHEDULE
+WELSPECS
+ 'INJ' 'G' 1 1 300 'WATER' /
+ 'PROD' 'G' 6 1 300 'OIL' /
+/
+COMPDAT
+ 'INJ' 2* 1 1 'OPEN' 2* 0.2 /
+ 'PROD' 2* 1 1 'OPEN' 2* 0.2 /
+/
+WCONINJE
+ 'INJ' 'WATER' 'OPEN' 'RATE' 4 1* 400 /
+/
+WCONPROD
+ 'PROD' 'OPEN' 'BHP' 5* 15 /
+/
+WINJTEMP
+ 'INJ' 0.8 1* 30 /
+/
+TSTEP
+ 10 /
+END
+"""
+
+
+def test_steam_properties_match_iapws():
+    from resim.props import steam
+    assert steam.psat(373.15)[0] == pytest.approx(101418.0, rel=1e-5)          # IAPWS-IF97
+    assert steam.tsat(1.0e6)[0] == pytest.approx(453.0356, abs=1e-3)
+    assert steam.latent_heat(473.15)[0] == pytest.approx(1939.67e3, rel=1e-4)
+    assert steam.vapour_density(1.0e6, 473.15)[0] == pytest.approx(4.8543, rel=0.01)   # superheated
+    assert steam.vapour_density(3.976e6, 523.15)[0] == pytest.approx(19.965, rel=0.005)  # saturated
+    T, h = np.array([450.0, 520.0]), 1e-4
+    for fn in (steam.latent_heat, steam.liquid_cp, steam.vapour_viscosity):
+        assert np.allclose((fn(T + h)[0] - fn(T - h)[0]) / (2 * h), fn(T)[1], rtol=1e-5)
+    rho, dp, dT = steam.vapour_density(np.array([1.5e6, 3e6]), T)
+    assert np.allclose((steam.vapour_density(np.array([1.5e6, 3e6]) + 1.0, T)[0] - rho), dp, rtol=1e-4)
+    assert np.allclose((steam.vapour_density(np.array([1.5e6, 3e6]), T + h)[0] - rho) / h, dT, rtol=1e-4)
+
+
+def test_steam_injection_conserves_water_and_energy(tmp_path):
+    """Wet steam into a 1D box: a steam zone grows at Tsat(p); a cold-water chase condenses it.
+    Water (liquid + steam) and energy balance against the well terms throughout."""
+    from resim.initialization import initialize_blackoil
+    from resim.props import steam
+    from resim.solvers.blackoil import BlackOilSolver
+    deck = tmp_path / "SBOX.DATA"
+    deck.write_text(STEAM_BOX)
+    m = load_model(str(deck))
+    assert m.steam and not m.phases["disgas"]
+    s = BlackOilSolver(m, SimOptions(), lambda *_: None)
+    s.set_initial_state(initialize_blackoil(m))
+    s.setup_wells(m.schedule[0].wells)
+    acc0 = s.accumulation_values(s.state)[0]
+    w_in = e_in = 0.0
+    ts = steam.tsat(30e5)[0]                       # WINJTEMP: saturated at 30 bar, quality 0.8
+    h_inj = steam.liquid_cp(np.array([ts]))[0][0] * (ts - 273.15) + 0.8 * steam.latent_heat(ts)[0]
+    e_inj = 0.0
+    seen = set()
+
+    def advance(n, dt):
+        nonlocal w_in, e_in, e_inj
+        for _ in range(n):
+            ok, _, _ = s.step(dt)
+            assert ok
+            w_in -= dt * s.last_perf["w"].sum()
+            e_in -= dt * s.last_perf["e"].sum()
+            qi = s.last_perf["w"][s.perf.well == s.perf.names.index("INJ")].sum()
+            e_inj -= dt * qi * 1000.0 * (h_inj if s.wells["INJ"].steam_quality else 0.0)
+            seen.update(np.unique(s.state["sstate"]).tolist())
+
+    advance(80, 0.5 * 86400.0)
+    st = s.state
+    two = st["sstate"] == 1
+    assert two.sum() >= 5 and np.all(st["sg"][two] > 0.2)                    # steam zone reached the producer
+    assert np.allclose(st["T"][two], steam.tsat(st["p"][two])[0], atol=1e-3)  # at the saturation temperature
+    acc = s.accumulation_values(st)[0]
+    assert abs(acc["w"].sum() - acc0["w"].sum() - w_in) < 1e-6 * 4 * 40
+    assert abs(acc["e"].sum() - acc0["e"].sum() - e_in) < 1e-6 * abs(e_inj)
+    s.wells["INJ"].steam_quality = 0.0                   # cold-water chase at 40 C
+    s.wells["INJ"].inj_temp = 313.15
+    s.setup_wells(s.wells)
+    advance(40, 86400.0)
+    st = s.state
+    assert np.all(st["sstate"] == 0) and np.all(st["sg"] == 0)               # steam condensed
+    assert st["T"][0] < 90.0 + 273.15 and np.all(st["T"] <= steam.tsat(st["p"])[0])
+    acc = s.accumulation_values(st)[0]
+    assert abs(acc["w"].sum() - acc0["w"].sum() - w_in) < 1e-6 * 4 * 80
+    assert abs(acc["e"].sum() - acc0["e"].sum() - e_in) < 1e-6 * abs(e_inj)
+    assert seen >= {0, 1}
+
+
+def test_steamflood_example():
+    m = load_model(os.path.join(EX, "THERMAL_STEAMFLOOD.DATA"))
+    assert m.steam
+    m.schedule = m.schedule[:14]
+    res = run_simulation(m)
+    sg = res.cell_data["SGAS"][-1].reshape(4, 11, 11)
+    T = res.cell_data["TEMP"][-1].reshape(4, 11, 11)
+    assert sg[0].sum() > 1.0 and sg[0].sum() > 3 * sg[3].sum()    # gravity override: steam rides on top
+    assert 200.0 < np.nanmax(T) < 260.0                       # steam-chest temperature
+    assert np.nanmin(T) == pytest.approx(30.0, abs=0.5)
+    assert res.summary["FGIP"][-1] > 1.0                      # steam in place (cold-water equivalent)
+    assert abs(_mb(res, "oil")) < 1e-5 and abs(_mb(res, "water")) < 1e-5
+
+
 # ----------------------------------------------------------------------------- CO2 storage
 def test_co2_brine_properties():
     from resim.props.co2brine import CO2BrineSystem, spycher_pruess

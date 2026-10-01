@@ -80,6 +80,7 @@ FIELD = UnitSystem(
         "abs_temperature": 5.0 / 9.0,          # Rankine -> K
         "molar_rate": 453.59237 / DAY,          # lb-mol/day -> mol/s
         "specific_heat": 4186.8,                 # Btu/lb/R -> J/kg/K
+        "specific_enthalpy": 2326.0,             # Btu/lb -> J/kg
         "volumetric_heat_capacity": 67066.1,     # Btu/ft3/R -> J/m3/K
         "thermal_conductivity": 1055.056 / (FT * DAY * 5.0 / 9.0),   # Btu/ft/day/R -> W/m/K
         "mass": 1000.0,                          # tonnes
@@ -120,6 +121,7 @@ METRIC = UnitSystem(
         "abs_temperature": 1.0,                  # K
         "molar_rate": 1000.0 / DAY,              # kg-mol/day -> mol/s
         "specific_heat": 1000.0,                 # kJ/kg/K -> J/kg/K
+        "specific_enthalpy": 1000.0,             # kJ/kg -> J/kg
         "volumetric_heat_capacity": 1000.0,      # kJ/m3/K -> J/m3/K
         "thermal_conductivity": 1000.0 / DAY,    # kJ/m/day/K -> W/m/K
         "mass": 1000.0,                          # tonnes
