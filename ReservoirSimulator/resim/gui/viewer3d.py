@@ -368,8 +368,8 @@ class Viewer3D(QWidget):
         finally:
             self._building = False
         self._set_enabled(True)
+        self.rebuild()          # face geometry first: it depends on the (possibly new) grid
         self._on_property(self.prop.currentText(), rebuild=False)
-        self.rebuild()
         na = int(self.geom.active.sum())
         self.info.setText(f"Grid {results.nx} x {results.ny} x {results.nz} ({na} active cells), "
                           f"{results.n_reports} report steps, {len(results.wells)} wells"

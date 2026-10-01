@@ -217,3 +217,14 @@ def test_run_panel_stop(window, tmp_path):
     assert not rp.is_running()
     assert "stopped" in rp.progress_msg.text().lower()
     assert not (tmp_path / "SLOW.resim.npz").exists()
+
+
+def test_viewer_switches_between_grid_sizes(window, tmp_path):
+    """Loading results with a different grid must rebuild the cached face geometry."""
+    big = make_synthetic_results(nx=10, ny=10, nz=3)
+    small = make_synthetic_results(nx=4, ny=3, nz=2)
+    for i, res in enumerate((big, small, big)):
+        path = tmp_path / f"R{i}.resim.npz"
+        res.save(path)
+        assert window.open_results(str(path))
+        assert window.viewer._face_cells.max() < res.nx * res.ny * res.nz

@@ -62,6 +62,10 @@ The window has five tabs:
 |---|---|---|
 | ![](docs/screenshots/02_model_builder_grid.png) | ![](docs/screenshots/06_run.png) | ![](docs/screenshots/11_plots.png) |
 
+| Corner-point dome, gas saturation | Compositional WAG, overall C1 mole fraction |
+|---|---|
+| ![](docs/screenshots/13_cornerpoint_dome_sgas.png) | ![](docs/screenshots/14_compositional_zmf_c1.png) |
+
 ### Command line
 
 ```bash
@@ -125,6 +129,16 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 * **Material balance**: oil, gas and water in-place change equals cumulative production/injection to
   ~1e-6 in every example.
 * **ECLIPSE output**: files read back with `resdata`, and cell volumes match to 1e-6.
+
+### Performance (4-core cloud VM, Python 3.11)
+
+| Case | Cells | Simulated | Wall time |
+|---|---|---|---|
+| SPE1 black oil | 300 | 10 years, 245 steps | ~18 s |
+| Five-spot waterflood | 900 | 5 years | ~7 s |
+| Corner-point dome | 2,000 | 3 years | ~26 s |
+| SPE5-type compositional WAG (IMPEC, 6 comp.) | 147 | 3 years, 138 steps | ~40 s |
+| SPE1 fluid on a refined 40×40×10 grid | 16,000 | 1 year, 53 steps (CPR-AMG) | ~14 min |
 
 ## Limitations
 
