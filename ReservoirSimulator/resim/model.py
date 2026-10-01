@@ -32,7 +32,7 @@ HANDLED = {
     "COORD", "ZCORN", "MINPV", "MINPORV", "RPTGRID", "INIT", "GRIDFILE", "NEWTRAN", "OLDTRAN", "MAPAXES",
     "MAPUNITS", "GRIDUNIT", "COORDSYS", "PINCH", "NOGGF", "SPECGRID", "FAULTS", "MULTFLT", "GDORIENT",
     "MONITOR", "NOMONITO", "NUMRES", "FILLEPS", "MULTREGT", "FLUXNUM", "MULTNUM", "OPERNUM", "MESSAGES", "NSTACK",
-    "UNIFIN", "UNIFOUT", "GRIDOPTS", "ZIPPY2", "NETBALAN", "WRFTPLT", "WRFT", "END", "NOSIM",
+    "UNIFIN", "UNIFOUT", "GRIDOPTS", "ZIPPY2", "WRFTPLT", "WRFT", "END", "NOSIM",
     # PROPS
     "THERMAL", "CO2STORE", "VAPOIL", "VAPWAT", "DISGASW", "SALINITY", "SPECHEAT", "HEATCR", "THCONR",
     "OILVISCT", "WATVISCT", "GASVISCT", "WATDENT", "RTEMPVD", "WTEMP", "WINJTEMP", "RVVD", "SGWFN", "WSF", "GSF",
@@ -98,6 +98,7 @@ class SimulationModel:
     thermal: Optional[dict] = None      # energy equation data (THERMAL)
     co2store: bool = False              # CO2-brine storage mode (CO2STORE)
     steam: bool = False                 # THERMAL with a steam (water vapour) gas phase
+    nupcol: int = 12                    # Newton iterations in which group targets are updated (NUPCOL)
     salinity: float = 0.0               # mol NaCl per kg water (CO2STORE)
     rvvd: list = field(default_factory=list)
     satfunc: object = None              # per-cell saturation functions (props.satfunc.SatFunctions)
@@ -421,6 +422,8 @@ class ModelBuilder:
         )
         model.co2store = co2
         model.steam = steam
+        nup = d.get("NUPCOL")
+        model.nupcol = to_int(rec_get(nup.data[0], 0), 12) if nup is not None and nup.data else 12
         model.nnc = self.nnc                 # [(natural cell a, natural cell b, T in SI, direction)]
         model.faults = self.faults
         # ROCKOPTS: which region array selects the ROCK table, and STORE (reference pressure = initial pressure)
@@ -1069,6 +1072,7 @@ class ModelBuilder:
         "F": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
               "WGR", "PR", "OIP", "GIP", "WIP", "VPR", "VIR", "PPO", "PPW", "PPG", "GIPL", "GIPG", "GIPM",
               "GIPR", "CO2M", "CO2D", "OIPL", "OIPG", "TEMP", "VPT", "VIT", "LPT", "GSR", "GST", "GCR", "GCT",
+              "GIMR", "GIMT", "NPR",
               "OPRH", "WPRH", "GPRH", "LPRH", "WIRH", "GIRH", "OPTH", "WPTH", "GPTH", "LPTH", "WITH", "GITH",
               "WCTH", "GORH"},
         "W": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
@@ -1076,7 +1080,7 @@ class ModelBuilder:
               "OPRH", "WPRH", "GPRH", "LPRH", "WIRH", "GIRH", "OPTH", "WPTH", "GPTH", "LPTH", "WITH", "GITH",
               "WCTH", "GORH", "BHPH", "THPH", "OPP", "WPP", "GPP", "WIP", "GIP", "PI"},
         "G": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
-              "VPR", "VIR"},
+              "VPR", "VIR", "GSR", "GCR", "GIMR", "PR"},
         "R": {"PR", "OIP", "OIPL", "OIPG", "GIP", "GIPL", "GIPG", "WIP", "OP", "OPR", "WPR", "GPR", "OIR", "WIR",
               "GIR", "OPT", "WPT", "GPT", "OIT", "WIT", "GIT", "OFR", "OFT", "WFR", "WFT", "GFR", "GFT"},
         "B": {"PR", "OSAT", "WSAT", "GSAT", "RS", "RV", "DENO", "DENW", "DENG"},

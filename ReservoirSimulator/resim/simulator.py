@@ -370,7 +370,7 @@ class _SummaryCollector:
                 for key, (val, q) in d.items():
                     row[f"{key}:{name}"] = u.from_si(val, q)
         self._history(row, step, wr, dt)
-        self._groups(row, wr)
+        self._groups(row, wr, solver)
         self._tracers(row, solver, wr, dt)
         self._regions(row, solver, dt)
         self._connections(row, solver, dt)
@@ -387,9 +387,14 @@ class _SummaryCollector:
         for name in wr:
             if f"WOPT:{name}" in row:
                 row[f"WLPT:{name}"] = row[f"WOPT:{name}"] + row[f"WWPT:{name}"]
-        row["FGCR"] = row["FGCT"] = 0.0
-        row["FGSR"] = row["FGPR"] - row["FGIR"]
-        row["FGST"] = row["FGPT"] - row["FGIT"]
+        row.setdefault("FGCR", 0.0)
+        row.setdefault("FGIMR", 0.0)
+        for k, ck in (("FGCR", "FGCT"), ("FGIMR", "FGIMT")):
+            if dt is not None:
+                self.cum[ck] = self.cum.get(ck, 0.0) + u.to_si(row[k], "gas_surface_rate") * dt
+            row[ck] = u.from_si(self.cum.get(ck, 0.0), "gas_surface_volume")
+        row["FGSR"] = row["FGPR"] - row["FGIR"] - row["FGCR"] + row["FGIMR"]
+        row["FGST"] = row["FGPT"] - row["FGIT"] - row["FGCT"] + row["FGIMT"]
         row["NEWTON"] = float(getattr(self, "_newton", 0))
         row["MLINEARS"] = float(getattr(self, "_linears", 0))
         row["FLPR"] = row["FOPR"] + row["FWPR"]
@@ -623,16 +628,27 @@ class _SummaryCollector:
                         self.cum[tag] = self.cum.get(tag, 0.0) + rate * dt
                     row[tag] = u.from_si(self.cum.get(tag, 0.0), qv)
 
-    def _groups(self, row, wr):
-        """Group vectors (GOPR, GWIR, ...) summed over the wells below each group of GRUPTREE."""
+    def _groups(self, row, wr, solver=None):
+        """Group vectors (GOPR, GWIR, ...) summed over the wells below each group of GRUPTREE,
+        with gas consumption, import and sales (GCONSUMP / GCONSALE) and network node pressures."""
         if not self.m.schedule:
             return
         step = self.m.schedule[min(len(self.m.schedule) - 1, getattr(self, "_step_index", 0))]
         tree = getattr(step, "groups", None) or {}
         groups = [g for g in tree if g and g != "FIELD"]
+        u = self.m.units
+        fm = getattr(solver, "fm", None)
+        if fm is not None:
+            for g in groups + ["FIELD"]:
+                cons, imp = fm.gas_balance(g)
+                pre = "F" if g == "FIELD" else "G"
+                suf = "" if g == "FIELD" else f":{g}"
+                row[f"{pre}GCR{suf}"] = u.from_si(cons, "gas_surface_rate")
+                row[f"{pre}GIMR{suf}"] = u.from_si(imp, "gas_surface_rate")
+                if g in fm.node_pressure:
+                    row[f"{pre}PR{suf}" if g != "FIELD" else "FNPR"] = u.from_si(fm.node_pressure[g], "pressure")
         if not groups:
             return
-        u = self.m.units
         def ancestors(g):
             seen = []
             while g and g != "FIELD" and g not in seen:
@@ -654,6 +670,8 @@ class _SummaryCollector:
             row[f"GLPR:{g}"] = o + wa
             row[f"GWCT:{g}"] = wa / (o + wa) if o + wa > 0 else 0.0
             row[f"GGOR:{g}"] = gg / o if o > 0 else 0.0           # already in deck units
+            # sales gas = production - injection - consumption + import
+            row[f"GGSR:{g}"] = gg - row[f"GGIR:{g}"] - row.get(f"GGCR:{g}", 0.0) + row.get(f"GGIMR:{g}", 0.0)
 
     def finish(self):
         keys = []

@@ -21,6 +21,7 @@ import scipy.sparse as sp
 
 from .. import ad as A
 from ..ad import AD, combine, where
+from ..fieldmgmt import FieldManager
 from ..props import steam as steam_props
 from ..wells import build_perforations
 from .linear import STATS as LINEAR_STATS, solve_linear
@@ -84,6 +85,7 @@ class BlackOilSolver:
         self._rho_w = None
         self.last_perf = {}
         self._bhp_static = {}
+        self.fm = FieldManager(self)         # group control, economics, drilling queue, network
         self.order = ["o"] + (["w"] if self.has_w else []) + (["g"] if self.has_g else []) + \
                      (["e"] if self.thermal else [])
 
@@ -301,6 +303,7 @@ class BlackOilSolver:
         `touched` names the wells whose status the schedule set in this step: a well closed by
         an economic limit stays closed unless the schedule opens it again."""
         self.vfp = vfp or {}
+        self.fm.on_setup(wells, touched)
         for name in list(self.econ_shut):
             if name not in wells:
                 continue
@@ -624,6 +627,7 @@ class BlackOilSolver:
         self.wwpave = options.get("WWPAVE")
         self.wpavedep = options.get("WPAVEDEP")
         self.gconinje = options.get("GCONINJE") or {}
+        self.fm.set_options(options)
 
     # ------------------------------------------------------------------ history and group targets
     def _first_perf(self):
@@ -747,6 +751,7 @@ class BlackOilSolver:
                 self.econ_conns = {c for c in self.econ_conns if c[0] != name}
                 counts[name] = counts.get(name, 0) + 1
                 reopened.append(name)
+        reopened += self.fm.well_tests(t_now, wells)
         return reopened
 
     def _set_caps(self, st0, dt):
@@ -963,6 +968,8 @@ class BlackOilSolver:
         hc = self.m.pore_volume * np.maximum(1.0 - st0["sw"], 1e-12)
         self._p_avg = float(np.sum(st0["p"] * hc) / np.sum(hc))
         if self.perf is not None and self.perf.n_wells:
+            if self.fm.active or self.fm.modified:
+                self.fm.before_step()
             self._history_resv_targets()
             self._group_injection()
         self._set_caps(st0, dt)
@@ -996,7 +1003,8 @@ class BlackOilSolver:
             args = (p, sw, x, T, bhp)
             eqs, weq, pr, rate = self.assemble(args, old, dt, rho_w)
             self._update_thp(rate, rho_w)
-            if it <= self.opt.max_newton - 3 and check_controls(self, rate, bhp.val):
+            changed = 1 < it <= getattr(self.m, "nupcol", 12) and self.fm.newton_update(rate)
+            if it <= self.opt.max_newton - 3 and check_controls(self, rate, bhp.val) or changed:
                 eqs, weq, pr, rate = self.assemble(args, old, dt, rho_w)
             # convergence check
             pvv = A.value(pr["pv"])
@@ -1358,13 +1366,24 @@ class BlackOilSolver:
 
     # ------------------------------------------------------------------ economic limits
     def economic_limits(self):
-        """Apply WECON limits after a converged time step. Returns (messages, end_run)."""
+        """Apply WECON / WECONINJ limits and the group limits (GECON, GCONPROD and GCONSALE
+        procedures) after a converged time step. Returns (messages, end_run)."""
         msgs, end_run = [], False
         if self.perf is None:
             return msgs, end_run
         rep = self.well_report()
+        fm = self.fm
         for wi, name in enumerate(self.perf.names):
             w = self.wells[name]
+            if w.kind == "INJ" and w.is_open and w.econ_inj and w.econ_inj.get("min_rate"):
+                r = rep[name]
+                q = -(r["gas"] if w.inj_type == "GAS" else (r["water"] if w.inj_type == "WATER" else r["oil"]))
+                if 0.0 <= q < w.econ_inj["min_rate"] and self._flowing(name):
+                    w.status = w.auto_shut if w.auto_shut in ("SHUT", "STOP") else "SHUT"
+                    self.econ_shut[name] = w.status
+                    self.__dict__.setdefault("_econ_time", {})[name] = getattr(self, "t_now", 0.0)
+                    msgs.append(f"WECONINJ: {name} injection rate below the economic limit; well {w.status.lower()}")
+                continue
             e = w.econ
             if not e or w.kind != "PROD" or not w.is_open:
                 continue
@@ -1373,7 +1392,7 @@ class BlackOilSolver:
             liq = o + wa
             if liq + g <= 0:
                 continue
-            reason, action = None, None
+            reason, action, which = None, None, "water"
             for key, val in (("min_orat", o), ("min_grat", g), ("min_lrat", liq)):
                 if e.get(key) and val < e[key]:
                     reason, action = f"{key.split('_')[1].upper()} below the economic limit", "WELL"
@@ -1386,40 +1405,28 @@ class BlackOilSolver:
                     key = worst[0]
                     reason = f"{key.split('_')[1].upper()} {ratios[key]:.4g} above the limit {e[key]:.4g}"
                     action = e.get("workover", "NONE")
+                    which = "gas" if key in ("max_gor", "max_glr") else "water"
                     if key == "max_wct" and e.get("sec_wct") and ratios[key] > e["sec_wct"]:
                         action = e.get("sec_workover") or "WELL"
             if reason is None or action == "NONE":
                 continue
-            if action in ("CON", "+CON"):
-                sel = np.nonzero((self.perf.well == wi) & (self.perf.wi > 0))[0]
-                qo = self.last_perf.get("o", np.zeros(self.perf.cell.size))[sel]
-                qw = self.last_perf.get("w", np.zeros(self.perf.cell.size))[sel]
-                tot = np.maximum(qo + qw, 1e-30)
-                worst_i = sel[int(np.argmax(qw / tot))] if sel.size > 1 else None
-                if worst_i is not None:
-                    close = [worst_i]
-                    if action == "+CON":
-                        d0 = self.perf.depth[worst_i]
-                        close = [m for m in sel if self.perf.depth[m] >= d0]
-                    comps = [c for c in w.completions if c.status == "OPEN" and c.cell >= 0]
-                    for m in close:
-                        for c in comps:
-                            if c.cell == self.perf.cell[m]:
-                                c.status = "SHUT"
-                                self.econ_conns.add((name, c.i, c.j, c.k))
-                        self.perf.wi[m] = 0.0
-                    msgs.append(f"WECON: {name} {reason}; closed {len(close)} connection(s)")
-                    if e.get("end_run"):
-                        end_run = True
+            if action in ("CON", "+CON", "PLUG"):
+                # CON: the worst connection; +CON / PLUG: also those below (water) or above (gas)
+                k = fm.close_worst_connections(name, which, plug=action != "CON")
+                if k:
+                    msgs.append(f"WECON: {name} {reason}; closed {k} connection(s)")
+                    end_run = end_run or e.get("end_run", False)
                     continue
                 action = "WELL"            # last open connection: close the well
-            # WELL or PLUG (plugging back is approximated by shutting the well)
             w.status = w.auto_shut if w.auto_shut in ("SHUT", "STOP") else "SHUT"
             self.econ_shut[name] = w.status
             self.__dict__.setdefault("_econ_time", {})[name] = getattr(self, "t_now", 0.0)
             msgs.append(f"WECON: {name} {reason}; well {w.status.lower()}")
+            fm.follow_on(name)
             if e.get("end_run"):
                 end_run = True
+        if fm.active:
+            end_run = fm.after_step() or end_run      # logs its own actions
         return msgs, end_run
 
     # ------------------------------------------------------------------ reporting
