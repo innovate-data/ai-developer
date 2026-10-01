@@ -14,7 +14,9 @@ so they open in ResInsight and other ECLIPSE post-processors.
 |---|---|
 | Deck reader | Full ECLIPSE syntax: `--` comments, repeat counts (`3*0.25`, `2*`), quoted/unquoted strings, `INCLUDE` (relative paths, `PATHS` aliases), sections, multi-record keywords, numbered tables, `PVTO`/`PVTG` record tables. Unknown keywords are skipped with a warning. |
 | Grids | Block-centred (`DX/DY/DZ/TOPS`, `DXV/DYV/DZV`) and corner-point (`COORD/ZCORN`), `ACTNUM`, `MINPV`, `NTG`, `MULTX/Y/Z`, `MULTPV`, `PORV`, `TRANX/Y/Z` overrides; `BOX`, `EQUALS`, `MULTIPLY`, `ADD`, `COPY`, `MINVALUE`, `MAXVALUE` operators |
-| Black-oil (E100) | Fully implicit 3-phase water/oil/gas with dissolved gas (`DISGAS`), dead oil (`PVDO`, `PVCDO`), live oil (`PVTO` with undersaturated branches), dry gas (`PVDG`), `PVTW`, `ROCK`, `DENSITY`/`GRAVITY`; 2-phase oil-water and oil-gas also work |
+| Black-oil (E100) | Fully implicit 3-phase water/oil/gas with dissolved gas (`DISGAS`) and **vaporised oil** (`VAPOIL`, wet gas `PVTG`), dead oil (`PVDO`, `PVCDO`), live oil (`PVTO` with undersaturated branches), dry gas (`PVDG`), `PVTW`, `ROCK`, `DENSITY`/`GRAVITY`; 2-phase oil-water and oil-gas also work |
+| Thermal | `THERMAL`: fully implicit energy equation (temperature as a 4th unknown) with convection, conduction (`THCONR`), rock heat capacity (`HEATCR`), fluid specific heats (`SPECHEAT`), viscosity vs temperature (`OILVISCT`/`WATVISCT`/`GASVISCT`), water expansion (`WATDENT`), ideal-gas expansion of gas, initial temperature (`RTEMP`, `TEMPI`, `RTEMPVD`) and injection temperature (`WTEMP`) |
+| CO2 storage (CCUS) | `CO2STORE` with `GAS` + `WATER`: built-in CO2-brine properties (Spycher-Pruess solubility with salinity `SALINITY`, water vaporisation `VAPWAT`, volume-shifted Peng-Robinson CO2 density, Batzle-Wang brine), gas-brine saturation functions (`SGWFN`, `WSF`/`GSF`), CO2 inventory split into dissolved, mobile and residually trapped CO2 (`FGIPL`, `FGIPG`, `FGIPM`, `FGIPR`, `FCO2M`) |
 | Compositional (E300) | `COMPS`, `EOS` (PR/SRK), `CNAMES`, `TCRIT`, `PCRIT`, `VCRIT`/`ZCRIT`, `ACF`, `MW`, `BIC`, `OMEGAA/B`, `SSHIFT`, `ZI`/`ZMFVD`, `RTEMP`, `STCOND`, `WELLSTRE` + `WINJGAS` injection streams; Michelsen stability test + successive-substitution flash; Lohrenz-Bray-Clark viscosity; immiscible water phase |
 | Saturation functions | `SWOF`/`SGOF` or `SWFN`/`SGFN`/`SOF3`/`SOF2`, capillary pressure, ECLIPSE default 3-phase oil rel-perm model, `SATNUM`/`PVTNUM` regions |
 | Initialisation | Hydrostatic `EQUIL` (gas cap, oil zone, aquifer, capillary transition zones, datum in any phase), `RSVD`/`PBVD`, `EQLNUM` regions, or enumerated `PRESSURE`/`SWAT`/`SGAS`/`RS`/`PBUB` |
@@ -95,6 +97,9 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 | `SPE5_COMPOSITIONAL.DATA` | SPE5-type 6-component Peng-Robinson fluid, 7×7×3, alternating gas/water injection (WAG) |
 | `WATERFLOOD_DEADOIL.DATA` | METRIC five-spot waterflood with BOX/EQUALS/COPY/MULTIPLY, a MULTZ barrier, `WELOPEN` workover and `WELTARG` change |
 | `CORNERPOINT_DOME.DATA` | Corner-point dome (COORD/ZCORN via `INCLUDE`) with gas cap, aquifer and capillary transition zones |
+| `GASCOND_VAPOIL.DATA` | Gas condensate at its dew point (`VAPOIL`, `PVTG`, `RVVD`): depletion drops condensate near the producer, then dry-gas cycling |
+| `THERMAL_HOTWATER.DATA` | Hot-water (180 C) injection into 600 cP heavy oil at 40 C (`THERMAL`, `OILVISCT`, `WTEMP`) |
+| `CO2_STORAGE.DATA` | 1 Mt of CO2 injected over 10 years into a saline aquifer, then 40 years of plume migration, dissolution and trapping (`CO2STORE`) |
 
 ## Numerical methods
 
@@ -129,6 +134,12 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 * **Material balance**: oil, gas and water in-place change equals cumulative production/injection to
   ~1e-6 in every example.
 * **ECLIPSE output**: files read back with `resdata`, and cell volumes match to 1e-6.
+* **Gas condensate**: produced condensate-gas ratio equals the dew-point Rv until the dew point is reached, then
+  falls as condensate drops out; oil and gas balance errors < 1e-5.
+* **Thermal**: a closed box conserves total energy to 1e-6 while conduction equalises temperature; hot-water
+  injection raises injectivity as oil viscosity falls.
+* **CO2-brine**: CO2 density within 3 % of NIST (50 C, 150 bar); solubility within 6 % of Duan & Sun (2003)
+  at 50 C, 100-400 bar; CO2 inventory balance < 1e-5.
 
 ### Performance (4-core cloud VM, Python 3.11)
 
@@ -138,14 +149,19 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 | Five-spot waterflood | 900 | 5 years | ~7 s |
 | Corner-point dome | 2,000 | 3 years | ~26 s |
 | SPE5-type compositional WAG (IMPEC, 6 comp.) | 147 | 3 years, 138 steps | ~40 s |
+| Gas condensate (VAPOIL), 6 years | 432 | 88 steps | ~14 s |
+| Thermal hot-water flood, 3 years | 675 | 87 steps | ~21 s |
+| CO2 storage, 50 years | 1,350 | 199 steps | ~28 s |
 | SPE1 fluid on a refined 40×40×10 grid | 16,000 | 1 year, 53 steps (CPR-AMG) | ~14 min |
 
 ## Limitations
 
 ReSim is a research/teaching-grade simulator, not a replacement for commercial tools. Not (yet) supported:
-vaporised oil (`VAPOIL`/wet gas `PVTG` is read as dry gas), analytical aquifers, fault NNCs across
+analytical aquifers, fault NNCs across
 non-matching corner-point faces (neighbours are connected logically only), group controls and
-network/VFP tables, LGRs, multi-segment wells, end-point scaling, hysteresis, thermal, polymer/solvent
+network/VFP tables, LGRs, multi-segment wells, end-point scaling, hysteresis (residual CO2 trapping is reported
+from the critical gas saturation, not from a hysteresis model), steam/phase change and heat loss to
+over- and underburden in thermal runs, thermal compositional (E300 THERMAL), polymer/solvent
 options and economic limits (`WECON` is ignored). The compositional solver is IMPEC, so very fine grids
 or high-throughput cells force small time steps. Unsupported keywords are reported as warnings and do
 not stop a run.

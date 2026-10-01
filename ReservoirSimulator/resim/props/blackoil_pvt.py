@@ -156,3 +156,100 @@ class BlackOilPVT:
     @property
     def live(self):
         return isinstance(self.oil, LiveOil)
+
+
+class DryGas:
+    """Dry gas (PVDG) exposed through the wet-gas interface (Rv = 0)."""
+
+    def __init__(self, fluid):
+        self.fluid = fluid
+
+    def rv_sat(self, p):
+        return np.zeros_like(p), np.zeros_like(p)
+
+    def eval(self, p, rv=None):
+        b, db, mu, dmu = self.fluid.eval(p)
+        z = np.zeros_like(p)
+        return b, db, z, mu, dmu, z
+
+
+class WetGas:
+    """PVTG wet gas with vaporised oil Rv.
+
+    `records` is a list of [p_g, Rv_sat, Bg, mu_g, (Rv, Bg, mu_g)...] in SI.
+    For each pressure node the properties are interpolated along its Rv branch,
+    then linearly in pressure between the two bracketing nodes (in b = 1/Bg and
+    1/(Bg mu_g))."""
+
+    def __init__(self, records):
+        nodes = []
+        for rec in records:
+            vals = np.asarray([v for v in rec if not np.isnan(v)], float)
+            pg = vals[0]
+            rows = vals[1:].reshape(-1, 3)
+            order = np.argsort(rows[:, 0])
+            rows = rows[order]
+            nodes.append((pg, float(vals[1]), rows))
+        nodes.sort(key=lambda t: t[0])
+        self.p_n = np.array([n[0] for n in nodes])
+        self.rvs_n = np.array([n[1] for n in nodes])
+        self.branches = [(r[:, 0], 1.0 / r[:, 1], 1.0 / (r[:, 1] * r[:, 2])) for _, _, r in nodes]
+
+    def rv_sat(self, p):
+        v, d = interp(p, self.p_n, self.rvs_n, "linear")
+        neg = v < 0
+        return np.where(neg, 0.0, v), np.where(neg, 0.0, d)
+
+    def _eval(self, p, rv):
+        nn = self.p_n.size
+        if nn == 1:
+            rvb, bb, bm = self.branches[0]
+            return np.maximum(interp(rv, rvb, bb, "linear")[0], 1e-12), interp(rv, rvb, bm, "linear")[0]
+        j = np.clip(np.searchsorted(self.p_n, p, side="right") - 1, 0, nn - 2)
+        w = (p - self.p_n[j]) / (self.p_n[j + 1] - self.p_n[j])
+        w = np.clip(w, -1.0, 2.0)
+        b = np.zeros_like(p)
+        bmu = np.zeros_like(p)
+        for m in range(nn):
+            lo = j == m
+            hi = j + 1 == m
+            if not (lo.any() or hi.any()):
+                continue
+            rvb, bb, bm = self.branches[m]
+            vb = interp(rv, rvb, bb, "linear")[0] if rvb.size > 1 else np.full_like(p, bb[0])
+            vm = interp(rv, rvb, bm, "linear")[0] if rvb.size > 1 else np.full_like(p, bm[0])
+            b += np.where(lo, (1 - w) * vb, 0.0) + np.where(hi, w * vb, 0.0)
+            bmu += np.where(lo, (1 - w) * vm, 0.0) + np.where(hi, w * vm, 0.0)
+        b = np.maximum(b, 1e-12)
+        bmu = np.maximum(bmu, 1e-20)
+        return b, b / bmu
+
+    def eval(self, p, rv):
+        p = np.asarray(p, float)
+        rv = np.asarray(rv, float)
+        hp = 1.0e-6 * np.maximum(np.abs(p), 1.0e5)
+        hr = 1.0e-6 * np.maximum(np.abs(self.rvs_n).max(), 1e-12) + 0.0 * rv
+        b, mu = self._eval(p, rv)
+        b1, mu1 = self._eval(p + hp, rv)
+        b0, mu0 = self._eval(p - hp, rv)
+        b3, mu3 = self._eval(p, rv + hr)
+        b2, mu2 = self._eval(p, rv - hr)
+        return (b, (b1 - b0) / (2 * hp), (b3 - b2) / (2 * hr),
+                mu, (mu1 - mu0) / (2 * hp), (mu3 - mu2) / (2 * hr))
+
+
+class TemperatureFunction:
+    """Viscosity multiplier mu(T)/mu(T_ref) from an OILVISCT/WATVISCT/GASVISCT table."""
+
+    def __init__(self, temps, values, t_ref):
+        order = np.argsort(temps)
+        self.t = np.asarray(temps, float)[order]
+        self.v = np.asarray(values, float)[order]
+        self.ref = float(np.interp(t_ref, self.t, self.v))
+
+    def eval(self, T):
+        # interpolate log(mu) for the strongly non-linear viscosity-temperature relation
+        lv = np.log(np.maximum(self.v, 1e-30))
+        val, d = interp(T, self.t, lv, "constant")
+        f = np.exp(val) / self.ref
+        return f, f * d

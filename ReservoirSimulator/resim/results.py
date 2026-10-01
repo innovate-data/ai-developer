@@ -35,7 +35,9 @@ SUMMARY_UNITS = {
     "OPT": "liquid_surface_volume", "WPT": "liquid_surface_volume", "GPT": "gas_surface_volume",
     "WIT": "liquid_surface_volume", "GIT": "gas_surface_volume", "BHP": "pressure", "PR": "pressure",
     "OIP": "liquid_surface_volume", "GIP": "gas_surface_volume", "WIP": "liquid_surface_volume",
-    "GOR": "rs",
+    "GOR": "rs", "GIPL": "gas_surface_volume", "GIPG": "gas_surface_volume", "GIPM": "gas_surface_volume",
+    "GIPR": "gas_surface_volume", "CO2M": "mass", "OIPL": "liquid_surface_volume", "OIPG": "liquid_surface_volume",
+    "TEMP": "temperature",
 }
 
 
@@ -68,7 +70,7 @@ class Results:
         from .units import get_units
         u = get_units(self.meta.get("units", "METRIC"))
         base = key.split(":")[0]
-        if base.endswith("WCT"):
+        if base.endswith("WCT") or base == "FCO2D":
             return "fraction"
         for suffix, q in SUMMARY_UNITS.items():
             if base[1:] == suffix:

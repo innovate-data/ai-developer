@@ -29,10 +29,12 @@ from ..units import get_units
 FLUID_DEADOIL = "deadoil"
 FLUID_BLACKOIL = "blackoil"
 FLUID_COMPOSITIONAL = "compositional"
+FLUID_CO2 = "co2store"
 FLUID_TYPES = {
     FLUID_DEADOIL: "Dead oil + water",
     FLUID_BLACKOIL: "Black oil (live oil + gas)",
     FLUID_COMPOSITIONAL: "Compositional (Peng-Robinson)",
+    FLUID_CO2: "CO2 storage in brine (CCUS)",
 }
 
 MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -203,6 +205,32 @@ def corey_sgof(p: CoreyParams) -> np.ndarray:
     return np.array(rows)
 
 
+def corey_sgwfn(p: CoreyParams) -> np.ndarray:
+    """SGWFN table (Sg, krg, krw, Pcgw=0) for gas (CO2) - brine systems."""
+    sg_max = 1.0 - p.swc
+    if sg_max <= p.sgc:
+        raise ValueError("Swc + Sgc must be < 1")
+    sg = np.unique(np.concatenate([[0.0, p.sgc], np.linspace(p.sgc, sg_max, max(p.nrows - 1, 2))]))
+    krg = np.where(sg > p.sgc, p.krg_max * ((sg - p.sgc) / (sg_max - p.sgc)) ** p.ng, 0.0)
+    sw = 1.0 - sg
+    krw = p.krw_max * np.clip((sw - p.swc) / (1.0 - p.swc), 0.0, 1.0) ** p.nw
+    return np.column_stack([sg, krg, krw, np.zeros_like(sg)])
+
+
+def _visc_temperature_table(units, rtemp, activation_k):
+    """Viscosity-temperature table (absolute values only matter as ratios) using an
+    Arrhenius law mu ~ exp(E (1/T - 1/T_ref))."""
+    if units == "FIELD":
+        temps = [60, 100, 150, 200, 250, 300, 400, 500]
+        tk = [(t + 459.67) * 5 / 9 for t in temps]
+        tref = (rtemp + 459.67) * 5 / 9
+    else:
+        temps = [15, 40, 65, 95, 120, 150, 200, 260]
+        tk = [t + 273.15 for t in temps]
+        tref = rtemp + 273.15
+    return [[t, float(np.exp(activation_k * (1 / k - 1 / tref)))] for t, k in zip(temps, tk)]
+
+
 # ----------------------------------------------------------------------------
 # Specification
 # ----------------------------------------------------------------------------
@@ -266,6 +294,9 @@ class DeckSpec:
     woc: float = 8450.0
     goc: float = 8300.0
     wells: list = field(default_factory=list)
+    salinity: float = 1.0          # mol NaCl / kg water (CO2 storage)
+    thermal: bool = False          # energy equation (dead oil / black oil)
+    inj_temp: float = 300.0        # injection temperature of injectors (deck temperature unit)
     total_time: float = 3650.0
     report_step: float = 365.0
     summary: list = field(default_factory=lambda: [
@@ -280,7 +311,8 @@ class DeckSpec:
 def default_spec(fluid: str = FLUID_BLACKOIL, units: str = "FIELD") -> DeckSpec:
     """A complete, runnable default specification for the given fluid type and unit system."""
     s = DeckSpec(fluid=fluid, units="FIELD")
-    s.case_name = {FLUID_DEADOIL: "WATERFLOOD", FLUID_BLACKOIL: "GASINJ", FLUID_COMPOSITIONAL: "SPE5COMP"}[fluid]
+    s.case_name = {FLUID_DEADOIL: "WATERFLOOD", FLUID_BLACKOIL: "GASINJ", FLUID_COMPOSITIONAL: "SPE5COMP",
+                   FLUID_CO2: "CO2STORE"}[fluid]
     if fluid == FLUID_DEADOIL:
         s.title = "Dead oil waterflood"
         s.datum_pressure = 4000.0
@@ -291,6 +323,28 @@ def default_spec(fluid: str = FLUID_BLACKOIL, units: str = "FIELD") -> DeckSpec:
         s.title = "Black oil gas injection"
         s.wells = [WellSpec("PROD", "PROD", 10, 10, 3, 3, "ORAT", 20000.0, 1000.0),
                    WellSpec("INJ", "INJ", 1, 1, 1, 1, "RATE", 100000.0, 9014.0, "GAS")]
+    elif fluid == FLUID_CO2:
+        s.title = "CO2 storage in a saline aquifer"
+        s.case_name = "CO2STORE"
+        s.nx = s.ny = 15
+        s.nz = 6
+        s.dx = s.dy = "500"
+        s.dz = "33"
+        s.top = 3300.0
+        s.poro = "0.22"
+        s.permx = s.permy = "300, 80, 400, 150, 500, 250"
+        s.permz = "30, 8, 40, 15, 50, 25"
+        s.rock_pref = 1450.0
+        s.rock_comp = 3.4e-6
+        s.datum, s.datum_pressure = 3300.0, 1450.0
+        s.woc, s.goc = 4000.0, 3000.0
+        s.rtemp = 113.0
+        s.salinity = 1.0
+        s.corey = CoreyParams(swc=0.2, sorw=0.0, sgc=0.1, sorg=0.0, nw=3.0, now=3.0, ng=2.0, nog=2.0,
+                              krw_max=1.0, kro_max=1.0, krg_max=0.8)
+        s.wells = [WellSpec("CO2INJ", "INJ", 8, 8, 4, 6, "RATE", 5191.0, 2600.0, "GAS")]
+        s.total_time, s.report_step = 7305.0, 365.25
+        s.summary = ["FGIR", "FGIT", "FGIP", "FGIPL", "FGIPG", "FGIPR", "FGIPM", "FCO2M", "FPR"]
     else:
         s.title = "SPE5-type compositional gas injection"
         s.nx = s.ny = 7
@@ -333,6 +387,7 @@ def convert_spec(spec: DeckSpec, units: str) -> DeckSpec:
     s.pvdg = convert_table(s.pvdg, PVDG_Q, a, b).tolist()
     s.pvto = convert_pvto(s.pvto, a, b)
     s.rtemp = convert(s.rtemp, "temperature", a, b)
+    s.inj_temp = convert(s.inj_temp, "temperature", a, b)
     for c in s.components:
         c.tc = convert(c.tc, "abs_temperature", a, b)
         c.pc = convert(c.pc, "pressure", a, b)
@@ -423,6 +478,8 @@ def _validate(spec: DeckSpec):
         raise ValueError("Total time and report step must be positive")
     if spec.fluid == FLUID_COMPOSITIONAL and spec.nc < 2:
         raise ValueError("Compositional fluid needs at least 2 components")
+    if spec.fluid == FLUID_CO2 and any(w.kind == "INJ" and w.phase != "GAS" for w in spec.wells):
+        raise ValueError("CO2 storage: injectors inject CO2 (set the injected phase to GAS)")
 
 
 def generate_deck(spec: DeckSpec) -> str:
@@ -432,6 +489,8 @@ def generate_deck(spec: DeckSpec) -> str:
     units = spec.units.upper()
     nx, ny, nz = spec.nx, spec.ny, spec.nz
     comp = fl == FLUID_COMPOSITIONAL
+    co2 = fl == FLUID_CO2
+    thermal = spec.thermal and fl in (FLUID_DEADOIL, FLUID_BLACKOIL)
     has_gas = fl in (FLUID_BLACKOIL, FLUID_COMPOSITIONAL)
     nwells = len(spec.wells)
     maxconn = max(w.k2 - w.k1 + 1 for w in spec.wells)
@@ -447,11 +506,16 @@ def generate_deck(spec: DeckSpec) -> str:
     a("RUNSPEC\n")
     a(f"TITLE\n   {spec.title or spec.case_name}\n")
     a(f"DIMENS\n   {nx} {ny} {nz} /\n")
-    a("OIL\nWATER")
-    if has_gas:
-        a("GAS")
-    if fl == FLUID_BLACKOIL:
-        a("DISGAS")
+    if co2:
+        a("GAS\nWATER\nCO2STORE\nDISGASW\nVAPWAT")
+    else:
+        a("OIL\nWATER")
+        if has_gas:
+            a("GAS")
+        if fl == FLUID_BLACKOIL:
+            a("DISGAS")
+    if thermal:
+        a("THERMAL")
     a("")
     a(units + "\n")
     d = spec.start
@@ -477,12 +541,32 @@ def generate_deck(spec: DeckSpec) -> str:
     a(_array_kw("PORO", _layered(spec, spec.poro, "PORO")))
     for kw in ("PERMX", "PERMY", "PERMZ"):
         a(_array_kw(kw, _layered(spec, getattr(spec, kw.lower()), kw)))
+    if thermal:
+        n = nx * ny * nz
+        hc, tc = (35.0, 24.0) if units == "FIELD" else (2350.0, 190.0)
+        a("-- rock heat capacity per rock volume [" + ("Btu/ft3/F" if units == "FIELD" else "kJ/m3/K") + "]")
+        a(_array_kw("HEATCR", [hc] * n))
+        a("-- thermal conductivity [" + ("Btu/ft/day/F" if units == "FIELD" else "kJ/m/day/K") + "]")
+        a(_array_kw("THCONR", [tc] * n))
 
     # ------------------------------------------------------------------ PROPS
     a("-- " + "-" * 70)
     a("PROPS\n")
-    a(_table_kw("PVTW", [spec.pvtw], f"Pref[{pu}] Bw cw muw cv"))
-    if fl == FLUID_DEADOIL:
+    tu = "F" if units == "FIELD" else "C"
+    if co2:
+        a("-- CO2 and brine properties are computed internally (Spycher-Pruess solubility,")
+        a("-- Peng-Robinson CO2 density, Batzle-Wang brine) at the reservoir temperature")
+        a(_table_kw("ROCK", [[spec.rock_pref, spec.rock_comp]], f"Pref[{pu}] cr"))
+        a(_table_kw("SGWFN", corey_sgwfn(spec.corey), "Sg krg krw Pcgw"))
+        a(f"SALINITY\n-- mol NaCl per kg water\n   {_fmt(spec.salinity)} /\n")
+        a(f"RTEMP\n-- reservoir temperature [{tu}]\n   {_fmt(spec.rtemp)} /\n")
+    if co2:
+        pass
+    else:
+        a(_table_kw("PVTW", [spec.pvtw], f"Pref[{pu}] Bw cw muw cv"))
+    if co2:
+        pass
+    elif fl == FLUID_DEADOIL:
         a(_table_kw("PVDO", spec.pvdo, f"P[{pu}] Bo muo[cP]"))
     elif fl == FLUID_BLACKOIL:
         a("PVTO")
@@ -515,18 +599,27 @@ def generate_deck(spec: DeckSpec) -> str:
         a(_array_kw("ZI", [c.z_oil / ztot for c in cs], per_line=8))
         a(f"RTEMP\n   {_fmt(spec.rtemp)} /\n")
         a(f"STCOND\n   {_fmt(spec.stcond[0])} {_fmt(spec.stcond[1])} /\n")
-    a(_table_kw("DENSITY", [spec.density], "oil water gas"))
-    a(_table_kw("ROCK", [[spec.rock_pref, spec.rock_comp]], f"Pref[{pu}] cr"))
-    a(_table_kw("SWOF", corey_swof(spec.corey), "Sw krw krow Pcow"))
-    if has_gas:
-        a(_table_kw("SGOF", corey_sgof(spec.corey), "Sg krg krog Pcog"))
+    if not co2:
+        a(_table_kw("DENSITY", [spec.density], "oil water gas"))
+        a(_table_kw("ROCK", [[spec.rock_pref, spec.rock_comp]], f"Pref[{pu}] cr"))
+        a(_table_kw("SWOF", corey_swof(spec.corey), "Sw krw krow Pcow"))
+        if has_gas:
+            a(_table_kw("SGOF", corey_sgof(spec.corey), "Sg krg krog Pcog"))
+    if thermal:
+        a(f"RTEMP\n-- reservoir temperature [{tu}] (PVT viscosities apply here)\n   {_fmt(spec.rtemp)} /\n")
+        cpu = "Btu/lb/F" if units == "FIELD" else "kJ/kg/K"
+        rows = [[32, 0.50, 1.00, 0.26], [572, 0.60, 1.07, 0.29]] if units == "FIELD" else \
+               [[0, 2.10, 4.18, 1.10], [300, 2.50, 4.48, 1.20]]
+        a(_table_kw("SPECHEAT", rows, f"T[{tu}] cp_oil cp_water cp_gas [{cpu}]"))
+        a(_table_kw("OILVISCT", _visc_temperature_table(units, spec.rtemp, 3500.0), f"T[{tu}] relative mu_oil"))
+        a(_table_kw("WATVISCT", _visc_temperature_table(units, spec.rtemp, 1800.0), f"T[{tu}] relative mu_water"))
 
     # ------------------------------------------------------------------ SOLUTION
     a("-- " + "-" * 70)
     a("SOLUTION\n")
     a("EQUIL")
     a(f"-- datum[{lu}] pressure[{pu}] WOC Pcow GOC Pcgo")
-    goc = _fmt(spec.goc) if has_gas else "1*"
+    goc = _fmt(spec.goc) if (has_gas or co2) else "1*"
     a(f"   {_fmt(spec.datum)} {_fmt(spec.datum_pressure)} {_fmt(spec.woc)} 0 {goc} 0 /\n")
 
     # ------------------------------------------------------------------ SUMMARY
@@ -579,6 +672,11 @@ def generate_deck(spec: DeckSpec) -> str:
                 if w.phase == "GAS":
                     a(f"   '{w.name}' 'STREAM' 'INJGAS' /")
             a("/\n")
+    if thermal and injs:
+        a(f"WTEMP\n-- injection temperature [{tu}]")
+        for w in injs:
+            a(f"   '{w.name}' {_fmt(spec.inj_temp)} /")
+        a("/\n")
     a(f"-- {_fmt(spec.total_time)} days in report steps of {_fmt(spec.report_step)} days")
     nfull = int(np.floor(spec.total_time / spec.report_step + 1e-9))
     rem = spec.total_time - nfull * spec.report_step

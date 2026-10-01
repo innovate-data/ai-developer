@@ -10,7 +10,9 @@ import numpy as np
 from .deck.gridprops import GridProperties
 from .deck.parser import Deck, parse_deck, rec_get, to_float, to_int, to_str
 from .grid import Grid, cartesian_corners, corner_point_corners
-from .props.blackoil_pvt import BlackOilPVT, ConstCompressibilityFluid, DeadOil, LiveOil, TabulatedFluid
+from .props.blackoil_pvt import (BlackOilPVT, ConstCompressibilityFluid, DeadOil, DryGas, LiveOil, TabulatedFluid,
+                                 TemperatureFunction, WetGas)
+from .props.tables import interp as _interp
 from .props.eos import CubicEOS
 from .props.relperm import SaturationTable, default_sgof, default_swof, family2_to_family1
 from .schedule import ScheduleBuilder, parse_start
@@ -26,6 +28,8 @@ HANDLED = {
     "COORD", "ZCORN", "MINPV", "MINPORV", "RPTGRID", "INIT", "GRIDFILE", "NEWTRAN", "OLDTRAN", "MAPAXES",
     "MAPUNITS", "GRIDUNIT", "COORDSYS", "PINCH", "NOGGF",
     # PROPS
+    "THERMAL", "CO2STORE", "VAPOIL", "VAPWAT", "DISGASW", "SALINITY", "SPECHEAT", "HEATCR", "THCONR",
+    "OILVISCT", "WATVISCT", "GASVISCT", "WATDENT", "RTEMPVD", "WTEMP", "RVVD", "SGWFN", "WSF", "GSF",
     "SWOF", "SGOF", "SWFN", "SGFN", "SOF3", "SOF2", "PVTW", "PVDO", "PVCDO", "PVTO", "PVDG", "PVTG", "DENSITY",
     "GRAVITY", "ROCK", "RPTPROPS", "CNAMES", "TCRIT", "PCRIT", "VCRIT", "ZCRIT", "ACF", "MW", "BIC", "OMEGAA",
     "OMEGAB", "SSHIFT", "STCOND", "RTEMP", "TEMPI", "ZI", "PARACHOR", "VCRITVIS", "ZCRITVIS", "LBCCOEF",
@@ -80,6 +84,10 @@ class SimulationModel:
     summary_keywords: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
     gravity: float = GRAVITY
+    thermal: Optional[dict] = None      # energy equation data (THERMAL)
+    co2store: bool = False              # CO2-brine storage mode (CO2STORE)
+    salinity: float = 0.0               # mol NaCl per kg water (CO2STORE)
+    rvvd: list = field(default_factory=list)
 
     @property
     def n_active(self):
@@ -117,10 +125,21 @@ class ModelBuilder:
             raise ValueError("LAB and PVT-M unit systems are not supported")
         self.u = units
         compositional = "COMPS" in d
+        co2 = "CO2STORE" in d
+        thermal = "THERMAL" in d
         phases = {"water": "WATER" in d, "oil": "OIL" in d or compositional,
                   "gas": "GAS" in d or compositional, "disgas": "DISGAS" in d, "vapoil": "VAPOIL" in d}
-        if phases["vapoil"]:
-            self.warn("VAPOIL (vaporised oil) is not supported; gas is treated as dry gas")
+        if co2:
+            if compositional:
+                raise ValueError("CO2STORE cannot be combined with COMPS")
+            if not ("GAS" in d and ("WATER" in d or "OIL" in d)):
+                raise ValueError("CO2STORE needs GAS and WATER (brine) phases")
+            # brine is carried in the liquid (oil) slot, CO2 in the gas slot; dissolution is always on
+            phases = {"water": False, "oil": True, "gas": True, "disgas": True,
+                      "vapoil": "VAPWAT" in d or "VAPOIL" in d}
+        if thermal and compositional:
+            self.warn("THERMAL is only supported for black-oil models; the compositional run is isothermal")
+            thermal = False
         if not phases["oil"]:
             raise ValueError("Models without an oil phase are not supported")
 
@@ -202,14 +221,27 @@ class ModelBuilder:
         act_cells = np.nonzero(active)[0]
         g2a[act_cells] = np.arange(act_cells.size)
 
-        conn_a, conn_b, conn_T = [], [], []
-        for dirn, key in (("I", "TRANX"), ("J", "TRANY"), ("K", "TRANZ")):
+        conn_a, conn_b, conn_T, conn_k = [], [], [], []
+        if thermal:
+            kq = units.to_si(1.0, "thermal_conductivity")
+            if gp.has("THCONR"):
+                thcon = np.nan_to_num(gp.get("THCONR")) * kq
+            else:
+                self.warn("THCONR missing; using a thermal conductivity of 2.0 W/m/K")
+                thcon = np.full(grid.n_cells, 2.0)
+        for dirn, key, fp, fm in (("I", "TRANX", "I+", "I-"), ("J", "TRANY", "J+", "J-"), ("K", "TRANZ", "K+", "K-")):
             a, b = grid.neighbour_pairs(dirn)
             t = np.nan_to_num(gp.get(key))[a] * tu
             ok = active[a] & active[b] & (t > 0)
             conn_a.append(g2a[a[ok]])
             conn_b.append(g2a[b[ok]])
             conn_T.append(t[ok])
+            if thermal:
+                ka = grid.half_trans(fp, thcon)[a]
+                kb = grid.half_trans(fm, thcon)[b]
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    kc = np.where((ka > 0) & (kb > 0), ka * kb / (ka + kb), 0.0)
+                conn_k.append(kc[ok])
 
         def region(name):
             arr = gp.get(name)
@@ -226,7 +258,10 @@ class ModelBuilder:
             rock=[], rocknum=region("PVTNUM"), pvtnum=region("PVTNUM"), satnum=region("SATNUM"),
             eqlnum=region("EQLNUM"),
         )
+        model.co2store = co2
         self._props(model)
+        if thermal:
+            self._thermal(model, gp, np.concatenate(conn_k))
         self._solution(model, gp)
         self._schedule(model)
         self._summary(model)
@@ -286,6 +321,9 @@ class ModelBuilder:
         sgfn = self._tables("SGFN", 3)
         sof3 = self._tables("SOF3", 3)
         sof2 = self._tables("SOF2", 2)
+        if model.co2store:
+            swof, sgof = None, self._co2_sgof(sgof, swfn, sgfn)
+            swfn = sgfn = sof3 = sof2 = None
         nsat = max(len(t) for t in (swof, sgof, swfn, sgfn, sof3, sof2, [None]) if t is not None)
         sats = []
         for r in range(nsat):
@@ -332,7 +370,8 @@ class ModelBuilder:
                 w = sw * 999.014
                 g = sg * 1.2232
             else:
-                self.warn("DENSITY missing; using defaults (oil 800, water 1000, gas 1 kg/m3)")
+                if not model.co2store:
+                    self.warn("DENSITY missing; using defaults (oil 800, water 1000, gas 1 kg/m3)")
                 o, w, g = 800.0, 1000.0, 1.0
             densities.append((o, w, g))
 
@@ -363,6 +402,10 @@ class ModelBuilder:
 
         if model.fluid_type == "compositional":
             self._eos(model, densities, waters)
+            return
+
+        if model.co2store:
+            self._co2_pvt(model)
             return
 
         # ---- black oil PVT
@@ -400,24 +443,146 @@ class ModelBuilder:
             else:
                 raise ValueError("No oil PVT (PVTO, PVDO or PVCDO) found")
             gas = None
+            rv_u = u.to_si(1.0, "rv")
             if ph["gas"]:
-                if pvdg is not None:
+                if pvtg is not None and ph["vapoil"]:
+                    recs = []
+                    for rec in pvtg.data[min(r, len(pvtg.data) - 1)]:
+                        rec = [v for v in rec if not np.isnan(v)]
+                        rows = np.asarray(rec[1:], float).reshape(-1, 3)
+                        rows[:, 0] *= rv_u
+                        rows[:, 1] *= bg_u
+                        rows[:, 2] *= mu_u
+                        recs.append([rec[0] * P] + list(rows.ravel()))
+                    gas = WetGas(recs)
+                elif pvdg is not None:
                     t = pvdg[min(r, len(pvdg) - 1)]
-                    gas = TabulatedFluid(t[:, 0] * P, t[:, 1] * bg_u, t[:, 2] * mu_u)
+                    gas = DryGas(TabulatedFluid(t[:, 0] * P, t[:, 1] * bg_u, t[:, 2] * mu_u))
                 elif pvtg is not None:
-                    self.warn("PVTG wet gas treated as dry gas (saturated Rv rows only)")
+                    self.warn("PVTG given without VAPOIL; gas treated as dry gas (saturated rows)")
                     rows = []
                     for rec in pvtg.data[min(r, len(pvtg.data) - 1)]:
                         rec = [v for v in rec if not np.isnan(v)]
                         rows.append((rec[0], rec[2], rec[3]))
                     rows = np.array(rows)
-                    gas = TabulatedFluid(rows[:, 0] * P, rows[:, 1] * bg_u, rows[:, 2] * mu_u)
+                    gas = DryGas(TabulatedFluid(rows[:, 0] * P, rows[:, 1] * bg_u, rows[:, 2] * mu_u))
                 else:
                     raise ValueError("GAS phase active but no PVDG/PVTG table")
             o, w, g = densities[r]
             pvts.append(BlackOilPVT(waters[r], oil, gas, o, w, g))
         model.pvt = pvts
         model.phases["disgas"] = model.phases["disgas"] and all(p.live for p in pvts)
+        if model.phases["vapoil"] and not all(isinstance(p.gas, WetGas) for p in pvts):
+            self.warn("VAPOIL needs PVTG wet-gas tables; vaporised oil disabled")
+            model.phases["vapoil"] = False
+
+    def _temperature(self, model):
+        """Reservoir temperature from RTEMP / TEMPI / RTEMPVD / TEMPVD (K)."""
+        d, u = self.deck, self.u
+        if d.get("RTEMP"):
+            return u.to_si(to_float(d.get("RTEMP").data[0][0]), "temperature")
+        if d.get("TEMPI") is not None:
+            return u.to_si(float(np.nanmean(d.get("TEMPI").data)), "temperature")
+        for name in ("RTEMPVD", "TEMPVD"):
+            if d.get(name) is not None:
+                return u.to_si(float(np.mean(d.get(name).data[0][1::2])), "temperature")
+        self.warn("Reservoir temperature (RTEMP) missing; using 100 C")
+        return 373.15
+
+    def _co2_sgof(self, sgof, swfn, sgfn):
+        """CO2-brine saturation functions as SGOF-style tables (Sg, krg, kr_brine, Pc)."""
+        if sgof is not None:
+            return sgof
+        sgwfn = self._tables("SGWFN", 4)
+        if sgwfn is not None:
+            return [t.copy() for t in sgwfn]
+        wsf, gsf = self._tables("WSF", 2), self._tables("GSF", 3)
+        if wsf is None and swfn is not None:
+            wsf = [t[:, :2] for t in swfn]
+        if gsf is None and sgfn is not None:
+            gsf = sgfn
+        if wsf is not None and gsf is not None:
+            out = []
+            for r in range(max(len(wsf), len(gsf))):
+                w, g = wsf[min(r, len(wsf) - 1)], gsf[min(r, len(gsf) - 1)]
+                sg = g[:, 0]
+                krl = np.interp(1.0 - sg, w[:, 0], w[:, 1])
+                out.append(np.column_stack([sg, g[:, 1], krl, g[:, 2]]))
+            return out
+        self.warn("CO2STORE: no gas-brine saturation functions (SGOF, SGWFN, WSF/GSF); using Corey defaults")
+        return None
+
+    def _co2_pvt(self, model):
+        from .props.co2brine import CO2BrineSystem
+        d = self.deck
+        model.temperature = self._temperature(model)
+        sal = d.get("SALINITY")
+        model.salinity = to_float(sal.data[0][0], 0.0) if sal and sal.data and sal.data[0] else 0.0
+        p_max = 1.0e8
+        for eq in d.get_all("EQUIL"):
+            for rec in eq.data:
+                if rec:
+                    p_max = max(p_max, 3.0 * self.u.to_si(to_float(rec_get(rec, 1), 0.0), "pressure"))
+        sysm = CO2BrineSystem(model.temperature, model.salinity, p_max=p_max, vapwat=model.phases["vapoil"])
+        model.co2_system = sysm
+        model.pvt = [BlackOilPVT(None, sysm.brine, sysm.gas, sysm.rho_bs, sysm.rho_bs, sysm.rho_gs)]
+        model.pvtnum = np.zeros_like(model.pvtnum)
+
+    def _thermal(self, model, gp, conn_k):
+        """Energy-equation data: heat capacities, conductivity, viscosity(T), expansion, initial T."""
+        d, u = self.deck, self.u
+        Tq = lambda v: u.to_si(v, "temperature")
+        t_ref = model.temperature if model.co2store else self._temperature(model)
+        model.temperature = t_ref
+        th = {"t_ref": t_ref, "conn_k": conn_k, "visc": {}}
+        # fluid specific heats (J/kg/K) vs temperature
+        spec = self._tables("SPECHEAT", 4)
+        cpu = u.to_si(1.0, "specific_heat")
+        defaults = {"o": 2100.0, "w": 4180.0, "g": 1100.0}
+        cp = {}
+        for col, ph in ((1, "o"), (2, "w"), (3, "g")):
+            if spec is not None:
+                t = spec[0]
+                tt, cc = Tq(t[:, 0]), t[:, col] * cpu
+                cp[ph] = (lambda T, tt=tt, cc=cc: _interp(T, tt, cc, "constant"))
+            else:
+                c0 = defaults[ph]
+                cp[ph] = (lambda T, c0=c0: (np.full_like(np.asarray(T, float), c0), np.zeros_like(np.asarray(T, float))))
+        if spec is None:
+            self.warn("SPECHEAT missing; using specific heats oil 2.1, water 4.18, gas 1.1 kJ/kg/K")
+        th["cp"] = cp
+        # rock heat capacity per unit rock volume
+        if gp.has("HEATCR"):
+            heatcr = np.nan_to_num(gp.get("HEATCR")) * u.to_si(1.0, "volumetric_heat_capacity")
+        else:
+            self.warn("HEATCR missing; using a rock heat capacity of 2.5 MJ/m3/K")
+            heatcr = np.full(model.grid.n_cells, 2.5e6)
+        rock_vol = np.maximum(model.grid.volume[model.active_cells] - model.pore_volume, 0.0)
+        th["rock_heat"] = rock_vol * heatcr[model.active_cells]
+        # viscosity versus temperature
+        for name, ph in (("OILVISCT", "o"), ("WATVISCT", "w"), ("GASVISCT", "g")):
+            kw = d.get(name)
+            if kw is not None:
+                t = np.asarray(kw.data[0], float)
+                t = t[~np.isnan(t)].reshape(-1, 2)
+                th["visc"][ph] = TemperatureFunction(Tq(t[:, 0]), t[:, 1], t_ref)
+        wd = self._records("WATDENT", 3)
+        if wd is not None:
+            row = np.nan_to_num(wd[0])
+            dtu = u.to_si(1.0, "temperature") - u.to_si(0.0, "temperature")
+            th["watdent"] = (Tq(row[0]), row[1] / dtu, row[2] / dtu ** 2)
+        # initial temperature
+        if gp.has("TEMPI"):
+            T0 = Tq(gp.get("TEMPI"))[model.active_cells]
+        else:
+            tv = self._tables("RTEMPVD", 2) or self._tables("TEMPVD", 2)
+            if tv is not None:
+                t = tv[0]
+                T0 = np.interp(model.depth, t[:, 0] * u.to_si(1.0, "length"), Tq(t[:, 1]))
+            else:
+                T0 = np.full(model.n_active, t_ref)
+        th["T_init"] = T0
+        model.thermal = th
 
     def _eos(self, model, densities, waters):
         d, u = self.deck, self.u
@@ -498,7 +663,7 @@ class ModelBuilder:
                     "goc": to_float(rec_get(rec, 4), -1e10) * L if rec_get(rec, 4) is not None else None,
                     "pcgo_goc": to_float(rec_get(rec, 5), 0.0) * P,
                 })
-        for name, dest, q in (("RSVD", model.rsvd, "rs"), ("PBVD", model.pbvd, "pressure")):
+        for name, dest, q in (("RSVD", model.rsvd, "rs"), ("PBVD", model.pbvd, "pressure"), ("RVVD", model.rvvd, "rv")):
             tabs = self._tables(name, 2)
             if tabs:
                 for t in tabs:
@@ -506,7 +671,7 @@ class ModelBuilder:
                     t[:, 0] *= L
                     t[:, 1] = u.to_si(t[:, 1], q)
                     dest.append(t)
-        for name, q in (("PRESSURE", "pressure"), ("SWAT", None), ("SGAS", None), ("RS", "rs"), ("PBUB", "pressure")):
+        for name, q in (("PRESSURE", "pressure"), ("SWAT", None), ("SGAS", None), ("RS", "rs"), ("RV", "rv"), ("PBUB", "pressure")):
             if gp.has(name):
                 v = gp.get(name)[model.active_cells]
                 model.explicit_init[name] = u.to_si(v, q) if q else v
@@ -520,6 +685,16 @@ class ModelBuilder:
                 sb.process(kw)
         if not sb.steps:
             self.warn("No TSTEP/DATES in SCHEDULE; nothing to simulate beyond initialisation")
+        if model.co2store:
+            # brine lives in the liquid (oil) slot: water controls and water injection map onto it
+            for st in sb.steps:
+                for w in st.wells.values():
+                    if w.inj_type == "WATER":
+                        w.inj_type = "OIL"
+                    if "WRAT" in w.targets:
+                        w.targets["ORAT"] = w.targets.pop("WRAT")
+                    if w.control == "WRAT":
+                        w.control = "ORAT"
         model.schedule = sb.steps
 
     def _summary(self, model):

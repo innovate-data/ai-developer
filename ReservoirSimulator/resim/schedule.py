@@ -52,6 +52,7 @@ class Well:
     inj_type: str = "WATER"
     inj_composition: Optional[np.ndarray] = None
     history: bool = False
+    inj_temp: Optional[float] = None    # injection temperature (K), WTEMP
 
     def limit(self, key):
         return self.targets.get(key, None)
@@ -323,6 +324,13 @@ class ScheduleBuilder:
                 self.warn(f"DATES {d:%d %b %Y} is before the current time; ignored")
                 continue
             self._add_step(t, d)
+
+    def _kw_WTEMP(self, data):
+        for rec in data:
+            if not rec:
+                continue
+            for name in self._match(rec[0]):
+                self.wells[name].inj_temp = self._num(rec, 1, "temperature")
 
     def _kw_WECON(self, data):
         self.warn("WECON economic limits are ignored")

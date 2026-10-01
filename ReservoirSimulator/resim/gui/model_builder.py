@@ -12,7 +12,7 @@ import datetime as _dt
 
 import numpy as np
 from PyQt5.QtCore import QDate, Qt, pyqtSignal
-from PyQt5.QtWidgets import (QAbstractItemView, QComboBox, QDateEdit, QFormLayout,
+from PyQt5.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDateEdit, QFormLayout,
                              QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget,
                              QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
@@ -435,6 +435,20 @@ class ModelBuilder(QWidget):
         cl.addWidget(self.comp_table, 3)
         cl.addWidget(QLabel("<b>Binary interaction coefficients</b> (lower triangle is used)"))
         cl.addWidget(self.bic_table, 3)
+        self.fluid_stack.addWidget(co)
+        # CO2 storage: properties are built in
+        co2 = QLabel(
+            "<b>CO2 storage in brine (CO2STORE)</b><br>CO2 and brine properties are computed by the simulator "
+            "at the reservoir temperature: CO2 density from Peng-Robinson (volume-shifted), viscosity from "
+            "Lohrenz-Bray-Clark, brine density and viscosity from Batzle-Wang, CO2 solubility in brine and "
+            "water vaporisation into CO2 from Spycher-Pruess with a salinity correction.<br>Set the "
+            "salinity and reservoir temperature below. The PVTW and DENSITY tables above are not used.")
+        co2.setWordWrap(True)
+        co2.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.fluid_stack.addWidget(co2)
+        lay.addWidget(self.fluid_stack, 1)
+
+        # temperature, CO2 and thermal options (shared by all fluid types)
         cf = QHBoxLayout()
         self.rtemp = _dspin(160, -300, 2000, 2)
         self.stc_t = _dspin(60, -300, 300, 3)
@@ -446,9 +460,19 @@ class ModelBuilder(QWidget):
         cf.addWidget(self._ulabel("Std. pressure [{u}]", "pressure"))
         cf.addWidget(self.stc_p)
         cf.addStretch(1)
-        cl.addLayout(cf)
-        self.fluid_stack.addWidget(co)
-        lay.addWidget(self.fluid_stack, 1)
+        lay.addLayout(cf)
+        tf = QHBoxLayout()
+        self.thermal = QCheckBox("Thermal (energy equation; dead oil / black oil)")
+        self.inj_temp = _dspin(300, -300, 3000, 1)
+        self.salinity = _dspin(1.0, 0, 6, 3, 0.1)
+        tf.addWidget(self.thermal)
+        tf.addWidget(self._ulabel("Injection temperature [{u}]", "temperature"))
+        tf.addWidget(self.inj_temp)
+        tf.addSpacing(20)
+        tf.addWidget(QLabel("Salinity (CO2 storage) [mol NaCl/kg]"))
+        tf.addWidget(self.salinity)
+        tf.addStretch(1)
+        lay.addLayout(tf)
         return w
 
     def _build_scal_page(self):
@@ -640,7 +664,8 @@ class ModelBuilder(QWidget):
             self.summary.setText(" ".join(s.summary))
         finally:
             self._loading = False
-        self.goc.setEnabled(s.fluid == dg.FLUID_BLACKOIL)
+        self.goc.setEnabled(s.fluid in (dg.FLUID_BLACKOIL, dg.FLUID_CO2))
+        self._last_fluid = s.fluid
         self._refresh_unit_labels()
         self._update_scal_preview()
 
@@ -658,6 +683,9 @@ class ModelBuilder(QWidget):
         self.rtemp.setValue(s.rtemp)
         self.stc_t.setValue(s.stcond[0])
         self.stc_p.setValue(s.stcond[1])
+        self.salinity.setValue(s.salinity)
+        self.inj_temp.setValue(s.inj_temp)
+        self.thermal.setChecked(bool(s.thermal))
 
     def _corey_params(self):
         p = dg.CoreyParams(**{k: sp.value() for k, sp in self.corey.items()})
@@ -671,9 +699,9 @@ class ModelBuilder(QWidget):
         case = self.case_name.text().strip().upper().replace(" ", "_") or "CASE"
         pvtw = self.pvtw.rows()
         dens = self.density.rows()
-        if len(pvtw) != 1 or len(pvtw[0]) != 5:
+        if fluid != dg.FLUID_CO2 and (len(pvtw) != 1 or len(pvtw[0]) != 5):
             raise ValueError("PVTW needs one row of 5 values")
-        if len(dens) != 1:
+        if fluid != dg.FLUID_CO2 and len(dens) != 1:
             raise ValueError("DENSITY needs one row of 3 values")
         s = dg.DeckSpec(
             case_name=case, title=self.title.text().strip() or case, units=self._units,
@@ -682,12 +710,14 @@ class ModelBuilder(QWidget):
             dx=self.dx.text(), dy=self.dy.text(), dz=self.dz.text(), top=self.top.value(),
             poro=self.poro.text(), permx=self.permx.text(), permy=self.permy.text(), permz=self.permz.text(),
             rock_pref=self.rock_pref.value(), rock_comp=self.rock_comp.value(), fluid=fluid,
-            pvtw=pvtw[0], density=dens[0], corey=self._corey_params(),
+            pvtw=pvtw[0] if pvtw else [1.0, 1.0, 3e-6, 0.5, 0.0], density=dens[0] if dens else [50.0, 62.4, 0.06],
+            corey=self._corey_params(),
             datum=self.datum.value(), datum_pressure=self.datum_p.value(), woc=self.woc.value(),
             goc=self.goc.value(), wells=self.wells.wells(), total_time=self.total_time.value(),
             report_step=self.report_step.value(),
             summary=[k.upper() for k in self.summary.text().replace(",", " ").split()],
-            rtemp=self.rtemp.value(), stcond=(self.stc_t.value(), self.stc_p.value()))
+            rtemp=self.rtemp.value(), stcond=(self.stc_t.value(), self.stc_p.value()),
+            salinity=self.salinity.value(), thermal=self.thermal.isChecked(), inj_temp=self.inj_temp.value())
         # tables of the inactive fluid types are kept but not validated strictly
         if fluid == dg.FLUID_DEADOIL:
             s.pvdo = self.pvdo.rows()
@@ -698,7 +728,7 @@ class ModelBuilder(QWidget):
             s.pvdg = self.pvdg.rows()
             if len(s.pvto) < 2 or len(s.pvdg) < 2:
                 raise ValueError("PVTO and PVDG need at least 2 rows each")
-        else:
+        elif fluid == dg.FLUID_COMPOSITIONAL:
             s.components = self._components()
             s.bic = self._bic()
         return s
@@ -734,6 +764,14 @@ class ModelBuilder(QWidget):
         self.fluid_stack.setCurrentIndex(idx)
         if self._loading:
             return
+        fluid = self.fluid.currentData()
+        prev = getattr(self, "_last_fluid", None)
+        self._last_fluid = fluid
+        if dg.FLUID_CO2 in (fluid, prev):
+            # CO2 storage uses a different grid, contacts and wells: load the complete default model
+            self.set_spec(dg.default_spec(fluid, self._units))
+            self.statusMessage.emit(f"Loaded the default {dg.FLUID_TYPES[fluid]} model")
+            return
         self._load_fluid_defaults()
 
     def _load_fluid_defaults(self):
@@ -748,7 +786,7 @@ class ModelBuilder(QWidget):
                 self.wells.force_phase("WATER")
         finally:
             self._loading = False
-        self.goc.setEnabled(fluid == dg.FLUID_BLACKOIL)
+        self.goc.setEnabled(fluid in (dg.FLUID_BLACKOIL, dg.FLUID_CO2))
         self.statusMessage.emit(f"Loaded default PVT data for {dg.FLUID_TYPES[fluid]}")
 
     def reset_defaults(self):

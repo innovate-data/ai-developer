@@ -76,6 +76,10 @@ FIELD = UnitSystem(
         "molar_volume": FT ** 3 / 453.59237,   # ft3/lb-mol -> m3/mol
         "abs_temperature": 5.0 / 9.0,          # Rankine -> K
         "molar_rate": 453.59237 / DAY,          # lb-mol/day -> mol/s
+        "specific_heat": 4186.8,                 # Btu/lb/R -> J/kg/K
+        "volumetric_heat_capacity": 67066.1,     # Btu/ft3/R -> J/m3/K
+        "thermal_conductivity": 1055.056 / (FT * DAY * 5.0 / 9.0),   # Btu/ft/day/R -> W/m/K
+        "mass": 1000.0,                          # tonnes
     },
     temp_offset=459.67,
     temp_scale=5.0 / 9.0,
@@ -109,6 +113,10 @@ METRIC = UnitSystem(
         "molar_volume": 1.0e-3,                 # m3/kg-mol -> m3/mol
         "abs_temperature": 1.0,                  # K
         "molar_rate": 1000.0 / DAY,              # kg-mol/day -> mol/s
+        "specific_heat": 1000.0,                 # kJ/kg/K -> J/kg/K
+        "volumetric_heat_capacity": 1000.0,      # kJ/m3/K -> J/m3/K
+        "thermal_conductivity": 1000.0 / DAY,    # kJ/m/day/K -> W/m/K
+        "mass": 1000.0,                          # tonnes
     },
     temp_offset=273.15,
     temp_scale=1.0,
@@ -121,7 +129,7 @@ LABELS = {
         "liquid_surface_volume": "stb", "gas_surface_volume": "Mscf",
         "rs": "Mscf/stb", "density": "lb/ft3", "viscosity": "cP",
         "time": "days", "temperature": "F", "perm": "mD", "volume": "ft3",
-        "reservoir_volume": "rb",
+        "reservoir_volume": "rb", "mass": "t", "rv": "stb/Mscf",
     },
     "METRIC": {
         "pressure": "bar", "length": "m", "liquid_surface_rate": "sm3/d",
@@ -129,7 +137,7 @@ LABELS = {
         "liquid_surface_volume": "sm3", "gas_surface_volume": "sm3",
         "rs": "sm3/sm3", "density": "kg/m3", "viscosity": "cP",
         "time": "days", "temperature": "C", "perm": "mD", "volume": "m3",
-        "reservoir_volume": "rm3",
+        "reservoir_volume": "rm3", "mass": "t", "rv": "sm3/sm3",
     },
 }
 

@@ -52,6 +52,8 @@ def initialize_blackoil(model):
     sw = np.zeros(na)
     sg = np.zeros(na)
     rs = np.zeros(na)
+    rv = np.zeros(na)
+    co2 = getattr(model, "co2store", False)
     ex = model.explicit_init
     if model.equil:
         g = model.gravity
@@ -69,7 +71,17 @@ def initialize_blackoil(model):
 
             rsvd = model.rsvd[min(r, len(model.rsvd) - 1)] if model.rsvd else None
             pbvd = model.pbvd[min(r, len(model.pbvd) - 1)] if model.pbvd else None
-            rs_cap = [np.inf]
+            rvvd = model.rvvd[min(r, len(model.rvvd) - 1)] if model.rvvd else None
+            rs_cap = [0.0 if co2 else np.inf]
+            rv_cap = [0.0 if co2 else np.inf]
+
+            def rv_at(pp, zz):
+                if not ph.get("vapoil"):
+                    return 0.0
+                rvs = float(pvt.gas.rv_sat(np.array([pp]))[0][0])
+                if rvvd is not None:
+                    return min(float(np.interp(zz, rvvd[:, 0], rvvd[:, 1])), rvs)
+                return min(rvs, rv_cap[0])
 
             def rs_at(pp, zz):
                 if not ph["disgas"]:
@@ -91,7 +103,10 @@ def initialize_blackoil(model):
                 return pvt.rho_ws * pvt.water.eval(np.array([pp]))[0][0]
 
             def rho_g(pp, zz):
-                return pvt.rho_gs * pvt.gas.eval(np.array([pp]))[0][0] if pvt.gas else 1.0
+                if not pvt.gas:
+                    return 1.0
+                r_ = rv_at(pp, zz)
+                return (pvt.rho_gs + r_ * pvt.rho_os) * pvt.gas.eval(np.array([pp]), np.array([r_]))[0][0]
 
             # datum phase
             datum, p0 = eq["datum"], eq["p_datum"]
@@ -106,10 +121,16 @@ def initialize_blackoil(model):
                     po = _integrate(woc, po_woc, zs, rho_o, g)
                 else:
                     po = _integrate(datum, p0, zs, rho_o, g)
-                if rsvd is None and pbvd is None and ph["disgas"]:
+                again = False
+                if rsvd is None and pbvd is None and ph["disgas"] and not co2:
                     # oil saturated at the gas-oil contact
                     rs_cap[0] = float(pvt.oil.rs_sat(np.array([np.interp(goc, zs, po)]))[0][0])
-                else:
+                    again = True
+                if rvvd is None and ph.get("vapoil") and not co2:
+                    # gas saturated with oil vapour at the gas-oil contact
+                    rv_cap[0] = float(pvt.gas.rv_sat(np.array([np.interp(goc, zs, po)]))[0][0])
+                    again = True
+                if not again:
                     break
             pw = _integrate(woc, np.interp(woc, zs, po) - eq["pcow_woc"], zs, rho_w, g) if ph["water"] else po
             pgz = _integrate(goc, np.interp(goc, zs, po) + eq["pcgo_goc"], zs, rho_g, g) if ph["gas"] else po
@@ -136,13 +157,27 @@ def initialize_blackoil(model):
             if ph["disgas"]:
                 rsat = pvt.oil.rs_sat(p[cells])[0]
                 rs[cells] = np.array([rs_at(pp, zz) for pp, zz in zip(p[cells], depth)])
-                rs[cells] = np.where(sg[cells] > 0, rsat, np.minimum(rs[cells], rsat))
+                rs[cells] = np.where((sg[cells] > 0) & ~co2, rsat, np.minimum(rs[cells], rsat))
+            if ph.get("vapoil"):
+                rvs = pvt.gas.rv_sat(p[cells])[0]
+                rv[cells] = np.array([rv_at(pp, zz) for pp, zz in zip(p[cells], depth)])
+                so_c = 1.0 - sw[cells] - sg[cells]
+                rv[cells] = np.where((so_c > 1e-6) & ~co2, rvs, np.minimum(rv[cells], rvs))
     if "PRESSURE" in ex:
         p = ex["PRESSURE"].copy()
-    if "SWAT" in ex:
-        sw = ex["SWAT"].copy()
-    if "SGAS" in ex:
-        sg = ex["SGAS"].copy()
+    if co2:
+        # brine saturation (SWAT) is the liquid slot; CO2 saturation is SGAS
+        if "SGAS" in ex:
+            sg = ex["SGAS"].copy()
+        elif "SWAT" in ex:
+            sg = 1.0 - ex["SWAT"]
+    else:
+        if "SWAT" in ex:
+            sw = ex["SWAT"].copy()
+        if "SGAS" in ex:
+            sg = ex["SGAS"].copy()
+    if ph.get("vapoil") and "RV" in ex:
+        rv = ex["RV"].copy()
     if ph["disgas"]:
         if "RS" in ex:
             rs = ex["RS"].copy()
@@ -151,7 +186,7 @@ def initialize_blackoil(model):
             for r, pvt in enumerate(model.pvt):
                 m = model.pvtnum == r
                 rs[m] = pvt.oil.rs_sat(ex["PBUB"][m])[0]
-        elif not model.equil:
+        elif not model.equil and not co2:
             rs = np.zeros(na)
             for r, pvt in enumerate(model.pvt):
                 m = model.pvtnum == r
@@ -160,7 +195,10 @@ def initialize_blackoil(model):
         sw[:] = 0.0
     if not ph["gas"]:
         sg[:] = 0.0
-    return {"p": p, "sw": sw, "sg": sg, "rs": rs}
+    out = {"p": p, "sw": sw, "sg": sg, "rs": rs, "rv": rv}
+    if getattr(model, "thermal", None):
+        out["T"] = model.thermal["T_init"].copy()
+    return out
 
 
 def initialize_compositional(model):

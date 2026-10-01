@@ -1,0 +1,133 @@
+-- =====================================================================
+-- CO2 storage in a saline aquifer (CO2STORE, METRIC units).
+-- 15 x 15 x 6 grid, 150 m cells, aquifer top at 1000 m, 45 C, 1 molal NaCl.
+-- 0.1 Mt/year of CO2 is injected for 10 years into the lower layers, then
+-- the plume is followed for 40 years: buoyant migration, dissolution into
+-- brine and residual trapping.  Edge cells carry a large pore-volume
+-- multiplier to represent the surrounding open aquifer.
+-- =====================================================================
+RUNSPEC
+TITLE
+   CO2 storage in a saline aquifer (CCUS)
+
+DIMENS
+   15 15 6 /
+
+GAS
+WATER
+CO2STORE
+DISGASW
+VAPWAT
+
+METRIC
+
+TABDIMS
+ 1 1 20 20 /
+
+WELLDIMS
+ 1 6 1 1 /
+
+START
+   1 'JAN' 2030 /
+
+GRID
+
+DXV
+   15*150 /
+DYV
+   15*150 /
+DZV
+   6*10 /
+TOPS
+   225*1000 /
+PORO
+   1350*0.22 /
+PERMX
+   225*300 225*80 225*400 225*150 225*500 225*250 /
+COPY
+   PERMX PERMY /
+   PERMX PERMZ /
+/
+MULTIPLY
+   PERMZ 0.1 /
+/
+-- open-aquifer boundary: large pore volume in the edge columns
+EQUALS
+   MULTPV 1.0   /
+   MULTPV 2000  1  1  1 15  1 6 /
+   MULTPV 2000 15 15  1 15  1 6 /
+   MULTPV 2000  1 15  1  1  1 6 /
+   MULTPV 2000  1 15 15 15  1 6 /
+/
+
+PROPS
+
+ROCK
+   100  5.0E-5 /
+
+-- gas-water saturation functions: Sg  krg  krw  Pc(bar)
+-- critical gas saturation 0.10, residual brine 0.20
+SGWFN
+   0.00  0.000  1.000  0.00
+   0.10  0.000  0.700  0.02
+   0.20  0.030  0.470  0.04
+   0.30  0.090  0.290  0.06
+   0.40  0.180  0.160  0.08
+   0.50  0.300  0.070  0.11
+   0.60  0.450  0.020  0.14
+   0.70  0.620  0.003  0.18
+   0.80  0.800  0.000  0.25 /
+
+-- salt concentration (mol NaCl per kg water)
+SALINITY
+   1.0 /
+
+RTEMP
+   45 /
+
+SOLUTION
+
+EQUIL
+-- datum  pressure  WOC   Pcow  GOC (above the aquifer: all brine)
+   1000   100       1200  0     900  0 /
+
+SUMMARY
+FGIR
+FGIT
+FGIP
+FGIPL
+FGIPG
+FGIPR
+FGIPM
+FCO2M
+FPR
+
+SCHEDULE
+
+WELSPECS
+   'CO2INJ' 'G' 8 8 1030 'GAS' /
+/
+
+COMPDAT
+   'CO2INJ' 2* 4 6 'OPEN' 2* 0.2 /
+/
+
+-- 0.1 Mt/year = 1.47e5 sm3/day of CO2 at surface conditions
+WCONINJE
+   'CO2INJ' 'GAS' 'OPEN' 'RATE' 1.47E5 1* 180 /
+/
+TSTEP
+   10*365.25 /
+
+WCONINJE
+   'CO2INJ' 'GAS' 'SHUT' 'RATE' 0 /
+/
+-- post-injection: allow time steps of up to one year
+TUNING
+   30 365 /
+   /
+   /
+TSTEP
+   8*1826.25 /
+
+END

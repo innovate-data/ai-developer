@@ -228,3 +228,23 @@ def test_viewer_switches_between_grid_sizes(window, tmp_path):
         res.save(path)
         assert window.open_results(str(path))
         assert window.viewer._face_cells.max() < res.nx * res.ny * res.nz
+
+
+@pytest.mark.parametrize("units", ["FIELD", "METRIC"])
+def test_model_builder_co2_and_thermal(window, units):
+    from resim.model import load_model
+    b = window.builder
+    b.units.setCurrentText(units)
+    b.fluid.setCurrentIndex(b.fluid.findData("co2store"))
+    deck = parse_deck_string(b.generate_text())
+    names = {k.name for k in deck.keywords}
+    assert {"CO2STORE", "SGWFN", "SALINITY", "RTEMP", "WCONINJE"} <= names
+    model = load_model(deck)
+    assert model.co2store and model.phases["gas"]
+    # thermal black-oil deck
+    b.fluid.setCurrentIndex(b.fluid.findData("blackoil"))
+    b.thermal.setChecked(True)
+    deck = parse_deck_string(b.generate_text())
+    names = {k.name for k in deck.keywords}
+    assert {"THERMAL", "HEATCR", "THCONR", "SPECHEAT", "OILVISCT", "WTEMP"} <= names
+    assert load_model(deck).thermal is not None

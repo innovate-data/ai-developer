@@ -18,7 +18,7 @@ OPERABLE = {
     "DX", "DY", "DZ", "TOPS", "PERMX", "PERMY", "PERMZ", "PORO", "NTG", "ACTNUM", "MULTX", "MULTY",
     "MULTZ", "MULTPV", "PORV", "SATNUM", "PVTNUM", "EQLNUM", "FIPNUM", "ROCKNUM", "IMBNUM",
     "PRESSURE", "SWAT", "SGAS", "RS", "RV", "PBUB", "TRANX", "TRANY", "TRANZ", "SWATINIT",
-    "TEMPI", "ZMF", "SWL", "SWCR", "SWU", "SGL", "SGCR", "SGU", "DEPTH", "MULTNUM", "FLUXNUM",
+    "TEMPI", "ZMF", "HEATCR", "THCONR", "SWL", "SWCR", "SWU", "SGL", "SGCR", "SGU", "DEPTH", "MULTNUM", "FLUXNUM",
 }
 
 

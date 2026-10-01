@@ -382,3 +382,134 @@ def test_eclipse_output_readable(tmp_path):
     assert np.allclose(s.numpy_vector("FOPR")[1:], res.summary["FOPR"][1:], rtol=1e-5)
     rst = ResdataFile(base + ".UNRST")
     assert rst.num_named_kw("PRESSURE") == res.n_reports
+
+
+# ----------------------------------------------------------------------------- vaporised oil
+def test_gas_condensate_vapoil():
+    m = load_model(os.path.join(EX, "GASCOND_VAPOIL.DATA"))
+    m.schedule = m.schedule[:6]
+    res = run_simulation(m)
+    s = res.summary
+    cgr0 = s["FOPR"][1] / s["FGPR"][1]                    # stb/Mscf
+    assert cgr0 == pytest.approx(0.12, rel=1e-3)          # gas produced at its dew-point Rv
+    assert s["FOPR"][-1] / s["FGPR"][-1] < 0.11           # condensate drops out below the dew point
+    assert np.nanmax(res.cell_data["SOIL"][-1]) > 0.05
+    assert abs(_mb(res, "oil")) < 1e-5
+    gas_mb = (s["FGIP"][0] - s["FGPT"][-1] - s["FGIP"][-1]) / s["FGPT"][-1]
+    assert abs(gas_mb) < 1e-5
+
+
+# ----------------------------------------------------------------------------- thermal
+THERMAL_BOX = """
+RUNSPEC
+DIMENS
+ 6 1 1 /
+OIL
+WATER
+THERMAL
+METRIC
+GRID
+DX
+ 6*2 /
+DY
+ 6*10 /
+DZ
+ 6*5 /
+TOPS
+ 6*1000 /
+PORO
+ 6*0.25 /
+PERMX
+ 6*100 /
+HEATCR
+ 6*2400 /
+THCONR
+ 6*250 /
+PROPS
+PVTW
+ 100 1.0 4.5E-5 0.5 0 /
+PVCDO
+ 100 1.1 1E-4 5 0 /
+DENSITY
+ 850 1000 1 /
+ROCK
+ 100 5E-5 /
+SPECHEAT
+ 0   2.0 4.2 1.0
+ 300 2.2 4.4 1.1 /
+OILVISCT
+ 20 20
+ 100 2 /
+SWOF
+ 0.2 0 1 0
+ 1 1 0 0 /
+SOLUTION
+PRESSURE
+ 6*100 /
+SWAT
+ 6*0.3 /
+TEMPI
+ 150 120 90 60 40 20 /
+RTEMP
+ 60 /
+SCHEDULE
+TSTEP
+ 10*100 /
+END
+"""
+
+
+def test_thermal_closed_box_conserves_energy(tmp_path):
+    from resim.initialization import initialize_blackoil
+    from resim.solvers.blackoil import BlackOilSolver
+    deck = tmp_path / "TBOX.DATA"
+    deck.write_text(THERMAL_BOX)
+    m = load_model(str(deck))
+    s = BlackOilSolver(m, SimOptions(), lambda *_: None)
+    s.set_initial_state(initialize_blackoil(m))
+    s.setup_wells({})
+    e0 = s.accumulation_values(s.state)[0]["e"].sum()
+    spread0 = np.ptp(s.state["T"])
+    for _ in range(20):
+        ok, _, _ = s.step(200 * 86400.0)                   # conduction time scale L^2/alpha ~ 4 years
+        assert ok
+    e1 = s.accumulation_values(s.state)[0]["e"].sum()
+    assert abs(e1 - e0) / e0 < 1e-6                       # no wells: energy is conserved
+    assert np.ptp(s.state["T"]) < 0.5 * spread0            # conduction evens out the temperature
+    assert np.all(np.diff(s.state["T"]) <= 1e-9)           # and stays monotone from hot to cold
+
+
+def test_thermal_hot_water_injection():
+    m = load_model(os.path.join(EX, "THERMAL_HOTWATER.DATA"))
+    m.schedule = m.schedule[:8]
+    res = run_simulation(m)
+    T = res.cell_data["TEMP"][-1]
+    assert 170.0 < np.nanmax(T) <= 180.0 + 1e-3          # injector cell approaches the injection temperature
+    assert np.nanmin(T) == pytest.approx(40.0, abs=0.5)   # far field still at reservoir temperature
+    assert res.summary["FTEMP"][-1] > res.summary["FTEMP"][0] + 1.0
+    assert abs(_mb(res, "oil")) < 1e-5 and abs(_mb(res, "water")) < 1e-5
+
+
+# ----------------------------------------------------------------------------- CO2 storage
+def test_co2_brine_properties():
+    from resim.props.co2brine import CO2BrineSystem, spycher_pruess
+    s = CO2BrineSystem(323.15, 0.0)
+    i = np.argmin(abs(s.p - 150e5))
+    assert s.rho_co2[i] == pytest.approx(700.8, rel=0.03)          # NIST, 50 C / 150 bar
+    m, y = spycher_pruess(323.15, np.array([100e5, 200e5, 400e5]))
+    assert np.allclose(m, [1.07, 1.24, 1.42], rtol=0.06)              # Duan & Sun (2003), pure water
+    m_salt, _ = spycher_pruess(323.15, np.array([100e5]), 1.0)
+    assert m_salt[0] < 0.85 * m[0]                                   # salting-out
+
+
+def test_co2_storage_balance_and_trapping():
+    m = load_model(os.path.join(EX, "CO2_STORAGE.DATA"))
+    m.schedule = m.schedule[:3]
+    res = run_simulation(m)
+    s = res.summary
+    mb = (s["FGIP"][-1] - s["FGIP"][0] - s["FGIT"][-1]) / s["FGIT"][-1]
+    assert abs(mb) < 2e-5
+    assert s["FCO2M"][-1] == pytest.approx(3.0 * 0.1e6, rel=0.02)    # ~0.1 Mt per year
+    assert 0.05 < s["FGIPL"][-1] / s["FGIP"][-1] < 0.6               # part of the CO2 dissolved
+    assert abs(s["FGIPL"][-1] + s["FGIPG"][-1] - s["FGIP"][-1]) < 1e-6 * s["FGIP"][-1]
+    assert {"SWAT", "SGAS", "RSW", "DENG"} <= set(res.cell_data)

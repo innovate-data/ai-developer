@@ -30,6 +30,10 @@ class SimOptions:
     # compositional (IMPEC) controls
     max_dz_comp: float = 0.05       # max overall mole fraction change per step
     max_cfl: float = 0.8
+    # thermal controls
+    thermal_tol: float = 0.01       # energy residual tolerance expressed in kelvin
+    dT_max: float = 30.0            # max temperature change per Newton iteration (K)
+    dT_target: float = 20.0         # target temperature change per time step (K)
 
 
 class SimulationAborted(Exception):
@@ -101,8 +105,8 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
     for rstep_i, rstep in enumerate(model.schedule):
         if rstep.tuning.get("TSINIT"):
             dt = rstep.tuning["TSINIT"]
+        # a TUNING maximum step in the deck overrides the run option
         max_dt = rstep.tuning.get("TSMAXZ", opt.max_dt_days * DAY)
-        max_dt = min(max_dt, opt.max_dt_days * DAY)
         solver.setup_wells(rstep.wells)
         while t < rstep.end_time - 1e-6:
             if should_stop():
@@ -204,7 +208,8 @@ def _new_results(model) -> Results:
     return res
 
 
-_CELL_UNITS = {"PRESSURE": "pressure", "RS": "rs", "DENO": "density", "DENG": "density", "DENW": "density"}
+_CELL_UNITS = {"PRESSURE": "pressure", "RS": "rs", "RV": "rv", "RSW": "rs", "RVW": "rv", "TEMP": "temperature",
+               "DENO": "density", "DENG": "density", "DENW": "density"}
 
 
 def _record_report(res: Results, model, solver, t):
@@ -279,6 +284,11 @@ class _SummaryCollector:
         row["FOIP"] = u.from_si(fs["FOIP"], "liquid_surface_volume")
         row["FGIP"] = u.from_si(fs["FGIP"], "gas_surface_volume")
         row["FWIP"] = u.from_si(fs["FWIP"], "liquid_surface_volume")
+        extra_units = getattr(solver, "summary_units", {})
+        for key, val in fs.items():
+            if key not in row:
+                q = extra_units.get(key)
+                row[key] = u.from_si(val, q) if q else val
         self.rows.append(row)
 
     def finish(self):

@@ -42,8 +42,11 @@ def results_payload(res, wall=None):
     units = {}
     dens = "kg/m3" if res.meta.get("units") == "METRIC" else "lb/ft3"
     for k in cell:
-        units[k] = {"PRESSURE": res.unit_label("FPR"), "RS": res.unit_label("FGOR"),
-                    "DENO": dens, "DENG": dens}.get(k, "fraction")
+        units[k] = {"PRESSURE": res.unit_label("FPR"), "RS": res.unit_label("FGOR"), "RSW": res.unit_label("FGOR"),
+                    "RV": "stb/Mscf" if res.meta.get("units") == "FIELD" else "sm3/sm3",
+                    "RVW": "stb/Mscf" if res.meta.get("units") == "FIELD" else "sm3/sm3",
+                    "TEMP": "°F" if res.meta.get("units") == "FIELD" else "°C",
+                    "DENO": dens, "DENG": dens, "DENW": dens}.get(k, "fraction")
     lu = "ft" if res.meta.get("units") == "FIELD" else "m"
     for k in static:
         units[k] = {"PERMX": "mD", "PERMY": "mD", "PERMZ": "mD", "DEPTH": lu, "DX": lu, "DY": lu, "DZ": lu,

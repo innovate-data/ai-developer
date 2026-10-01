@@ -1,0 +1,155 @@
+-- =====================================================================
+-- Hot-water flood of a heavy-oil reservoir (THERMAL, METRIC units).
+-- Quarter five-spot, 15 x 15 x 3 grid.  Water at 180 C is injected into a
+-- 40 C reservoir holding 600 cP oil; heat reduces the oil viscosity
+-- (OILVISCT) and is carried by convection and conduction (THCONR).
+-- =====================================================================
+RUNSPEC
+TITLE
+   Hot-water injection into heavy oil (thermal)
+
+DIMENS
+   15 15 3 /
+
+OIL
+WATER
+THERMAL
+
+METRIC
+
+TABDIMS
+ 1 1 20 20 /
+
+WELLDIMS
+ 2 3 1 2 /
+
+START
+   1 'JAN' 2025 /
+
+GRID
+
+DXV
+   15*12 /
+DYV
+   15*12 /
+DZV
+   4 4 4 /
+TOPS
+   225*400 /
+PORO
+   675*0.32 /
+PERMX
+   225*1500 225*1000 225*2000 /
+COPY
+   PERMX PERMY /
+   PERMX PERMZ /
+/
+MULTIPLY
+   PERMZ 0.3 /
+/
+-- rock heat capacity (kJ/m3/K, per unit rock volume) and conductivity (kJ/m/day/K)
+HEATCR
+   675*2350 /
+THCONR
+   675*190 /
+
+PROPS
+
+PVTW
+-- pref  Bw     cw      muw   cv
+   40    1.008  4.4E-5  0.65  0 /
+
+PVDO
+-- p    Bo     muo (at reservoir temperature, 40 C)
+   10   1.040  600
+   40   1.038  600
+   100  1.035  600 /
+
+DENSITY
+   975  1010  0.9 /
+
+ROCK
+   40   1.0E-4 /
+
+-- viscosity versus temperature (C, cP); the PVT viscosity applies at RTEMP
+OILVISCT
+   20   2500
+   40    600
+   60    170
+   80     65
+  100     30
+  130     12
+  160      6
+  200      3 /
+
+WATVISCT
+   20   1.00
+   40   0.65
+   80   0.36
+  120   0.23
+  160   0.17
+  200   0.14 /
+
+-- water thermal expansion: Tref  cT1 (1/C)  cT2 (1/C2)
+WATDENT
+   40   3.0E-4  3.0E-6 /
+
+-- specific heats (kJ/kg/K):  T   oil   water  gas
+SPECHEAT
+   20   1.90  4.18  1.0
+  250   2.50  4.50  1.2 /
+
+SWOF
+   0.20  0.000  1.000  0
+   0.30  0.010  0.700  0
+   0.40  0.035  0.450  0
+   0.50  0.080  0.250  0
+   0.60  0.150  0.110  0
+   0.70  0.250  0.030  0
+   0.75  0.310  0.000  0
+   1.00  1.000  0.000  0 /
+
+SOLUTION
+
+EQUIL
+   406  40  500  0 /
+
+RTEMP
+   40 /
+
+SUMMARY
+FOPR
+FWPR
+FWIR
+FPR
+FTEMP
+
+SCHEDULE
+
+WELSPECS
+   'INJ'  'G'  1  1  400 'WATER' /
+   'PROD' 'G' 15 15  400 'OIL' /
+/
+
+COMPDAT
+   'INJ'  2* 1 3 'OPEN' 2* 0.18 /
+   'PROD' 2* 1 3 'OPEN' 2* 0.18 /
+/
+
+WCONINJE
+   'INJ'  'WATER' 'OPEN' 'RATE' 120 1* 120 /
+/
+
+-- injection temperature (C)
+WTEMP
+   'INJ' 180 /
+/
+
+WCONPROD
+   'PROD' 'OPEN' 'LRAT' 3* 120 1* 10 /
+/
+
+TSTEP
+   10 20 30 30 30 60 6*61 12*61 /
+
+END
