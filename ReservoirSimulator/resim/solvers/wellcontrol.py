@@ -22,7 +22,7 @@ def check_controls(solver, rate, bhp):
     r = {k: _value(v) for k, v in rate.items()}
     for wi, name in enumerate(names):
         w = solver.wells[name]
-        if not w.is_open or counts.get(name, 0) >= MAX_SWITCHES:
+        if not w.is_open:
             continue
         ctrl = solver.controls[name]
         t = w.targets
@@ -71,7 +71,9 @@ def check_controls(solver, rate, bhp):
                     if lim > 0 and vals[k] / lim > ratio:
                         worst, ratio = k, vals[k] / lim
                 new = worst
-        if new and new != ctrl:
+        # after MAX_SWITCHES switches in a time step only switches onto a violated pressure limit
+        # (BHP/THP) are made, so a well can never end a step outside its pressure limits
+        if new and new != ctrl and (counts.get(name, 0) < MAX_SWITCHES or new in ("BHP", "THP")):
             solver.controls[name] = new
             counts[name] = counts.get(name, 0) + 1
             changed = True
