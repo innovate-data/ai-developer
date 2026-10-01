@@ -294,6 +294,7 @@ class DeckParser:
             self.dims["NTPVT"] = to_int(rec_get(rec, 1), 1)
         elif kw.name == "EQLDIMS" and rec is not None:
             self.dims["NTEQUL"] = to_int(rec_get(rec, 0), 1)
+            self.dims["NTTRVD"] = to_int(rec_get(rec, 3), 1)
         elif kw.name == "ROCKCOMP" and rec is not None:
             self.dims["NTROCC"] = to_int(rec_get(rec, 1), None)
         elif kw.name == "COMPS" and rec is not None:

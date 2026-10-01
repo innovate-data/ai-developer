@@ -22,10 +22,13 @@ import scipy.sparse as sp
 from .. import ad as A
 from ..ad import AD, combine, where
 from ..wells import build_perforations
-from .linear import solve_linear
+from .linear import STATS as LINEAR_STATS, solve_linear
 from .wellcontrol import check_controls
 
 T0 = 273.15            # enthalpy reference temperature [K]
+
+
+SWITCH_BAND = 1e-3      # relative excess over saturation before a missing phase re-appears
 
 
 class BlackOilSolver:
@@ -55,6 +58,14 @@ class BlackOilSolver:
         pvt0 = model.pvt[0]
         self.rho_s = {"o": pvt0.rho_os, "w": pvt0.rho_ws, "g": pvt0.rho_gs}
         self.state = None
+        self.hyst = None             # hysteresis state (historical maximum non-wetting saturations)
+        self.drsdt = self.drvdt = self.vappars = None
+        self.rs_cap = self.rv_cap = None    # DRSDT / DRVDT limits for the current step
+        self.so_max = None           # historical maximum oil saturation (VAPPARS)
+        self.tracers = list(getattr(model, "tracers", []) or [])
+        self.tracer_conc = {}        # tracer name -> concentration in its phase, per cell
+        self.tracer_rates = {}       # tracer name -> {well: (production rate, injection rate)}
+        self._setup_thpres()
         self.bhp = {}
         self.controls = {}
         self.orig_controls = {}
@@ -91,6 +102,17 @@ class BlackOilSolver:
             st["rs"] = np.where(state == 1, st["rs"], self.rs_sat(st["p"])[0])
         st["state"] = state
         self.state = st
+        sf = getattr(self.m, "satfunc", None)
+        self.hyst = sf.init_hysteresis(st["sw"], st["sg"]) if sf is not None and not self.co2 else None
+        self.so_max = np.maximum(1.0 - st["sw"] - st["sg"], 0.0)
+        for t in self.tracers:
+            c = np.zeros(n)
+            for r, tab in enumerate(t.get("init") or []):
+                cells = self.m.eqlnum == r if len(t["init"]) > 1 else np.ones(n, bool)
+                c[cells] = np.interp(self.m.depth[cells], tab[:, 0], tab[:, 1])
+            self.tracer_conc[t["name"]] = c
+        if self.thp_pairs:
+            self._default_thpres(st)
         if getattr(self.m, "rock_store", False):          # ROCKOPTS STORE: initial pressure is the reference
             self.rock_pref = st["p"].copy()
 
@@ -135,13 +157,16 @@ class BlackOilSolver:
             sg = np.zeros(self.n)
         rs = np.zeros(self.n)
         rv = np.zeros(self.n)
+        so = 1.0 - sw - sg
+        sov = A.value(so)
         if self.disgas:
             v, d = self.rs_sat(pv_)
-            rs = where(nog, x, combine(v, (d, p)))
+            v, d, dso = self._limit_ratio(v, d, sov, "rs")
+            rs = where(nog, x, combine(v, (d, p), (dso, so)))
         if self.vapoil:
             v, d = self.rv_sat(pv_)
-            rv = where(noo, x, combine(v, (d, p)))
-        so = 1.0 - sw - sg
+            v, d, dso = self._limit_ratio(v, d, sov, "rv")
+            rv = where(noo, x, combine(v, (d, p), (dso, so)))
         out.update(sw=sw, sg=sg, so=so, rs=rs, rv=rv)
         swv, sgv, rsv, rvv = A.value(sw), A.value(sg), A.value(rs), A.value(rv)
 
@@ -182,8 +207,13 @@ class BlackOilSolver:
                 res += [kro, dkro, z] + [z] * 4
             return res
 
-        (krw, dkrw, pcow, dpcow, kro, dkro_w, dkro_g, krg, dkrg, pcgo, dpcgo) = self._regional(
-            self.sat_regions, sfun, swv, sgv)
+        sf = getattr(m, "satfunc", None)
+        if sf is not None and sf.scaled and not self.co2:
+            (krw, dkrw, pcow, dpcow, kro, dkro_w, dkro_g, krg, dkrg, pcgo, dpcgo) = sf.evaluate(
+                swv, sgv, self.hyst)
+        else:
+            (krw, dkrw, pcow, dpcow, kro, dkro_w, dkro_g, krg, dkrg, pcgo, dpcgo) = self._regional(
+                self.sat_regions, sfun, swv, sgv)
         out["krw"] = combine(krw, (dkrw, sw))
         out["pcow"] = combine(pcow, (dpcow, sw))
         out["kro"] = combine(kro, (dkro_w, sw), (dkro_g, sg))
@@ -288,6 +318,18 @@ class BlackOilSolver:
                 else:
                     self.bhp[name] = max(self.bhp[name], pot[sel].min() + 1e5)
 
+    def _flowing(self, name):
+        """An open well whose controlling rate target is zero (e.g. WCONHIST with zero observed
+        rates) does not flow: it is treated like a shut well in the equations."""
+        w = self.wells[name]
+        if not w.is_open:
+            return False
+        ctrl = self.controls.get(name, w.control)
+        if ctrl in ("BHP", "THP"):
+            return True
+        t = w.targets.get(ctrl)
+        return t is None or t > 0
+
     def _well_density(self, pr):
         """Explicit mixture density per well for the wellbore hydrostatic head."""
         perf = self.perf
@@ -323,7 +365,7 @@ class BlackOilSolver:
         m = self.m
         c = perf.cell
         nw = perf.n_wells
-        open_w = np.array([self.wells[n].is_open for n in perf.names], bool)
+        open_w = np.array([self._flowing(n) for n in perf.names], bool)
         is_inj = np.array([self.wells[n].kind == "INJ" for n in perf.names], bool)
         head = rho_w[perf.well] * m.gravity * (perf.depth - perf.ref_depth[perf.well])
         self._head = head
@@ -401,11 +443,14 @@ class BlackOilSolver:
         active = open_w & has_perf
         tgt = np.array([self.wells[n].targets.get(self.controls[n], 0.0) or 0.0 for n in perf.names], float)
         tgt_bhp = np.array([self.wells[n].targets.get("BHP", 1e5) for n in perf.names], float)
-        first = np.zeros(nw)
+        first_cell = np.full(nw, -1)
         for wi_ in np.nonzero(~active)[0]:
             cells = c[perf.well == wi_]
-            first[wi_] = p.val[cells[0]] if cells.size else bhp.val[wi_]
-        eq = where(~active, bhp - first, zero)
+            if cells.size:
+                first_cell[wi_] = cells[0]
+        has_c = first_cell >= 0
+        p_first = p[np.where(has_c, first_cell, 0)]
+        eq = where(~active & has_c, bhp - p_first, zero) + where(~active & ~has_c, bhp - bhp.val, zero)
         eq = eq + where(active & (ctrl == "BHP"), bhp - tgt_bhp, zero)
         if np.any(ctrl == "THP"):
             # THP control: BHP equal to the VFP-table BHP for the THP limit at the current rates
@@ -428,6 +473,301 @@ class BlackOilSolver:
         if sel.any():
             eq = eq + where(sel, -rate["resv"] - tgt, zero)
         return q, rate, eq
+
+    # ------------------------------------------------------------------ tracers
+    def _transport_tracers(self, old, dt):
+        """Implicit upwind transport of passive tracers with the converged phase fluxes:
+        (A^{n+1} c^{n+1} - A^n c^n) / dt + sum_out F c_i - sum_in F c_j + q_prod c_i = q_inj c_inj,
+        A being the phase's surface volume in the cell (free phase: pv b S)."""
+        from scipy.sparse.linalg import LinearOperator, gmres
+        from .amg import GaussSeidel
+        m = self.m
+        a, b = m.conn_a, m.conn_b
+        n = self.n
+        key = {"WAT": "w", "OIL": "o", "GAS": "g"}
+        cells = self.perf.cell if self.perf is not None else np.zeros(0, int)
+        names = self.perf.names if self.perf is not None else []
+        by_phase = {}
+        for t in self.tracers:
+            by_phase.setdefault(key[t["phase"]], []).append(t["name"])
+        self.tracer_rates = {}
+        for ph, tnames in by_phase.items():
+            if ph not in self._flux_last:
+                continue
+            q = self.last_perf.get(ph, np.zeros(cells.size))           # production positive
+            inj_c = {tn: np.array([self.wells[names[w]].tracers.get(tn, 0.0) if self.wells[names[w]].kind == "INJ"
+                                   else 0.0 for w in self.perf.well]) for tn in tnames} if cells.size else {}
+            active = [tn for tn in tnames if np.any(self.tracer_conc[tn]) or
+                      (cells.size and np.any(inj_c[tn] * np.maximum(-q, 0.0) > 0))]
+            for tn in tnames:
+                self.tracer_rates[tn] = {}
+            if not active:
+                continue
+            f = self._flux_last[ph]
+            out_a = f > 0                          # flow a -> b carries c_a
+            up = np.where(out_a, a, b)
+            dn = np.where(out_a, b, a)
+            af = np.abs(f)
+            acc_new = np.maximum(self._acc_last[ph], 0.0)
+            # free phase only (dissolved / vaporised parts are not carried by the tracer)
+            diag = acc_new / dt + np.bincount(up, weights=af, minlength=n)
+            qp = np.maximum(q, 0.0)
+            if cells.size:
+                diag += np.bincount(cells, weights=qp, minlength=n)
+            rows = np.concatenate([np.arange(n), dn])
+            cols = np.concatenate([np.arange(n), up])
+            vals = np.concatenate([diag + 1e-30, -af])
+            Amat = sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
+            gs = GaussSeidel(Amat)
+            M = LinearOperator((n, n), matvec=gs.symmetric)
+            acc_old = np.maximum(old[ph], 0.0)
+            for tn in active:
+                c0 = self.tracer_conc[tn]
+                rhs = acc_old * c0 / dt
+                if cells.size:
+                    rhs = rhs + np.bincount(cells, weights=np.maximum(-q, 0.0) * inj_c[tn], minlength=n)
+                try:
+                    x, info = gmres(Amat, rhs, x0=c0, M=M, rtol=1e-9, atol=0.0, restart=40, maxiter=50)
+                except TypeError:                                     # older SciPy: tol instead of rtol
+                    x, info = gmres(Amat, rhs, x0=c0, M=M, tol=1e-9, restart=40, maxiter=50)
+                if info != 0:
+                    from scipy.sparse.linalg import spsolve
+                    x = spsolve(Amat.tocsc(), rhs)
+                self.tracer_conc[tn] = np.maximum(x, 0.0)
+                if cells.size:
+                    prod = np.bincount(self.perf.well, weights=qp * self.tracer_conc[tn][cells],
+                                       minlength=len(names))
+                    inj = np.bincount(self.perf.well, weights=np.maximum(-q, 0.0) * inj_c[tn], minlength=len(names))
+                    self.tracer_rates[tn] = {nm: (float(prod[i]), float(inj[i])) for i, nm in enumerate(names)}
+
+    # ------------------------------------------------------------------ DRSDT / DRVDT / VAPPARS
+    def set_options(self, options):
+        """Schedule settings in force for the report step."""
+        self.drsdt = options.get("DRSDT")
+        self.drvdt = options.get("DRVDT")
+        self.vappars = options.get("VAPPARS")
+        self.wpave = options.get("WPAVE")
+        self.wwpave = options.get("WWPAVE")
+        self.wpavedep = options.get("WPAVEDEP")
+        self.gconinje = options.get("GCONINJE") or {}
+
+    # ------------------------------------------------------------------ history and group targets
+    def _first_perf(self):
+        first = np.full(self.perf.n_wells, -1)
+        if self.perf.cell.size:
+            idx = np.arange(self.perf.cell.size)
+            first[self.perf.well[::-1]] = idx[::-1]
+        return first
+
+    def _history_resv_targets(self):
+        """WCONHIST RESV control: the reservoir volume of the observed surface rates, with the
+        formation volume factors at the field average pressure (as for the RESV rates)."""
+        names = [n for n in self.perf.names if self.wells[n].history and self.wells[n].kind == "PROD"
+                 and self.orig_controls.get(n) == "RESV"]
+        if not names:
+            return
+        first = self._first_perf()
+        Bf = self._resv_factors(self.perf.cell)
+        for n in names:
+            wi = self.perf.names.index(n)
+            k = first[wi]
+            if k < 0:
+                continue
+            t = self.wells[n].targets
+            o, w_, g = t.get("ORAT", 0.0) or 0.0, t.get("WRAT", 0.0) or 0.0, t.get("GRAT", 0.0) or 0.0
+            rs, rv = Bf["rs"][k], Bf["rv"][k]
+            den = 1.0 - rs * rv
+            # as ECLIPSE: the free-phase split may go negative (observed GOR below the saturated Rs)
+            resv = (o - rv * g) * Bf["bo"][k] / den
+            if self.has_g:
+                resv += (g - rs * o) * Bf["bg"][k] / den
+            if self.has_w:
+                resv += w_ * Bf["bw"][k]
+            t["RESV"] = max(resv, 0.0)
+
+    def _subtree(self, group):
+        """Wells belonging to `group` or any group below it."""
+        parents = getattr(self, "groups", {}) or {}
+
+        def under(g):
+            seen = 0
+            while g is not None and seen < 100:
+                if g == group:
+                    return True
+                g = parents.get(g, "FIELD" if g != "FIELD" else None)
+                seen += 1
+            return False
+        return [n for n in self.perf.names if under(self.wells[n].group) or group == "FIELD"]
+
+    def _group_injection(self):
+        """GCONINJE limits: when the wells' targets exceed the group limit, the targets of the
+        group's injectors of that phase are scaled down to it (wells under 'GRUP' control share
+        what the individually controlled wells leave)."""
+        if not getattr(self, "gconinje", None):
+            return
+        orig = self.__dict__.setdefault("_inj_targets", {})
+        rep = self.well_report() if self.last_rates else {}
+        for (group, phase), c in self.gconinje.items():
+            mode = c.get("mode", "NONE")
+            if mode in ("NONE", "FLD"):
+                continue
+            wells = [n for n in self._subtree(group) if self.wells[n].kind == "INJ" and self.wells[n].inj_type == phase
+                     and self.wells[n].is_open and self.orig_controls.get(n) in ("RATE", "RESV")]
+            if not wells:
+                continue
+            key = {"WATER": "water", "GAS": "gas", "OIL": "oil"}[phase]
+            limit = None
+            if mode == "RATE" and c.get("RATE") is not None:
+                limit = c["RATE"]
+            elif mode == "RESV" and c.get("RESV") is not None:
+                Bf = self._resv_factors(self.perf.cell)
+                b = Bf["bw" if phase == "WATER" else ("bg" if phase == "GAS" else "bo")]
+                first = self._first_perf()
+                k = first[self.perf.names.index(wells[0])]
+                limit = c["RESV"] / max(b[k], 1e-12)
+            elif mode in ("REIN", "VREP") and rep:
+                members = self._subtree(group)
+                prod = [n for n in members if self.wells[n].kind == "PROD"]
+                if mode == "REIN":
+                    limit = (c.get("REIN") or 0.0) * sum(max(rep[n][key], 0.0) for n in prod if n in rep)
+                else:
+                    first = self._first_perf()
+                    Bf = self._resv_factors(self.perf.cell)
+                    void = sum(max(rep[n].get("resv", 0.0), 0.0) for n in prod if n in rep)
+                    k = first[self.perf.names.index(wells[0])]
+                    b = Bf["bw" if phase == "WATER" else ("bg" if phase == "GAS" else "bo")][k]
+                    limit = (c.get("VREP") or 0.0) * void / max(b, 1e-12)
+            if limit is None:
+                continue
+            for n in wells:
+                orig.setdefault((id(self.wells[n]), n), self.wells[n].targets.get("RATE", 0.0))
+            ind = [n for n in wells if not self.wells[n].group_control]
+            grp = [n for n in wells if self.wells[n].group_control]
+            tot = sum(orig[(id(self.wells[n]), n)] or 0.0 for n in ind)
+            fac = min(1.0, limit / tot) if tot > 0 else 1.0
+            for n in ind:
+                self.wells[n].targets["RATE"] = (orig[(id(self.wells[n]), n)] or 0.0) * fac
+            if grp:
+                share = max(limit - tot * fac, 0.0) / len(grp)
+                for n in grp:
+                    self.wells[n].targets["RATE"] = share
+                self._log_once(f"GCONINJE {group}: wells under group control share its target equally")
+
+    def well_tests(self, t_now, wells):
+        """WTEST: re-open wells closed by economic limits (reason E) once the interval has passed.
+        `wells` is the coming report step's well set (with its WTEST settings)."""
+        reopened = []
+        times = self.__dict__.setdefault("_econ_time", {})
+        counts = self.__dict__.setdefault("_test_count", {})
+        for name in list(self.econ_shut):
+            times.setdefault(name, t_now)
+            w = wells.get(name)
+            test = getattr(w, "test", None) if w is not None else None
+            if not test or "E" not in test.get("reasons", ""):
+                continue
+            if test.get("tests") and counts.get(name, 0) >= test["tests"]:
+                continue
+            if t_now - times[name] >= test["interval"] - 1.0:
+                del self.econ_shut[name]
+                times.pop(name, None)
+                self.econ_conns = {c for c in self.econ_conns if c[0] != name}
+                counts[name] = counts.get(name, 0) + 1
+                reopened.append(name)
+        return reopened
+
+    def _set_caps(self, st0, dt):
+        self.rs_cap = self.rv_cap = None
+        if self.drsdt is not None and self.disgas:
+            rate, mode = self.drsdt
+            cap = st0["rs"] + rate * dt
+            self.rs_cap = np.where(st0["sg"] > 0, cap, np.inf) if mode == "FREE" else cap
+        if self.drvdt is not None and self.vapoil:
+            self.rv_cap = st0["rv"] + self.drvdt * dt
+
+    def _limit_ratio(self, v, d, so, which):
+        """Saturated Rs or Rv reduced by VAPPARS (So / So_max) ** VAP and capped by DRSDT / DRVDT.
+        Returns value, d/dp and d/dSo."""
+        dso = np.zeros_like(v)
+        if self.vappars is not None and self.so_max is not None:
+            a = self.vappars[0] if which == "rv" else self.vappars[1]
+            if a > 0:
+                som = self.so_max
+                has = som > 1e-9
+                r = np.clip(np.asarray(so, float) / np.where(has, som, 1.0), 0.0, 1.0)
+                f = np.where(has, r ** a, 1.0)
+                inner = has & (r > 1e-9) & (r < 1.0)
+                df = np.where(inner, a * np.where(inner, r, 1.0) ** (a - 1.0) / np.where(has, som, 1.0), 0.0)
+                dso = v * df
+                v, d = v * f, d * f
+        cap = self.rs_cap if which == "rs" else self.rv_cap
+        if cap is not None:
+            c = v > cap
+            v = np.where(c, cap, v)
+            d = np.where(c, 0.0, d)
+            dso = np.where(c, 0.0, dso)
+        return v, d, dso
+
+    # ------------------------------------------------------------------ THPRES
+    def _setup_thpres(self):
+        """Threshold pressures between equilibration regions (THPRES): no flow across a region
+        boundary until the potential difference exceeds the threshold, which is then subtracted."""
+        self.thp_conn = None
+        self.thp_pairs = []
+        pairs = getattr(self.m, "thpres", None) or []
+        if not pairs:
+            return
+        reg = self.m.eqlnum
+        ra, rb = reg[self.m.conn_a], reg[self.m.conn_b]
+        cross = np.nonzero(ra != rb)[0]
+        irrev = getattr(self.m, "thpres_irrevers", False)
+        self.thp_ab = np.zeros(self.m.conn_a.size)      # threshold for flow a -> b
+        self.thp_ba = np.zeros(self.m.conn_a.size)
+        for i, j, val in pairs:
+            ab = cross[(ra[cross] == i) & (rb[cross] == j)]
+            ba = cross[(ra[cross] == j) & (rb[cross] == i)]
+            self.thp_pairs.append((i, j, val, ab, ba))
+            v = 0.0 if val is None else val
+            self.thp_ab[ab] = v                         # flow from region i to region j
+            self.thp_ba[ba] = v
+            if not irrev:
+                self.thp_ab[ba] = v
+                self.thp_ba[ab] = v
+        self.thp_conn = (self.thp_ab > 0) | (self.thp_ba > 0)       # connections with a threshold
+
+    def _default_thpres(self, st):
+        """Defaulted thresholds: the largest initial potential difference across the boundary."""
+        if all(v is not None for _, _, v, _, _ in self.thp_pairs):
+            return
+        pr = self.props(st["p"], st["sw"], self._x_of(st), st.get("T"), st["state"])
+        m, a, b = self.m, self.m.conn_a, self.m.conn_b
+        v = A.value
+        dmax = np.zeros(a.size)
+        for ph, rk in (("o", "rho_o"), ("w", "rho_w"), ("g", "rho_g")):
+            if rk not in pr or (ph == "w" and not self.has_w) or (ph == "g" and not self.has_g):
+                continue
+            pp = st["p"] if ph == "o" else (st["p"] - v(pr["pcow"]) if ph == "w" else st["p"] + v(pr["pcgo"]))
+            rho = v(pr[rk])
+            dmax = np.maximum(dmax, np.abs(pp[b] - pp[a] - (rho[a] + rho[b]) * 0.5 * m.gravity * self.dz))
+        irrev = getattr(m, "thpres_irrevers", False)
+        for i, j, val, ab, ba in self.thp_pairs:
+            if val is not None:
+                continue
+            t = float(max(dmax[ab].max() if ab.size else 0.0, dmax[ba].max() if ba.size else 0.0))
+            self.thp_ab[ab] = t
+            self.thp_ba[ba] = t
+            if not irrev:
+                self.thp_ab[ba] = t
+                self.thp_ba[ab] = t
+
+    def _threshold(self, dpot):
+        """Potential difference reduced by the threshold pressure (flow a -> b when dpot < 0)."""
+        dv = dpot.val if isinstance(dpot, AD) else dpot
+        t_ab, t_ba = self.thp_ab, self.thp_ba
+        neg = dv < -t_ab
+        pos = dv > t_ba
+        shift = np.where(neg, t_ab, np.where(pos, -t_ba, 0.0))
+        keep = np.where(self.thp_conn, neg | pos, True).astype(float)
+        return (dpot + shift) * keep
 
     # ------------------------------------------------------------------ assembly
     def accumulations(self, pr):
@@ -471,6 +811,8 @@ class BlackOilSolver:
             mob = pr[kk] * pr[bk] / pr[mk]
             dpot = pp[b] - pp[a] - (rho[a] + rho[b]) * (0.5 * g * self.dz)
             up = dpot.val <= 0.0                       # flow a -> b
+            if self.thp_conn is not None:
+                dpot = self._threshold(dpot)
             f = where(up, mob[a], mob[b]) * dpot * (-Tr)
             flux[ph] = (f, up)
         fo, upo = flux["o"]
@@ -500,6 +842,11 @@ class BlackOilSolver:
         q, rate, weq = self._well_terms(p, pr, bhp, rho_w)
         self._q_last = q
         acc = self.accumulations(pr)
+        if self.tracers:
+            self._flux_last = {ph: A.value(f).copy() for ph, (f, _) in flux.items()}
+            self._acc_last = {k: A.value(v).copy() for k, v in acc.items()}
+        if getattr(m, "summary_region_flows", None):
+            self._comp_flux_last = {k: A.value(v).copy() for k, v in comp.items() if k in ("o", "w", "g")}
         eqs = {}
         for key in acc:
             eqs[key] = (acc[key] - old[key]) * (1.0 / dt) + A.matmul(self.Ct, comp[key]) + A.matmul(self.Pc, q[key])
@@ -526,6 +873,11 @@ class BlackOilSolver:
         self._rho_step = rho_w
         hc = self.m.pore_volume * np.maximum(1.0 - st0["sw"], 1e-12)
         self._p_avg = float(np.sum(st0["p"] * hc) / np.sum(hc))
+        if self.perf is not None and self.perf.n_wells:
+            self._history_resv_targets()
+            self._group_injection()
+        self._set_caps(st0, dt)
+        lin0 = LINEAR_STATS["iterations"]
         st = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in st0.items()}
         saved_bhp = dict(self.bhp)
         saved_ctrl = dict(self.controls)
@@ -580,6 +932,18 @@ class BlackOilSolver:
             if nw:
                 scale = np.array([self._eq_scale(n) for n in self.perf.names])
                 wres = np.max(np.abs(weq.val) / scale)
+            if getattr(self.opt, "debug_newton", False):
+                worst = {}
+                for ph, bk in (("o", "bo"), ("w", "bw"), ("g", "bg")):
+                    if ph in eqs:
+                        r_ = np.abs(eqs[ph].val) * dt / (pvv * np.maximum(A.value(pr[bk]), 1e-12))
+                        worst[ph] = (float(r_.max()), int(np.argmax(r_)))
+                wworst = ""
+                if nw:
+                    wv = np.abs(weq.val) / scale
+                    wworst = f" well {self.perf.names[int(np.argmax(wv))]} {wv.max():.2e}"
+                self.log(f"    it {it}: cnv {cnv:.2e} mb {mb:.2e} wres {wres:.2e} {worst}{wworst} "
+                         f"ctrl {dict((n, c) for n, c in self.controls.items() if c != self.orig_controls.get(n))}")
             if it > 1 and cnv < tol_cnv and mb < 1e-7 and wres < 1e-6 and econv:
                 converged = True
                 break
@@ -594,6 +958,7 @@ class BlackOilSolver:
                 break
             self._update(st, dx)
         info = {"newton": it}
+        self.linear_iterations = LINEAR_STATS["iterations"] - lin0
         if not converged:
             self.bhp = saved_bhp
             self.controls = saved_ctrl
@@ -604,10 +969,15 @@ class BlackOilSolver:
             dT = np.max(np.abs(st["T"] - st0["T"]))
             info["factor"] = min(2.0, self.opt.dT_target / max(dT, 1e-9))
         self.state = st
+        if self.hyst is not None:
+            self.hyst = self.m.satfunc.update_hysteresis(self.hyst, st["sw"], st["sg"])
+        self.so_max = np.maximum(self.so_max, 1.0 - st["sw"] - st["sg"])
         self.last_rates = {k_: v.val.copy() for k_, v in rate.items()}
         self.last_perf = {k_: A.value(v).copy() for k_, v in self._q_last.items()}
         self._rho_w = self._rho_step
         self.last_rates["bhp"] = np.array([self.bhp[n] for n in self.perf.names])
+        if self.tracers:
+            self._transport_tracers(old, dt)
         return True, it, info
 
     def _heat_capacity(self, pr):
@@ -624,7 +994,7 @@ class BlackOilSolver:
     def _eq_scale(self, name):
         w = self.wells[name]
         ctrl = self.controls[name]
-        if ctrl == "BHP" or not w.is_open:
+        if ctrl == "BHP" or not self._flowing(name):
             return 1.0e3          # 1 kPa
         tgt = abs(w.targets.get(ctrl, 0.0) or 0.0)
         return max(tgt, 1e-5)
@@ -659,22 +1029,26 @@ class BlackOilSolver:
             sg_new = np.where(noo, 1.0 - st["sw"], sg_new)
             rs_new, rv_new = st["rs"].copy(), st["rv"].copy()
             if self.disgas:
-                rsat = self.rs_sat(st["p"])[0]
-                rs_new = np.where(nog, st["rs"] + dX, rsat)
                 so_new = 1.0 - st["sw"] - np.maximum(sg_new, 0.0)
+                rs_true = self.rs_sat(st["p"])[0]
+                # saturated value limited by DRSDT / VAPPARS; free gas appears only when the
+                # thermodynamic saturation is exceeded (by a small band, against flip-flopping)
+                rsat = self._limit_ratio(rs_true, np.zeros(n), so_new, "rs")[0]
+                rs_new = np.where(nog, st["rs"] + dX, rsat)
                 to_us = sat & (sg_new < 0.0) & (so_new > 1e-6)          # gas disappears
-                to_s = nog & (rs_new > rsat)                             # bubble point reached
+                to_s = nog & (rs_new > rs_true * (1.0 + SWITCH_BAND))    # bubble point reached
                 new_state[to_us] = 1
                 new_state[to_s] = 0
                 rs_new = np.where(to_us, rsat * (1 - 1e-6), np.where(to_s, rsat, rs_new))
                 sg_new = np.where(to_us | (nog & ~to_s), 0.0, sg_new)
                 rs_new = np.where(new_state == 0, rsat, rs_new)
             if self.vapoil:
-                rvsat = self.rv_sat(st["p"])[0]
-                rv_new = np.where(noo, st["rv"] + dX, rvsat)
                 so_new = 1.0 - st["sw"] - sg_new
+                rv_true = self.rv_sat(st["p"])[0]
+                rvsat = self._limit_ratio(rv_true, np.zeros(n), np.maximum(so_new, 0.0), "rv")[0]
+                rv_new = np.where(noo, st["rv"] + dX, rvsat)
                 to_ug = (state == 0) & (so_new < 0.0) & (sg_new > 1e-6)  # oil disappears
-                to_s2 = noo & (rv_new > rvsat)                           # dew point reached
+                to_s2 = noo & (rv_new > rv_true * (1.0 + SWITCH_BAND))   # dew point reached
                 new_state[to_ug] = 2
                 new_state[to_s2] = 0
                 rv_new = np.where(to_ug, rvsat * (1 - 1e-6), np.where(to_s2, rvsat, rv_new))
@@ -692,7 +1066,7 @@ class BlackOilSolver:
             b = self.bhp[name] + float(np.clip(dbhp[wi], -0.2 * abs(self.bhp[name]) - 1e5, 0.2 * abs(self.bhp[name]) + 1e5))
             w = self.wells[name]
             sel = self.perf.well == wi
-            if self.controls.get(name) != "BHP" and w.is_open and sel.any():
+            if self.controls.get(name) != "BHP" and self._flowing(name) and sel.any():
                 pc = st["p"][self.perf.cell[sel]] - head[sel]
                 eps = 1e-9 * abs(b) + 1e-6
                 b = min(b, pc.max() - eps) if w.kind == "PROD" else max(b, pc.min() + eps)
@@ -797,28 +1171,69 @@ class BlackOilSolver:
         self._nb4, self._nb8 = nb4, nb8
 
     def well_block_pressures(self, wi):
-        """(WBP, WBP4, WBP5, WBP9) of well wi (Pa): connection-factor weighted averages over the
-        open connections of the block pressures (WBP), the 4 horizontal neighbours (WBP4) and
-        0.5 * block + 0.5 * neighbours (WBP5: 4 neighbours, WBP9: 8), each referred to the
-        well's BHP datum with the wellbore density (no correction for a shut well)."""
+        """(WBP, WBP4, WBP5, WBP9) of well wi (Pa), following WPAVE / WWPAVE / WPAVEDEP.
+
+        Each connection contributes its block (inner value) and its 4 or 8 horizontal neighbours
+        (outer ring); block pressures are referred to the well's datum with the wellbore density
+        (WPAVE 'WELL', no correction for a shut well), the reservoir density ('RES') or not at
+        all ('NONE').  Inner and outer averages are F2 * connection-factor weighted +
+        (1 - F2) * pore-volume weighted; WBP5 and WBP9 are F1 * inner + (1 - F1) * outer.
+        Only open connections are used unless the option is 'ALL'."""
         p = self.state["p"]
+        name = self.perf.names[wi]
+        opt = dict(getattr(self, "wpave", None) or {})
+        opt.update((getattr(self, "wwpave", None) or {}).get(name, {}))
+        F1, F2 = opt.get("F1", 0.5), opt.get("F2", 1.0)
+        F1 = 0.5 if F1 is None or F1 < 0 else F1
         sel = np.nonzero(self.perf.well == wi)[0]
+        ctf_all = self.perf.ctf if self.perf.ctf is not None else self.perf.wi
+        if opt.get("conns", "OPEN") != "ALL":
+            sel = sel[self.perf.wi[sel] > 0] if np.any(self.perf.wi[sel] > 0) else sel
         if sel.size == 0:
             return (0.0,) * 4
-        name = self.perf.names[wi]
         w = self.wells[name]
-        rho = self._rho_w[wi] if (self._rho_w is not None and w.is_open) else 0.0
-        zref = self.perf.ref_depth[wi]
+        zref = (getattr(self, "wpavedep", None) or {}).get(name) or self.perf.ref_depth[wi]
         z = self.m.depth
-        cp = lambda cells: p[cells] - rho * self.m.gravity * (z[cells] - zref)
-        wts = self.perf.wi[sel]
-        if wts.sum() <= 0:
-            wts = np.ones(sel.size)
-        pc = cp(self.perf.cell[sel])
-        p4 = np.array([cp(self._nb4[m]).mean() if self._nb4[m].size else pc[n] for n, m in enumerate(sel)])
-        p8 = np.array([cp(self._nb8[m]).mean() if self._nb8[m].size else pc[n] for n, m in enumerate(sel)])
-        avg = lambda v: float(np.sum(v * wts) / np.sum(wts))
-        return avg(pc), avg(p4), avg(0.5 * pc + 0.5 * p4), avg(0.5 * pc + 0.5 * p8)
+        mode = opt.get("depth", "WELL")
+        if mode == "NONE":
+            cp = lambda cells: p[cells]
+        elif mode == "RES":
+            pr = getattr(self, "_last_pr_vals", None)
+            if pr is None:
+                cp = lambda cells: p[cells]
+            else:
+                cp = lambda cells: p[cells] - pr[cells] * self.m.gravity * (z[cells] - zref)
+        else:
+            rho = self._rho_w[wi] if (self._rho_w is not None and w.is_open) else 0.0
+            cp = lambda cells: p[cells] - rho * self.m.gravity * (z[cells] - zref)
+        ctf = ctf_all[sel]
+        if ctf.sum() <= 0:
+            ctf = np.ones(sel.size)
+        pv = self.m.pore_volume
+
+        def ring_avg(cells_per_conn):
+            """F2-weighted average over (connection, cell) pairs."""
+            num_c = den_c = num_v = den_v = 0.0
+            for n, cells in enumerate(cells_per_conn):
+                if cells.size == 0:
+                    continue
+                pc_ = cp(cells)
+                num_c += ctf[n] * pc_.sum()
+                den_c += ctf[n] * cells.size
+                num_v += float(np.sum(pv[cells] * pc_))
+                den_v += float(np.sum(pv[cells]))
+            if den_c <= 0:
+                return None
+            a_c = num_c / den_c
+            a_v = num_v / den_v if den_v > 0 else a_c
+            return F2 * a_c + (1.0 - F2) * a_v
+
+        inner = ring_avg([self.perf.cell[[m]] for m in sel])
+        o4 = ring_avg([self._nb4[m] for m in sel])
+        o8 = ring_avg([self._nb8[m] for m in sel])
+        o4 = inner if o4 is None else o4
+        o8 = inner if o8 is None else o8
+        return inner, o4, F1 * inner + (1.0 - F1) * o4, F1 * inner + (1.0 - F1) * o8
 
     # ------------------------------------------------------------------ economic limits
     def economic_limits(self):
@@ -880,6 +1295,7 @@ class BlackOilSolver:
             # WELL or PLUG (plugging back is approximated by shutting the well)
             w.status = w.auto_shut if w.auto_shut in ("SHUT", "STOP") else "SHUT"
             self.econ_shut[name] = w.status
+            self.__dict__.setdefault("_econ_time", {})[name] = getattr(self, "t_now", 0.0)
             msgs.append(f"WECON: {name} {reason}; well {w.status.lower()}")
             if e.get("end_run"):
                 end_run = True
@@ -995,6 +1411,147 @@ class BlackOilSolver:
             out["FTEMP"] = float(np.sum(st["T"] * pvv) / np.sum(pvv))
         if not self.co2:
             out.update(self.phase_potentials(pr))
+        self._report_state = (acc, pr)
+        return out
+
+    # ------------------------------------------------------------------ region, connection, potential reports
+    def region_state(self, regnum, nreg):
+        """Per-region quantities (FIPNUM): pressure, fluids in place and well flows.
+        Returns {mnemonic: (array over regions, quantity)}."""
+        st = self.state
+        acc, pr = getattr(self, "_report_state", None) or self.accumulation_values(st)
+        v = A.value
+        pvv = v(pr["pv"])
+        pv0 = self.m.pore_volume
+        hc = pv0 * (1.0 - st["sw"])
+        bc = lambda w: np.bincount(regnum, weights=w, minlength=nreg)[:nreg]
+        hsum, psum = bc(hc), bc(pv0)
+        rpr = np.where(hsum > 0, bc(st["p"] * hc) / np.where(hsum > 0, hsum, 1.0),
+                       bc(st["p"] * pv0) / np.where(psum > 0, psum, 1.0))
+        oil_l = pvv * v(pr["bo"]) * v(pr["so"])
+        out = {"RPR": (rpr, "pressure"), "ROIP": (bc(acc["o"]), "liquid_surface_volume"),
+               "ROIPL": (bc(oil_l), "liquid_surface_volume"),
+               "ROIPG": (bc(acc["o"] - oil_l), "liquid_surface_volume")}
+        if self.has_w:
+            out["RWIP"] = (bc(acc["w"]), "liquid_surface_volume")
+        if self.has_g:
+            gas_f = pvv * v(pr["bg"]) * v(pr["sg"])
+            out["RGIP"] = (bc(acc["g"]), "gas_surface_volume")
+            out["RGIPG"] = (bc(gas_f), "gas_surface_volume")
+            out["RGIPL"] = (bc(acc["g"] - gas_f), "gas_surface_volume")
+        # oil-phase pressure weighted by the oil pore volume (ROP)
+        osum = bc(pv0 * v(pr["so"]))
+        out["ROP"] = (np.where(osum > 0, bc(st["p"] * pv0 * v(pr["so"])) / np.where(osum > 0, osum, 1.0), rpr),
+                      "pressure")
+        # well connection flows in each region (production / injection); zero before the first step
+        have = self.perf is not None and self.perf.cell.size and self.last_perf
+        rc = regnum[self.perf.cell] if have else None
+        for ph, q_, on in (("O", "liquid_surface_rate", True), ("W", "liquid_surface_rate", self.has_w),
+                           ("G", "gas_surface_rate", self.has_g)):
+            if not on:
+                continue
+            qq = self.last_perf.get(ph.lower()) if have else None
+            if qq is None or qq.size != rc.size:
+                out[f"R{ph}PR"] = out[f"R{ph}IR"] = (np.zeros(nreg), q_)
+                continue
+            out[f"R{ph}PR"] = (np.bincount(rc, weights=np.maximum(qq, 0.0), minlength=nreg)[:nreg], q_)
+            out[f"R{ph}IR"] = (np.bincount(rc, weights=np.maximum(-qq, 0.0), minlength=nreg)[:nreg], q_)
+        return out
+
+    def region_flows(self, pairs):
+        """Component flow rates (surface volumes, a -> b positive) from FIPNUM region r1 to r2 over
+        the last converged step: {(component, r1, r2): rate}."""
+        out = {}
+        fl = getattr(self, "_comp_flux_last", None)
+        fip = getattr(self.m, "fipnum", None)
+        if fl is None or fip is None:
+            return out
+        ra, rb = fip[self.m.conn_a], fip[self.m.conn_b]
+        for comp, f in fl.items():
+            for r1, r2 in pairs:
+                out[(comp, r1, r2)] = float(np.sum(f[(ra == r1) & (rb == r2)]) - np.sum(f[(ra == r2) & (rb == r1)]))
+        return out
+
+    def connection_rates(self):
+        """Per-connection surface flows of the last step: {(well, i, j, k): {'o','w','g'}} (production
+        positive)."""
+        out = {}
+        if self.perf is None or not self.last_perf:
+            return out
+        ac = self.m.active_cells
+        for m_, (w, cell) in enumerate(zip(self.perf.well, self.perf.cell)):
+            i, j, k = (int(x) + 1 for x in self.m.grid.ijk(ac[cell]))
+            out[(self.perf.names[w], i, j, k)] = {ph: float(q[m_]) for ph, q in self.last_perf.items()
+                                                   if ph in ("o", "w", "g")}
+        return out
+
+    def well_potentials(self):
+        """Production potentials (WOPP, WWPP, WGPP), injection potentials (WWIP, WGIP) and the
+        productivity index of the preferred phase (WPI), from the current state: connection
+        inflow at the well's BHP limit with the current wellbore head."""
+        out = {}
+        if self.perf is None or self.perf.cell.size == 0:
+            return out
+        acc, pr = getattr(self, "_report_state", None) or self.accumulation_values(self.state)
+        v = A.value
+        c = self.perf.cell
+        p = self.state["p"]
+        head = getattr(self, "_head", np.zeros(c.size))
+        if head.size != c.size:
+            head = np.zeros(c.size)
+        lam = {"o": v(pr["kro"])[c] / v(pr["muo"])[c] * v(pr["bo"])[c]}
+        if self.has_w:
+            lam["w"] = v(pr["krw"])[c] / v(pr["muw"])[c] * v(pr["bw"])[c]
+        if self.has_g:
+            lam["g"] = v(pr["krg"])[c] / v(pr["mug"])[c] * v(pr["bg"])[c]
+        lt = v(pr["kro"])[c] / v(pr["muo"])[c] + (v(pr["krw"])[c] / v(pr["muw"])[c] if self.has_w else 0.0) + \
+            (v(pr["krg"])[c] / v(pr["mug"])[c] if self.has_g else 0.0)
+        rs = v(pr["rs"])[c] if self.disgas else 0.0
+        rv = v(pr["rv"])[c] if self.vapoil else 0.0
+        wi_all = self.perf.wi
+        nw = self.perf.n_wells
+        for wi_, name in enumerate(self.perf.names):
+            w = self.wells[name]
+            sel = self.perf.well == wi_
+            if not sel.any():
+                continue
+            WI = wi_all[sel]
+            if w.kind == "PROD":
+                lim = w.targets.get("BHP", 1e5) or 1e5
+                dd = np.maximum(p[c][sel] - head[sel] - lim, 0.0)
+                qo = np.sum(WI * lam["o"][sel] * dd)
+                qw = np.sum(WI * lam["w"][sel] * dd) if self.has_w else 0.0
+                qg = np.sum(WI * lam["g"][sel] * dd) if self.has_g else 0.0
+                oil = qo + (np.sum(WI * lam["g"][sel] * dd * (rv[sel] if np.ndim(rv) else rv)) if self.has_g else 0.0)
+                gas = qg + np.sum(WI * lam["o"][sel] * dd * (rs[sel] if np.ndim(rs) else rs))
+                d = {"WOPP": (oil, "liquid_surface_rate"), "WWPP": (qw, "liquid_surface_rate"),
+                     "WGPP": (gas, "gas_surface_rate"), "WWIP": (0.0, "liquid_surface_rate"),
+                     "WGIP": (0.0, "gas_surface_rate")}
+                pref = w.phase if w.phase in ("OIL", "WATER", "GAS") else "OIL"
+                if w.phase == "LIQ":
+                    pi = np.sum(WI * (lam["o"][sel] + (lam["w"][sel] if self.has_w else 0.0)))
+                else:
+                    pi = np.sum(WI * lam[{"OIL": "o", "WATER": "w", "GAS": "g"}[pref]][sel]) \
+                        if {"OIL": "o", "WATER": "w", "GAS": "g"}[pref] in lam else 0.0
+                d["WPI"] = (pi if w.is_open else 0.0,
+                            "gas_productivity_index" if pref == "GAS" else "productivity_index")
+            else:
+                lim = w.targets.get("BHP", 1e30) or 1e30
+                dd = np.maximum(lim + head[sel] - p[c][sel], 0.0) if lim < 1e29 else np.zeros(sel.sum())
+                key = {"WATER": "bw", "GAS": "bg", "OIL": "bo"}.get(w.inj_type, "bw")
+                q = np.sum(WI * lt[sel] * v(pr[key])[c][sel] * dd) if key in pr else 0.0
+                d = {"WOPP": (0.0, "liquid_surface_rate"), "WWPP": (0.0, "liquid_surface_rate"),
+                     "WGPP": (0.0, "gas_surface_rate"),
+                     "WWIP": (q if w.inj_type == "WATER" else 0.0, "liquid_surface_rate"),
+                     "WGIP": (q if w.inj_type == "GAS" else 0.0, "gas_surface_rate")}
+                key_l = {"WATER": "w", "GAS": "g", "OIL": "o"}.get(w.inj_type, "w")
+                d["WPI"] = (np.sum(WI * lt[sel] * v(pr[key])[c][sel]) if (w.is_open and key in pr) else 0.0,
+                            "gas_productivity_index" if key_l == "g" else "productivity_index")
+            if not w.is_open:
+                for k_ in ("WOPP", "WWPP", "WGPP", "WWIP", "WGIP"):
+                    d[k_] = (0.0, d[k_][1])
+            out[name] = d
+        del nw
         return out
 
     def cell_arrays(self):

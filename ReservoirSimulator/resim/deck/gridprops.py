@@ -6,7 +6,7 @@ import numpy as np
 
 from .parser import rec_get, to_float, to_int
 
-INT_ARRAYS = {"ACTNUM", "SATNUM", "PVTNUM", "EQLNUM", "FIPNUM", "ROCKNUM", "IMBNUM", "MULTNUM", "FLUXNUM", "OPERNUM"}
+INT_ARRAYS = {"ACTNUM", "SATNUM", "PVTNUM", "EQLNUM", "FIPNUM", "ROCKNUM", "IMBNUM", "MULTNUM", "FLUXNUM", "OPERNUM", "ENDNUM"}
 
 DEFAULTS = {
     "NTG": 1.0, "ACTNUM": 1, "MULTX": 1.0, "MULTY": 1.0, "MULTZ": 1.0, "MULTPV": 1.0,
@@ -19,6 +19,9 @@ OPERABLE = {
     "MULTZ", "MULTPV", "PORV", "SATNUM", "PVTNUM", "EQLNUM", "FIPNUM", "ROCKNUM", "IMBNUM",
     "PRESSURE", "SWAT", "SGAS", "RS", "RV", "PBUB", "TRANX", "TRANY", "TRANZ", "SWATINIT",
     "TEMPI", "ZMF", "HEATCR", "THCONR", "SWL", "SWCR", "SWU", "SGL", "SGCR", "SGU", "DEPTH", "MULTNUM", "FLUXNUM",
+    "OPERNUM", "SOWCR", "SOGCR", "ISWL", "ISWCR", "ISWU", "ISGL", "ISGCR", "ISGU", "ISOWCR", "ISOGCR", "PCW", "PCG",
+    "IPCW", "IPCG", "SWLPC", "SGLPC", "ISWLPC", "ISGLPC", "KRW", "KRO", "KRG", "KRWR", "KRGR", "KRORW", "KRORG",
+    "IKRW", "IKRO", "IKRG", "IKRWR", "IKRGR", "IKRORW", "IKRORG", "ENDNUM",
 }
 
 

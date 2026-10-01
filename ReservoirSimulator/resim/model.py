@@ -16,6 +16,7 @@ from .props.blackoil_pvt import (BlackOilPVT, ConstCompressibilityFluid, DeadOil
 from .props.tables import interp as _interp
 from .props.eos import CubicEOS
 from .props.relperm import SaturationTable, default_sgof, default_swof, family2_to_family1
+from .props.satfunc import EP_NAMES, SatFunctions
 from .schedule import ScheduleBuilder, parse_start
 from .units import ATM, GRAVITY, get_units
 
@@ -28,7 +29,8 @@ HANDLED = {
     # GRID/EDIT
     "COORD", "ZCORN", "MINPV", "MINPORV", "RPTGRID", "INIT", "GRIDFILE", "NEWTRAN", "OLDTRAN", "MAPAXES",
     "MAPUNITS", "GRIDUNIT", "COORDSYS", "PINCH", "NOGGF", "SPECGRID", "FAULTS", "MULTFLT", "GDORIENT",
-    "MONITOR", "NOMONITO", "NUMRES", "FILLEPS",
+    "MONITOR", "NOMONITO", "NUMRES", "FILLEPS", "MULTREGT", "FLUXNUM", "MULTNUM", "OPERNUM", "MESSAGES", "NSTACK",
+    "UNIFIN", "UNIFOUT", "GRIDOPTS", "ZIPPY2", "NETBALAN", "WRFTPLT", "WRFT", "END", "NOSIM",
     # PROPS
     "THERMAL", "CO2STORE", "VAPOIL", "VAPWAT", "DISGASW", "SALINITY", "SPECHEAT", "HEATCR", "THCONR",
     "OILVISCT", "WATVISCT", "GASVISCT", "WATDENT", "RTEMPVD", "WTEMP", "RVVD", "SGWFN", "WSF", "GSF",
@@ -37,11 +39,15 @@ HANDLED = {
     "OMEGAB", "SSHIFT", "STCOND", "RTEMP", "TEMPI", "ZI", "PARACHOR", "VCRITVIS", "ZCRITVIS", "LBCCOEF",
     "PRCORR", "TREF", "DREF",
     # SOLUTION
-    "EQUIL", "RSVD", "PBVD", "RPTSOL", "RPTRST", "ZMFVD", "TEMPVD",
+    "EQUIL", "RSVD", "PBVD", "RPTSOL", "RPTRST", "ZMFVD", "TEMPVD", "THPRES", "EQLOPTS", "TRACERS", "TRACER",
     # SCHEDULE
     "RPTSCHED", "TUNING", "WELSPECS", "COMPDAT", "WCONPROD", "WCONINJE", "WCONHIST", "WCONINJH", "WELOPEN",
     "WELTARG", "WELLSTRE", "WINJGAS", "TSTEP", "DATES", "WECON", "RPTSMRY", "GRUPTREE", "VFPPROD", "VFPINJ",
     "ROCKOPTS",
+    # end-point scaling, hysteresis, array operators in PROPS / REGIONS
+    "ENDSCALE", "SATOPTS", "SCALECRS", "EHYSTR", "EQUALS", "COPY", "ADD", "MULTIPLY", "BOX", "ENDBOX",
+    "MINVALUE", "MAXVALUE", "SWATINIT", "SWL", "SWCR", "SWU", "SGL", "SGCR", "SGU", "SOWCR", "SOGCR", "ISWL",
+    "ISWCR", "ISWU", "ISGL", "ISGCR", "ISGU", "ISOWCR", "ISOGCR", "PCW", "PCG", "IMBNUM", "ENDNUM",
 }
 
 
@@ -91,6 +97,15 @@ class SimulationModel:
     co2store: bool = False              # CO2-brine storage mode (CO2STORE)
     salinity: float = 0.0               # mol NaCl per kg water (CO2STORE)
     rvvd: list = field(default_factory=list)
+    satfunc: object = None              # per-cell saturation functions (props.satfunc.SatFunctions)
+    swatinit: Optional[np.ndarray] = None
+    fipnum: Optional[np.ndarray] = None    # FIPNUM region (0-based) per active cell
+    thpres: list = field(default_factory=list)   # [(eqlnum i, eqlnum j, threshold Pa or None)]
+    thpres_irrevers: bool = False
+    tracers: list = field(default_factory=list)  # [{'name', 'phase', 'init': [depth/conc tables]}]
+    summary_connections: dict = field(default_factory=dict)
+    summary_region_flows: dict = field(default_factory=dict)
+    n_fip_regions: int = 1
 
     @property
     def n_active(self):
@@ -285,6 +300,21 @@ class ModelBuilder:
                 if f != 1.0:
                     nnc[n_i] = (x, y, tv * f, dirn)
         self.faults = faults
+        # negative-direction multipliers MULTX- / MULTY- / MULTZ- (GRIDOPTS item 1 = YES): applied to the
+        # connection on the minus face of the higher-index cell
+        for dirn, key in (("I", "MULTX-"), ("J", "MULTY-"), ("K", "MULTZ-")):
+            if gp.has(key):
+                step = {"I": 1, "J": nx, "K": nx * ny}[dirn]
+                mm = np.nan_to_num(gp.get(key), nan=1.0)
+                a_, b_ = grid.neighbour_pairs(dirn)
+                tran[dirn][a_] *= mm[b_]
+                for n_i, (x, y, tv, dd) in enumerate(nnc):
+                    if dd == dirn:
+                        nnc[n_i] = (x, y, tv * mm[y], dd)
+        # MULTREGT: transmissibility multipliers between regions (MULTNUM, FLUXNUM or OPERNUM)
+        multregt = [r for kw in d.keywords if kw.name == "MULTREGT" and kw.section in ("GRID", "EDIT") for r in kw.data if r]
+        if multregt:
+            self._multregt(multregt, gp, grid, tran, [])          # NNCs: after PINCH, below
         gp.arrays["TRANX"] = tran["I"] / tu
         gp.arrays["TRANY"] = tran["J"] / tu
         gp.arrays["TRANZ"] = tran["K"] / tu
@@ -293,11 +323,11 @@ class ModelBuilder:
         gp.arrays["PORV"] = pv_full / units.to_si(1.0, "volume")
 
         for kw in d.keywords:
-            if kw.section in ("EDIT", "REGIONS", "SOLUTION"):
+            if kw.section in ("EDIT", "PROPS", "REGIONS", "SOLUTION"):
                 if kw.section == "SOLUTION" and kw.name in ("EQUIL", "RSVD", "PBVD", "ZMFVD", "TEMPVD"):
                     continue
                 if not gp.process(kw):
-                    if kw.section != "SOLUTION":
+                    if kw.section not in ("SOLUTION", "PROPS"):
                         self._unhandled(kw)
         pv_full = np.nan_to_num(gp.get("PORV")) * units.to_si(1.0, "volume")
         active = (grid.actnum > 0) & (pv_full > minpv)
@@ -321,6 +351,8 @@ class ModelBuilder:
                     if tv > 0:
                         nnc.append((x, y, tv, "K"))
                 self.warn(f"PINCH: {pu.size} vertical connections across pinched-out cells") if pu.size else None
+        if multregt and nnc:
+            self._multregt(multregt, gp, grid, None, nnc)
         g2a = np.full(grid.n_cells, -1, int)
         act_cells = np.nonzero(active)[0]
         g2a[act_cells] = np.arange(act_cells.size)
@@ -347,10 +379,12 @@ class ModelBuilder:
                     kc = np.where((ka > 0) & (kb > 0), ka * kb / (ka + kb), 0.0)
                 conn_k.append(kc[ok])
 
-        # non-neighbour connections (fault juxtapositions, PINCH)
+        # non-neighbour connections (fault juxtapositions, PINCH); as ECLIPSE and OPM, NNCs with a
+        # transmissibility below 1e-6 (deck units) are dropped
         nnc_kept = []
+        t_min = 1e-6 * tu
         for x, y, tv, dirn in nnc:
-            if active[x] and active[y]:
+            if active[x] and active[y] and tv >= t_min:
                 conn_a.append(np.array([g2a[x]]))
                 conn_b.append(np.array([g2a[y]]))
                 conn_T.append(np.array([tv]))
@@ -385,13 +419,16 @@ class ModelBuilder:
             self.warn(f"ROCKOPTS: unknown table selector {rock_region}; using PVTNUM")
             rock_region = "PVTNUM"
         model.rocknum = region(rock_region)
+        model.fipnum = region("FIPNUM")
         model.rock_store = to_str(rec_get(rr, 1), "NOSTORE").upper() == "STORE"
         if to_str(rec_get(rr, 0), "PRESSURE").upper() == "STRESS":
             self.warn("ROCKOPTS: STRESS option not supported; rock compaction uses pressure")
         self._props(model)
+        self._satfunc(model, gp)
         if thermal:
             self._thermal(model, gp, np.concatenate(conn_k))
         self._solution(model, gp)
+        self._tracers(model)
         self._schedule(model)
         self._summary(model)
         for kw in d.keywords:
@@ -401,7 +438,67 @@ class ModelBuilder:
         model.warnings = self.warnings
         return model
 
+    def _multregt(self, records, gp, grid, tran, nnc):
+        """Apply MULTREGT records. For each region pair the last record wins; region numbers that are
+        defaulted or negative match every region; only connections between different regions change."""
+        nx, ny = grid.nx, grid.ny
+        arrays = {}
+        rules = []           # (r1 or None, r2 or None, mult, dirs, nnc_mode, region array)
+        for r in records:
+            r1, r2 = to_int(rec_get(r, 0), -1), to_int(rec_get(r, 1), -1)
+            mult = to_float(rec_get(r, 2), 1.0)
+            dirs = to_str(rec_get(r, 3), "XYZ").upper()
+            mode = to_str(rec_get(r, 4), "ALL").upper()
+            reg = to_str(rec_get(r, 5), "M").upper()[:1]
+            name = {"M": "MULTNUM", "F": "FLUXNUM", "O": "OPERNUM"}.get(reg, "MULTNUM")
+            if name not in arrays:
+                if not gp.has(name):
+                    self.warn(f"MULTREGT uses {name}, which is not defined; all cells are in region 1")
+                arrays[name] = np.nan_to_num(gp.get(name, np.ones(grid.n_cells)), nan=1).astype(int)
+            rules.append((r1 if r1 > 0 else None, r2 if r2 > 0 else None, mult,
+                          {c for c in dirs if c in "XYZ"}, mode, name))
+        dmap = {"I": "X", "J": "Y", "K": "Z"}
+
+        def factor(ra, rb, dirn, is_nnc, name):
+            """Multiplier per connection (arrays ra, rb) from the last matching rule."""
+            out = np.ones(ra.size)
+            done = np.zeros(ra.size, bool)
+            for r1, r2, mult, dirs, mode, nm in reversed(rules):
+                if nm != name or dmap[dirn] not in dirs:
+                    continue
+                if (mode == "NNC" and not is_nnc) or (mode == "NONNC" and is_nnc):
+                    continue
+                m1 = np.ones(ra.size, bool) if r1 is None else None
+                hit = ra != rb
+                fwd = (np.ones(ra.size, bool) if r1 is None else ra == r1) & (np.ones(ra.size, bool) if r2 is None else rb == r2)
+                bwd = (np.ones(ra.size, bool) if r1 is None else rb == r1) & (np.ones(ra.size, bool) if r2 is None else ra == r2)
+                sel = hit & (fwd | bwd) & ~done
+                out[sel] = mult
+                done |= sel
+            return out
+
+        for name, reg in arrays.items():
+            for dirn in ("I", "J", "K"):
+                if tran is None:
+                    break
+                a_, b_ = grid.neighbour_pairs(dirn)
+                f_ = factor(reg[a_], reg[b_], dirn, False, name)
+                tran[dirn][a_] *= f_
+            if nnc:
+                xs = np.array([c[0] for c in nnc]); ys = np.array([c[1] for c in nnc])
+                ds = np.array([c[3] for c in nnc])
+                fac = np.ones(len(nnc))
+                for dirn in ("I", "J", "K"):
+                    sel = ds == dirn
+                    if sel.any():
+                        fac[sel] = factor(reg[xs[sel]], reg[ys[sel]], dirn, True, name)
+                for n_i in np.nonzero(fac != 1.0)[0]:
+                    x, y, tv, dd = nnc[n_i]
+                    nnc[n_i] = (x, y, tv * fac[n_i], dd)
+
     def _unhandled(self, kw):
+        if kw.section == "SCHEDULE" and hasattr(ScheduleBuilder, "_kw_" + kw.name.replace("-", "_")):
+            return
         if kw.name in HANDLED or kw.name in ("RUNSPEC", "GRID", "EDIT", "PROPS", "REGIONS", "SOLUTION", "SUMMARY",
                                              "SCHEDULE"):
             return
@@ -776,6 +873,91 @@ class ModelBuilder:
             for t in model.zmfvd:
                 t[:, 0] *= u.to_si(1.0, "length")
 
+    def _satfunc(self, model, gp):
+        """Per-cell saturation functions: ENDSCALE end points, SATOPTS HYSTER / EHYSTR, SWATINIT."""
+        d = self.deck
+        ac = model.active_cells
+        P = self.u.to_si(1.0, "pressure")
+        es = d.get("ENDSCALE")
+        so = d.get("SATOPTS")
+        sat_opts = {str(v).upper() for v in (so.data[0] if so is not None and so.data else []) if v is not None}
+        hyster = "HYSTER" in sat_opts
+        if "DIRECT" in sat_opts:
+            self.warn("SATOPTS DIRECT: directional saturation tables are not supported; KRNUM is not used")
+        es_opts = [to_str(v, "").upper() for v in (es.data[0] if es is not None and es.data else [])]
+        if "DIRECT" in es_opts:
+            self.warn("ENDSCALE DIRECT: directional end points are not supported; non-directional scaling used")
+        if "IRREVERS" in es_opts:
+            self.warn("ENDSCALE IRREVERS: irreversible scaling is treated as reversible")
+        sc = d.get("SCALECRS")
+        scalecrs = sc is not None and sc.data and to_str(rec_get(sc.data[0], 0), "NO").upper().startswith("Y")
+
+        def arr(name):
+            a = gp.get(name)
+            return None if a is None else np.asarray(a, float)[ac]
+
+        cell_ep = cell_iep = None
+        if es is not None:
+            cell_ep = {k: arr(k) for k in EP_NAMES}
+            cell_iep = {k: arr("I" + k) for k in EP_NAMES}
+            for k in ("KRW", "KRO", "KRG", "KRWR", "KRGR", "KRORW", "KRORG", "SWLPC", "SGLPC"):
+                if gp.has(k) or gp.has("I" + k):
+                    self.warn(f"ENDSCALE: {k} (vertical / capillary end-point scaling) is not supported and was ignored")
+        hyst = None
+        imbnum = None
+        if hyster:
+            eh = d.get("EHYSTR")
+            rec = eh.data[0] if eh is not None and eh.data else []
+            hyst = {"model": to_int(rec_get(rec, 1), 0)}
+            what = to_str(rec_get(rec, 4), "BOTH").upper()
+            if what in ("BOTH", "PC"):
+                self.warn("EHYSTR: capillary pressure hysteresis is not supported; relative permeability only")
+            if hyst["model"] in (1, 3, 4):
+                self.warn(f"EHYSTR model {hyst['model']}: wetting-phase imbibition curves are not modelled; "
+                          "the wetting phases follow their drainage curves")
+            if hyst["model"] < 0 or hyst["model"] > 4:
+                self.warn(f"EHYSTR model {hyst['model']} is not supported; Carlson's model used")
+                hyst["model"] = 0
+            im = gp.get("IMBNUM")
+            imbnum = model.satnum.copy() if im is None else np.clip(
+                np.nan_to_num(np.asarray(im, float)[ac], nan=1).astype(int) - 1, 0, len(model.sat) - 1)
+        elif d.get("EHYSTR") is not None:
+            self.warn("EHYSTR given without SATOPTS HYSTER; hysteresis is off")
+        pcw = arr("PCW") if es is not None and gp.has("PCW") else None
+        pcg = arr("PCG") if es is not None and gp.has("PCG") else None
+        model.satfunc = SatFunctions(model.sat, model.satnum, model.phases["water"], model.phases["gas"],
+                                     cell_ep=cell_ep, scalecrs=bool(scalecrs), imbnum=imbnum, cell_iep=cell_iep,
+                                     hysteresis=hyst, pcw=None if pcw is None else pcw * P,
+                                     pcg=None if pcg is None else pcg * P)
+        model.swatinit = arr("SWATINIT") if gp.has("SWATINIT") else None
+        if model.swatinit is not None and not model.phases["water"]:
+            model.swatinit = None
+
+    def _tracers(self, model):
+        """Passive tracers (TRACERS / TRACER) and their initial concentrations (TVDPF<name>)."""
+        d = self.deck
+        L = self.u.to_si(1.0, "length")
+        for kw in d.get_all("TRACER"):
+            for rec in kw.data:
+                if not rec:
+                    continue
+                name = to_str(rec[0]).upper()
+                phase = to_str(rec_get(rec, 1, "WAT")).upper()[:3]
+                if phase not in ("WAT", "OIL", "GAS"):
+                    self.warn(f"TRACER {name}: phase {phase} not supported; tracer ignored")
+                    continue
+                if rec_get(rec, 3) is not None or rec_get(rec, 4) is not None:
+                    self.warn(f"TRACER {name}: partitioned tracers are not supported; treated as a free tracer")
+                model.tracers.append({"name": name, "phase": phase})
+        for t in model.tracers:
+            tabs = self._tables("TVDPF" + t["name"], 2)
+            if tabs:
+                t["init"] = [np.column_stack([tb[:, 0] * L, tb[:, 1]]) for tb in tabs]
+            if d.get("TVDPS" + t["name"]) is not None:
+                self.warn(f"TVDPS{t['name']}: solution-phase tracer concentrations are not supported")
+        if model.tracers and d.get("TRACERS") is None:
+            self.warn("TRACER given without TRACERS in RUNSPEC")
+
     def _solution(self, model, gp):
         d, u = self.deck, self.u
         P = u.to_si(1.0, "pressure")
@@ -791,7 +973,12 @@ class ModelBuilder:
                     "pcow_woc": to_float(rec_get(rec, 3), 0.0) * P,
                     "goc": to_float(rec_get(rec, 4), -1e10) * L if rec_get(rec, 4) is not None else None,
                     "pcgo_goc": to_float(rec_get(rec, 5), 0.0) * P,
+                    # item 7: > 0 use the region's RSVD/PBVD table, <= 0 saturated at the GOC; item 8 likewise RVVD
+                    "rsvd": to_int(rec_get(rec, 6), 1) > 0 if rec_get(rec, 6) is not None else None,
+                    "rvvd": to_int(rec_get(rec, 7), 1) > 0 if rec_get(rec, 7) is not None else None,
                 })
+                if to_int(rec_get(rec, 8), 0) != 0:
+                    self.warn("EQUIL item 9 (fine equilibration) is not supported; cell-centre equilibration used")
         for name, dest, q in (("RSVD", model.rsvd, "rs"), ("PBVD", model.pbvd, "pressure"), ("RVVD", model.rvvd, "rv")):
             tabs = self._tables(name, 2)
             if tabs:
@@ -804,6 +991,24 @@ class ModelBuilder:
             if gp.has(name):
                 v = gp.get(name)[model.active_cells]
                 model.explicit_init[name] = u.to_si(v, q) if q else v
+        # threshold pressures between equilibration regions
+        eo = d.get("EQLOPTS")
+        eqlopts = {str(v).upper() for v in (eo.data[0] if eo is not None and eo.data else []) if v is not None}
+        model.thpres_irrevers = "IRREVERS" in eqlopts
+        for opt in eqlopts - {"THPRES", "IRREVERS"}:
+            self.warn(f"EQLOPTS {opt} is not supported and was ignored")
+        thp = {}
+        for kw in d.get_all("THPRES"):
+            for rec in kw.data:
+                if not rec:
+                    continue
+                i, j = to_int(rec_get(rec, 0), 0) - 1, to_int(rec_get(rec, 1), 0) - 1
+                v = rec_get(rec, 2)
+                thp[(i, j)] = None if v is None else to_float(v) * P
+        if thp and "THPRES" not in eqlopts:
+            self.warn("THPRES given without EQLOPTS THPRES; threshold pressures are ignored")
+            thp = {}
+        model.thpres = [(i, j, v) for (i, j), v in thp.items() if i >= 0 and j >= 0]
         if not model.equil and "PRESSURE" not in model.explicit_init:
             raise ValueError("No initial conditions: give EQUIL or PRESSURE/SWAT/SGAS in SOLUTION")
 
@@ -830,21 +1035,55 @@ class ModelBuilder:
     SUMMARY_SUPPORTED = {
         "F": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
               "WGR", "PR", "OIP", "GIP", "WIP", "VPR", "VIR", "PPO", "PPW", "PPG", "GIPL", "GIPG", "GIPM",
-              "GIPR", "CO2M", "CO2D", "OIPL", "OIPG", "TEMP"},
+              "GIPR", "CO2M", "CO2D", "OIPL", "OIPG", "TEMP", "VPT", "VIT", "LPT", "GSR", "GST", "GCR", "GCT",
+              "OPRH", "WPRH", "GPRH", "LPRH", "WIRH", "GIRH", "OPTH", "WPTH", "GPTH", "LPTH", "WITH", "GITH",
+              "WCTH", "GORH"},
         "W": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
-              "WGR", "GLR", "BHP", "THP", "BP", "BP4", "BP5", "BP9", "VPR", "VIR", "STAT", "MVFP"},
+              "WGR", "GLR", "BHP", "THP", "BP", "BP4", "BP5", "BP9", "VPR", "VIR", "STAT", "MVFP", "LPT",
+              "OPRH", "WPRH", "GPRH", "LPRH", "WIRH", "GIRH", "OPTH", "WPTH", "GPTH", "LPTH", "WITH", "GITH",
+              "WCTH", "GORH", "BHPH", "THPH", "OPP", "WPP", "GPP", "WIP", "GIP", "PI"},
         "G": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
               "VPR", "VIR"},
+        "R": {"PR", "OIP", "OIPL", "OIPG", "GIP", "GIPL", "GIPG", "WIP", "OP", "OPR", "WPR", "GPR", "OIR", "WIR",
+              "GIR", "OPT", "WPT", "GPT", "OIT", "WIT", "GIT", "OFR", "OFT", "WFR", "WFT", "GFR", "GFT"},
+        "C": {"OFR", "WFR", "GFR", "OPR", "WPR", "GPR", "OIR", "WIR", "GIR", "OPT", "WPT", "GPT", "OIT", "WIT",
+              "GIT"},
     }
+    TRACER_VECTORS = ("FTPR", "FTPC", "FTIR", "FTPT", "FTIT", "WTPR", "WTPC", "WTIR", "WTPT", "WTIT")
     SUMMARY_CONTROL = {"SUMMARY", "RUNSUM", "SEPARATE", "EXCEL", "RPTONLY", "RPTSMRY", "ALL", "DATE", "TIMESTEP",
                        "ELAPSED", "NEWTON", "MLINEARS", "TCPU", "PERFORMA", "NARROW", "INCLUDE", "ECHO", "NOECHO"}
 
     def _summary(self, model):
         model.summary_keywords = [k.name for k in self.deck.section("SUMMARY") if k.name != "SUMMARY"]
+        tracer_names = {t["name"] for t in model.tracers}
+        # connection vectors: the wells they are requested for (None = all)
+        model.summary_connections = {}
+        for kw in self.deck.section("SUMMARY"):
+            if kw.name[:1] == "C" and kw.name[1:] in self.SUMMARY_SUPPORTED["C"]:
+                recs = [r for r in (kw.data or []) if r]
+                wells = [to_str(r[0]) for r in recs] if recs else None
+                prev = model.summary_connections.get(kw.name, [])
+                model.summary_connections[kw.name] = None if wells is None or prev is None else prev + wells
+        rd = self.deck.get("REGDIMS")
+        td = self.deck.get("TABDIMS")
+        model.n_fip_regions = max(to_int(rec_get(rd.data[0], 0), 1) if rd is not None and rd.data else 1,
+                                  to_int(rec_get(td.data[0], 4), 1) if td is not None and td.data else 1,
+                                  int(model.fipnum.max()) + 1 if model.fipnum is not None and model.fipnum.size else 1)
+        # inter-region flows (ROFR/ROFT, RGFR/RGFT, RWFR/RWFT): the region pairs requested
+        model.summary_region_flows = {}
+        for kw in self.deck.section("SUMMARY"):
+            if kw.name[:1] == "R" and kw.name[2:] in ("FR", "FT") and kw.name[1] in "OWG":
+                pairs = [(to_int(r[0]) - 1, to_int(r[1]) - 1) for r in (kw.data or []) if r and len(r) >= 2]
+                if pairs:
+                    model.summary_region_flows.setdefault(kw.name, []).extend(pairs)
         missing = []
         for name in model.summary_keywords:
             if name in self.SUMMARY_CONTROL:
                 continue
+            if name.startswith(self.TRACER_VECTORS) and name[4:] in tracer_names:
+                continue
+            if name[:1] == "R" and name[2:] in ("FR", "FT") and name[1:2] in ("O", "W", "G"):
+                continue            # produced for the region pairs listed (none listed: none, as ECLIPSE)
             sup = self.SUMMARY_SUPPORTED.get(name[0], set())
             if name[1:] not in sup:
                 missing.append(name)

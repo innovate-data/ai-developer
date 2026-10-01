@@ -16,6 +16,7 @@ class PerforationSet:
     depth: np.ndarray         # perforation depth
     ref_depth: np.ndarray     # per well
     n_wells: int
+    ctf: np.ndarray = None    # connection factor also for shut connections (WPAVE 'ALL')
 
     def sum_matrix(self):
         import scipy.sparse as sp
@@ -53,7 +54,7 @@ def peaceman_wi(model, comp):
 
 def build_perforations(model, wells: dict, warn=None) -> PerforationSet:
     names = list(wells.keys())
-    cells, widx, wis, depths, refs = [], [], [], [], []
+    cells, widx, wis, depths, refs, ctf = [], [], [], [], [], []
     for w_i, name in enumerate(names):
         w = wells[name]
         first_depth = None
@@ -74,10 +75,11 @@ def build_perforations(model, wells: dict, warn=None) -> PerforationSet:
             cells.append(a)
             widx.append(w_i)
             wis.append(c.wi if c.status == "OPEN" else 0.0)
+            ctf.append(c.wi)
             depths.append(model.depth[a])
             if first_depth is None:
                 first_depth = model.depth[a]
         ref = w.ref_depth if w.ref_depth is not None else (first_depth if first_depth is not None else 0.0)
         refs.append(ref)
     return PerforationSet(names, np.array(cells, int), np.array(widx, int), np.array(wis, float),
-                          np.array(depths, float), np.array(refs, float), len(names))
+                          np.array(depths, float), np.array(refs, float), len(names), np.array(ctf, float))

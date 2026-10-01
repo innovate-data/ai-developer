@@ -59,6 +59,10 @@ class Well:
     thp_limit: float = 0.0              # THP limit (Pa); 0 = none
     alq: float = 0.0
     econ: Optional[dict] = None         # WECON economic limits
+    observed: Optional[dict] = None     # WCONHIST / WCONINJH observed rates and pressures (SI)
+    test: Optional[dict] = None         # WTEST: interval (s) and reasons
+    tracers: dict = field(default_factory=dict)   # WTRACER: injected concentration per tracer
+    group_control: bool = False         # injector under group control (WCONINJE 'GRUP')
 
     def limit(self, key):
         return self.targets.get(key, None)
@@ -77,6 +81,7 @@ class ReportStep:
     touched: set = field(default_factory=set)     # wells whose status was set by keywords in this step
     vfp: dict = field(default_factory=dict)       # (kind, table number) -> VFPTable
     groups: dict = field(default_factory=dict)    # group -> parent group (GRUPTREE)
+    options: dict = field(default_factory=dict)   # DRSDT / DRVDT / VAPPARS settings in force
 
 
 def parse_start(deck):
@@ -113,6 +118,7 @@ class ScheduleBuilder:
         self.touched: set = set()
         self.vfp: dict = {}
         self.groups: dict = {"FIELD": None}
+        self.options: dict = {}
 
     # -------------------------------------------------------------- helpers
     def _match(self, pattern):
@@ -133,8 +139,9 @@ class ScheduleBuilder:
         if end_time <= self.time + 1e-6:
             return
         self.steps.append(ReportStep(end_time, date, copy.deepcopy(self.wells), dict(self.tuning),
-                                     set(self.touched), dict(self.vfp), dict(self.groups)))
+                                     set(self.touched), dict(self.vfp), dict(self.groups), dict(self.options)))
         self.touched = set()
+        self.tuning.pop("TSINIT", None)
         self.time = end_time
 
     # -------------------------------------------------------------- keywords
@@ -236,12 +243,25 @@ class ScheduleBuilder:
                 orat = self._num(rec, 3, "liquid_surface_rate", 0.0)
                 wrat = self._num(rec, 4, "liquid_surface_rate", 0.0)
                 grat = self._num(rec, 5, "gas_surface_rate", 0.0)
-                t = {"ORAT": orat, "WRAT": wrat, "GRAT": grat, "LRAT": orat + wrat,
-                     "BHP": self._num(rec, 9, "pressure", ATM)}
+                # history-matching producer: the observed rates are the targets; the BHP limit is the
+                # one set before (WELTARG) or 1 atm, items 9-10 being observed THP and BHP
+                bhp_lim = w.targets.get("BHP", ATM) if w.history and w.kind == "PROD" else ATM
+                t = {"ORAT": orat, "WRAT": wrat, "GRAT": grat, "LRAT": orat + wrat, "BHP": bhp_lim}
                 if w.control == "RESV":
-                    self.warn(f"WCONHIST {name}: RESV history control approximated by LRAT")
-                    w.control = "LRAT"
+                    t["RESV"] = 0.0              # reservoir volume of the observed rates, set by the solver
+                elif w.control not in t:
+                    self.warn(f"WCONHIST {name}: control {w.control} is not a history control; using RESV")
+                    w.control = "RESV"
+                    t["RESV"] = 0.0
+                vfp = to_int(rec_get(rec, 6), 0) or 0
+                if vfp:
+                    w.vfp_table = vfp
+                    w.alq = to_float(rec_get(rec, 7), 0.0) or 0.0
+                w.thp_limit = 0.0
+                w.observed = {"ORAT": orat, "WRAT": wrat, "GRAT": grat,
+                              "THP": self._num(rec, 8, "pressure"), "BHP": self._num(rec, 9, "pressure")}
                 w.targets = t
+                self.touched.add(name)
 
     def _kw_WCONINJE(self, data):
         for rec in data:
@@ -272,6 +292,10 @@ class ScheduleBuilder:
                 if w.control == "THP" and not (thp and w.vfp_table):
                     self.warn(f"WCONINJE {name}: THP control needs a THP limit and a VFP table; using BHP")
                     w.control = "BHP"
+                w.group_control = w.control == "GRUP"
+                if w.group_control:
+                    t.setdefault("RATE", BIG)            # share of the group target, set by the solver
+                    w.control = "RATE"
                 if w.control not in t:
                     w.control = "BHP"
 
@@ -286,15 +310,22 @@ class ScheduleBuilder:
                 w.inj_type = to_str(rec_get(rec, 1, "WATER")).upper()
                 w.status = to_str(rec_get(rec, 2, "OPEN")).upper()
                 q = "gas_surface_rate" if w.inj_type == "GAS" else "liquid_surface_rate"
-                w.targets = {"RATE": self._num(rec, 3, q, 0.0), "BHP": 1.0e5 * PSI}
-                w.control = "RATE"
+                rate = self._num(rec, 3, q, 0.0)
+                w.targets = {"RATE": rate, "BHP": 1.0e5 * PSI}
+                w.control = "BHP" if to_str(rec_get(rec, 11, "RATE")).upper() == "BHP" else "RATE"
+                w.observed = {"RATE": rate, "BHP": self._num(rec, 4, "pressure"), "THP": self._num(rec, 5, "pressure")}
+                self.touched.add(name)
 
     def _kw_WELOPEN(self, data):
         for rec in data:
             if not rec:
                 continue
             status = to_str(rec_get(rec, 1, "OPEN")).upper()
+            # connection location and completion numbers; zero or defaulted means "any"
             conn = [rec_get(rec, m) for m in range(2, 5)]
+            conn = [None if v is None or to_int(v, 0) <= 0 else v for v in conn]
+            if any(rec_get(rec, m) is not None and to_int(rec_get(rec, m), 0) > 0 for m in (5, 6)):
+                self.warn("WELOPEN: completion-number selection (items 6-7) is not supported; whole well used")
             for name in self._match(rec[0]):
                 w = self.wells[name]
                 if all(c is None for c in conn):
@@ -341,6 +372,7 @@ class ScheduleBuilder:
                     self.warn(f"WINJGAS {name}: injection fluid {kind} {src} not supported; lightest component used")
 
     def _kw_TUNING(self, data):
+        # TSINIT applies to the next time step only (see _add_step); TSMAXZ stays in force
         rec = data[0] if data else []
         if rec_get(rec, 0) is not None:
             self.tuning["TSINIT"] = to_float(rec[0]) * 86400.0
@@ -403,3 +435,99 @@ class ScheduleBuilder:
         from .vfp import parse_vfp
         t = parse_vfp("INJ", data, self.u)
         self.vfp[("INJ", t.number)] = t
+
+    # -------------------------------------------------------------- dissolution / vaporisation limits
+    def _kw_DRSDT(self, data):
+        """Maximum rate of increase of solution GOR (0: free gas cannot re-dissolve)."""
+        rec = data[0] if data else []
+        rate = self.u.to_si(to_float(rec_get(rec, 0), 0.0), "rs") / 86400.0
+        self.options["DRSDT"] = (rate, to_str(rec_get(rec, 1, "ALL")).upper())
+        self.options.pop("VAPPARS", None)
+
+    def _kw_DRVDT(self, data):
+        """Maximum rate of increase of vapour oil-gas ratio."""
+        rec = data[0] if data else []
+        self.options["DRVDT"] = self.u.to_si(to_float(rec_get(rec, 0), 0.0), "rv") / 86400.0
+        self.options.pop("VAPPARS", None)
+
+    def _kw_VAPPARS(self, data):
+        """Oil vaporisation parameters: Rv and Rs scaled by (So / So_max) ** VAP1 / VAP2."""
+        rec = data[0] if data else []
+        self.options["VAPPARS"] = (to_float(rec_get(rec, 0), 0.0), to_float(rec_get(rec, 1), 0.0))
+        self.options.pop("DRSDT", None)
+        self.options.pop("DRVDT", None)
+
+    # -------------------------------------------------------------- group injection, testing, tracers
+    def _kw_GCONINJE(self, data):
+        """Group injection limits: RATE (surface), RESV, REIN (re-injection of the group's
+        produced phase) and VREP (voidage replacement)."""
+        table = dict(self.options.get("GCONINJE", {}))
+        for rec in data:
+            if not rec:
+                continue
+            group = to_str(rec[0])
+            phase = to_str(rec_get(rec, 1, "WATER")).upper()
+            mode = to_str(rec_get(rec, 2, "NONE")).upper()
+            q = "gas_surface_rate" if phase == "GAS" else "liquid_surface_rate"
+            c = {"mode": mode, "RATE": self._num(rec, 3, q), "RESV": self._num(rec, 4, "reservoir_rate"),
+                 "REIN": self._num(rec, 5), "VREP": self._num(rec, 6),
+                 "control_group": to_str(rec_get(rec, 8, "")) or None}
+            for m in ("REIN", "VREP"):
+                if c["mode"] == m and c.get("control_group"):
+                    self.warn(f"GCONINJE {group}: item 9 (another group's production for {m}) is not supported")
+            if group not in self.groups:
+                self.groups[group] = "FIELD"
+            table[(group, phase)] = c
+        self.options["GCONINJE"] = table
+
+    def _kw_WTEST(self, data):
+        """Re-open wells closed for the listed reasons (P physical, E economic, ...) every interval."""
+        for rec in data:
+            if not rec:
+                continue
+            t = {"interval": self._num(rec, 1, None, 0.0) * 86400.0,
+                 "reasons": to_str(rec_get(rec, 2, "P")).upper(), "tests": to_int(rec_get(rec, 3), 0) or 0,
+                 "startup": self._num(rec, 4, None, 0.0) * 86400.0}
+            for name in self._match(rec[0]):
+                self.wells[name].test = dict(t) if t["interval"] > 0 or t["reasons"] else None
+
+    def _kw_WTRACER(self, data):
+        """Tracer concentrations in the injected fluid."""
+        for rec in data:
+            if not rec:
+                continue
+            tracer = to_str(rec_get(rec, 1)).upper()
+            conc = to_float(rec_get(rec, 2), 0.0)
+            if rec_get(rec, 3) is not None or rec_get(rec, 4) is not None:
+                self.warn("WTRACER: cumulative-dependent concentrations (items 4-5) are not supported")
+            for name in self._match(rec[0]):
+                tr = dict(self.wells[name].tracers)
+                tr[tracer] = conc
+                self.wells[name].tracers = tr
+
+    def _kw_WPAVE(self, data):
+        """Well block average pressure options (WBP, WBP4, WBP5, WBP9)."""
+        rec = data[0] if data else []
+        self.options["WPAVE"] = {"F1": to_float(rec_get(rec, 0), 0.5), "F2": to_float(rec_get(rec, 1), 1.0),
+                                 "depth": to_str(rec_get(rec, 2, "WELL")).upper(),
+                                 "conns": to_str(rec_get(rec, 3, "OPEN")).upper()}
+
+    def _kw_WWPAVE(self, data):
+        for rec in data:
+            if not rec:
+                continue
+            opt = {"F1": to_float(rec_get(rec, 1), 0.5), "F2": to_float(rec_get(rec, 2), 1.0),
+                   "depth": to_str(rec_get(rec, 3, "WELL")).upper(), "conns": to_str(rec_get(rec, 4, "OPEN")).upper()}
+            per = dict(self.options.get("WWPAVE", {}))
+            for name in self._match(rec[0]):
+                per[name] = opt
+            self.options["WWPAVE"] = per
+
+    def _kw_WPAVEDEP(self, data):
+        for rec in data:
+            if not rec:
+                continue
+            per = dict(self.options.get("WPAVEDEP", {}))
+            for name in self._match(rec[0]):
+                per[name] = self._num(rec, 1, "length")
+            self.options["WPAVEDEP"] = per

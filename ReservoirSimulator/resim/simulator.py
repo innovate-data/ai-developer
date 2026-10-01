@@ -134,10 +134,17 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
             dt = rstep.tuning["TSINIT"]
         # a TUNING maximum step in the deck overrides the run option
         max_dt = rstep.tuning.get("TSMAXZ", opt.max_dt_days * DAY)
+        solver.t_now = t
+        solver.groups = rstep.groups
+        if hasattr(solver, "well_tests"):
+            for name in solver.well_tests(t, rstep.wells):
+                logm(f"  WTEST: well {name} re-opened for testing")
         if hasattr(solver, "economic_limits"):
             solver.setup_wells(rstep.wells, touched=rstep.touched, vfp=rstep.vfp)
         else:
             solver.setup_wells(rstep.wells)
+        if hasattr(solver, "set_options"):
+            solver.set_options(rstep.options)
         step_end = min(rstep.end_time, t_stop)
         while t < step_end - 1e-6:
             if should_stop():
@@ -170,8 +177,11 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
                     raise SimulationError(f"Time step below minimum at t={t / DAY:.3f} days; simulation failed")
                 continue
             t += dt_try
+            solver.t_now = t
             n_steps += 1
             fs = solver.field_state()
+            summary._newton = its
+            summary._linears = getattr(solver, "linear_iterations", 0)
             summary.record(t, solver, dt_try, fs)
             if hasattr(solver, "economic_limits"):
                 econ_msgs, econ_end = solver.economic_limits()
@@ -353,7 +363,34 @@ class _SummaryCollector:
             row["FVIR"] = u.from_si(ftot["VIR"], "reservoir_rate")
             row["FOIR"] = u.from_si(ftot["OIR"], "liquid_surface_rate")
             row["FWGR"] = u.from_si(tot["WPR"] / tot["GPR"], "wgr") if tot["GPR"] > 0 else 0.0
+        step = self.m.schedule[min(len(self.m.schedule) - 1, getattr(self, "_step_index", 0))] \
+            if self.m.schedule else None
+        if hasattr(solver, "well_potentials") and self._want(("WOPP", "WWPP", "WGPP", "WWIP", "WGIP", "WPI")):
+            for name, d in solver.well_potentials().items():
+                for key, (val, q) in d.items():
+                    row[f"{key}:{name}"] = u.from_si(val, q)
+        self._history(row, step, wr, dt)
         self._groups(row, wr)
+        self._tracers(row, solver, wr, dt)
+        self._regions(row, solver, dt)
+        self._connections(row, solver, dt)
+        self._region_flows(row, solver, dt)
+        # cumulative voidage / liquid, gas sales (production - injection - consumption, no fuel here)
+        for k, q in (("VPR", "reservoir_volume"), ("VIR", "reservoir_volume")):
+            if "F" + k in row:
+                ck = "F" + k[:2] + "T"
+                if dt is not None:
+                    self.cum[ck] = self.cum.get(ck, 0.0) + u.to_si(row["F" + k], "reservoir_rate") * dt
+                row[ck] = u.from_si(self.cum.get(ck, 0.0), q)
+        row["FLPT"] = row["FOPT"] + row["FWPT"]
+        for name in wr:
+            if f"WOPT:{name}" in row:
+                row[f"WLPT:{name}"] = row[f"WOPT:{name}"] + row[f"WWPT:{name}"]
+        row["FGCR"] = row["FGCT"] = 0.0
+        row["FGSR"] = row["FGPR"] - row["FGIR"]
+        row["FGST"] = row["FGPT"] - row["FGIT"]
+        row["NEWTON"] = float(getattr(self, "_newton", 0))
+        row["MLINEARS"] = float(getattr(self, "_linears", 0))
         row["FLPR"] = row["FOPR"] + row["FWPR"]
         liq = tot["OPR"] + tot["WPR"]
         row["FWCT"] = tot["WPR"] / liq if liq > 0 else 0.0
@@ -368,6 +405,191 @@ class _SummaryCollector:
                 q = extra_units.get(key)
                 row[key] = u.from_si(val, q) if q else val
         self.rows.append(row)
+
+    def _want(self, names):
+        req = set(getattr(self.m, "summary_keywords", []) or [])
+        return not req or any(n in req for n in names)
+
+    def _history(self, row, step, wr, dt):
+        """Observed (WCONHIST / WCONINJH) rates, pressures and their totals: W..H, G..H, F..H."""
+        if step is None:
+            return
+        u = self.m.units
+        tot = {k: 0.0 for k in ("OPR", "WPR", "GPR", "WIR", "GIR")}
+        any_hist = False
+        for name in wr:
+            w = step.wells.get(name)
+            ob = getattr(w, "observed", None) if w is not None else None
+            open_ = w is not None and w.status == "OPEN"
+            vals = {k: 0.0 for k in tot}
+            if ob is not None and open_:
+                any_hist = True
+                if w.kind == "PROD":
+                    vals.update(OPR=ob.get("ORAT") or 0.0, WPR=ob.get("WRAT") or 0.0, GPR=ob.get("GRAT") or 0.0)
+                else:
+                    key = "GIR" if w.inj_type == "GAS" else "WIR"
+                    vals[key] = ob.get("RATE") or 0.0
+            elif w is not None and open_ and w.kind == "INJ" and not w.history:
+                # injectors on WCONINJE: the history rate is the target rate (as ECLIPSE reports)
+                key = "GIR" if w.inj_type == "GAS" else ("WIR" if w.inj_type == "WATER" else None)
+                if key and w.control == "RATE":
+                    vals[key] = w.targets.get("RATE") or 0.0
+            q = {"OPR": "liquid_surface_rate", "WPR": "liquid_surface_rate", "GPR": "gas_surface_rate",
+                 "WIR": "liquid_surface_rate", "GIR": "gas_surface_rate"}
+            for k, v in vals.items():
+                tot[k] += v
+                row[f"W{k}H:{name}"] = u.from_si(v, q[k])
+                ck = f"W{k[:2]}TH:{name}"
+                if dt is not None:
+                    self.cum[ck] = self.cum.get(ck, 0.0) + v * dt
+                row[ck] = u.from_si(self.cum.get(ck, 0.0), "gas_surface_volume" if k[0] == "G" else
+                                    "liquid_surface_volume")
+            liq = vals["OPR"] + vals["WPR"]
+            row[f"WLPRH:{name}"] = u.from_si(liq, "liquid_surface_rate")
+            row[f"WLPTH:{name}"] = row[f"WOPTH:{name}"] + row[f"WWPTH:{name}"]
+            row[f"WWCTH:{name}"] = vals["WPR"] / liq if liq > 0 else 0.0
+            row[f"WGORH:{name}"] = u.from_si(vals["GPR"] / vals["OPR"], "rs") if vals["OPR"] > 0 else 0.0
+            row[f"WBHPH:{name}"] = u.from_si(ob.get("BHP") or 0.0, "pressure") if ob is not None and open_ else 0.0
+            row[f"WTHPH:{name}"] = u.from_si(ob.get("THP") or 0.0, "pressure") if ob is not None and open_ else 0.0
+        if not any_hist and not self.rows:
+            pass
+        for k, q in (("OPR", "liquid_surface_rate"), ("WPR", "liquid_surface_rate"), ("GPR", "gas_surface_rate"),
+                     ("WIR", "liquid_surface_rate"), ("GIR", "gas_surface_rate")):
+            row[f"F{k}H"] = u.from_si(tot[k], q)
+            ck = f"F{k[:2]}TH"
+            if dt is not None:
+                self.cum[ck] = self.cum.get(ck, 0.0) + tot[k] * dt
+            row[ck] = u.from_si(self.cum.get(ck, 0.0), "gas_surface_volume" if k[0] == "G" else "liquid_surface_volume")
+        liq = tot["OPR"] + tot["WPR"]
+        row["FLPRH"] = u.from_si(liq, "liquid_surface_rate")
+        row["FLPTH"] = row["FOPTH"] + row["FWPTH"]
+        row["FWCTH"] = tot["WPR"] / liq if liq > 0 else 0.0
+        row["FGORH"] = u.from_si(tot["GPR"] / tot["OPR"], "rs") if tot["OPR"] > 0 else 0.0
+
+    def _tracers(self, row, solver, wr, dt):
+        """Tracer rates, totals and concentrations: FTPR / FTPT / FTIR / FTIT / FTPC and W.. ."""
+        tr = getattr(solver, "tracers", None)
+        if not tr:
+            return
+        rates = getattr(solver, "tracer_rates", {}) or {}
+        phase_rate = {"WAT": ("WPR", "WWPR"), "OIL": ("OPR", "WOPR"), "GAS": ("GPR", "WGPR")}
+        u = self.m.units
+        for t in tr:
+            nm, ph = t["name"], t["phase"]
+            q = "gas_surface_rate" if ph == "GAS" else "liquid_surface_rate"
+            per = rates.get(nm, {})
+            fp = fi = 0.0
+            for name in wr:
+                p_, i_ = per.get(name, (0.0, 0.0)) if wr[name]["open"] else (0.0, 0.0)
+                fp += p_
+                fi += i_
+                row[f"WTPR{nm}:{name}"] = u.from_si(p_, q)
+                row[f"WTIR{nm}:{name}"] = u.from_si(i_, q)
+                for k, v in (("WTPT", p_), ("WTIT", i_)):
+                    ck = f"{k}{nm}:{name}"
+                    if dt is not None:
+                        self.cum[ck] = self.cum.get(ck, 0.0) + v * dt
+                    row[ck] = u.from_si(self.cum.get(ck, 0.0), "gas_surface_volume" if ph == "GAS" else
+                                        "liquid_surface_volume")
+                prate = row.get(f"{phase_rate[ph][1]}:{name}", 0.0)
+                row[f"WTPC{nm}:{name}"] = row[f"WTPR{nm}:{name}"] / prate if prate > 0 else 0.0
+            row[f"FTPR{nm}"] = u.from_si(fp, q)
+            row[f"FTIR{nm}"] = u.from_si(fi, q)
+            for k, v in (("FTPT", fp), ("FTIT", fi)):
+                ck = f"{k}{nm}"
+                if dt is not None:
+                    self.cum[ck] = self.cum.get(ck, 0.0) + v * dt
+                row[ck] = u.from_si(self.cum.get(ck, 0.0), "gas_surface_volume" if ph == "GAS" else
+                                    "liquid_surface_volume")
+            fr = row.get("F" + phase_rate[ph][0], 0.0)
+            row[f"FTPC{nm}"] = row[f"FTPR{nm}"] / fr if fr > 0 else 0.0
+
+    def _regions(self, row, solver, dt):
+        """FIPNUM region vectors (RPR, ROIP, RWIP, RGIP and their liquid/vapour splits, ROP, region
+        well rates R?PR / R?IR and totals R?PT / R?IT)."""
+        fip = getattr(self.m, "fipnum", None)
+        if fip is None or not hasattr(solver, "region_state"):
+            return
+        req = set(getattr(self.m, "summary_keywords", []) or [])
+        if req and not any(k.startswith("R") and k not in ("RUNSUM", "RPTONLY", "RPTSMRY") for k in req):
+            return
+        u = self.m.units
+        nreg = int(fip.max()) + 1 if fip.size else 0
+        nreg = max(nreg, int(getattr(self.m, "n_fip_regions", 0) or 0))
+        rs = solver.region_state(fip, nreg)
+        for key, (arr, q) in rs.items():
+            for r in range(nreg):
+                row[f"{key}:{r + 1}"] = u.from_si(float(arr[r]), q)
+        for key in ("OPR", "WPR", "GPR", "OIR", "WIR", "GIR"):
+            if f"R{key}" not in rs:
+                continue
+            arr = rs[f"R{key}"][0]
+            ck = f"R{key[:2]}T"
+            for r in range(nreg):
+                c = f"{ck}:{r + 1}"
+                if dt is not None:
+                    self.cum[c] = self.cum.get(c, 0.0) + float(arr[r]) * dt
+                row[c] = u.from_si(self.cum.get(c, 0.0), "gas_surface_volume" if key[0] == "G" else
+                                   "liquid_surface_volume")
+        for r in range(nreg):
+            if f"ROPT:{r + 1}" in row:
+                row[f"ROP:{r + 1}"] = row[f"ROPT:{r + 1}"]
+
+    def _region_flows(self, row, solver, dt):
+        """Inter-region flow rates and totals (R?FR / R?FT for the region pairs listed in SUMMARY)."""
+        spec = getattr(self.m, "summary_region_flows", None)
+        if not spec or not hasattr(solver, "region_flows"):
+            return
+        u = self.m.units
+        pairs = sorted({p for v in spec.values() for p in v})
+        flows = solver.region_flows(pairs) if dt is not None else {}
+        for vec, plist in spec.items():
+            comp = vec[1].lower()
+            rq = "gas_surface_rate" if comp == "g" else "liquid_surface_rate"
+            vq = "gas_surface_volume" if comp == "g" else "liquid_surface_volume"
+            for r1, r2 in plist:
+                rate = flows.get((comp, r1, r2), 0.0)
+                tag = f"{vec}:{r1 + 1}-{r2 + 1}"
+                if vec.endswith("FR"):
+                    row[tag] = u.from_si(rate, rq)
+                else:
+                    if dt is not None:
+                        self.cum[tag] = self.cum.get(tag, 0.0) + rate * dt
+                    row[tag] = u.from_si(self.cum.get(tag, 0.0), vq)
+
+    def _connections(self, row, solver, dt):
+        """Connection vectors requested in SUMMARY (C?FR, C?PR, C?IR and totals)."""
+        spec = getattr(self.m, "summary_connections", None)
+        if not spec or not hasattr(solver, "connection_rates"):
+            return
+        u = self.m.units
+        conns = solver.connection_rates()
+        qn = {"O": ("o", "liquid_surface_rate", "liquid_surface_volume"),
+              "W": ("w", "liquid_surface_rate", "liquid_surface_volume"),
+              "G": ("g", "gas_surface_rate", "gas_surface_volume")}
+        for vec, wells in spec.items():
+            ph, kind = vec[1], vec[2:]
+            if ph not in qn:
+                continue
+            key, qr, qv = qn[ph]
+            for (wname, i, j, k), q in conns.items():
+                if wells is not None and not any(wname.upper() == str(w_).upper() or
+                                                 __import__("fnmatch").fnmatchcase(wname.upper(), str(w_).upper())
+                                                 for w_ in wells):
+                    continue
+                v = q.get(key, 0.0)
+                tag = f"{vec}:{wname}:{i},{j},{k}"
+                if kind == "FR":
+                    row[tag] = u.from_si(v, qr)
+                elif kind == "PR":
+                    row[tag] = u.from_si(max(v, 0.0), qr)
+                elif kind == "IR":
+                    row[tag] = u.from_si(max(-v, 0.0), qr)
+                elif kind in ("PT", "IT", "FT"):
+                    rate = max(v, 0.0) if kind == "PT" else (max(-v, 0.0) if kind == "IT" else v)
+                    if dt is not None:
+                        self.cum[tag] = self.cum.get(tag, 0.0) + rate * dt
+                    row[tag] = u.from_si(self.cum.get(tag, 0.0), qv)
 
     def _groups(self, row, wr):
         """Group vectors (GOPR, GWIR, ...) summed over the wells below each group of GRUPTREE."""

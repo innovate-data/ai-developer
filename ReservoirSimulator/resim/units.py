@@ -73,6 +73,8 @@ FIELD = UnitSystem(
         "compressibility": 1.0 / PSI,
         "viscosibility": 1.0 / PSI,
         "transmissibility": CP * STB / DAY / PSI,
+        "productivity_index": STB / DAY / PSI,
+        "gas_productivity_index": MSCF / DAY / PSI,
         "pressure_gradient": PSI / FT,
         "molar_volume": FT ** 3 / 453.59237,   # ft3/lb-mol -> m3/mol
         "abs_temperature": 5.0 / 9.0,          # Rankine -> K
@@ -111,6 +113,8 @@ METRIC = UnitSystem(
         "compressibility": 1.0 / BAR,
         "viscosibility": 1.0 / BAR,
         "transmissibility": CP / DAY / BAR,
+        "productivity_index": 1.0 / DAY / BAR,
+        "gas_productivity_index": 1.0 / DAY / BAR,
         "pressure_gradient": BAR,
         "molar_volume": 1.0e-3,                 # m3/kg-mol -> m3/mol
         "abs_temperature": 1.0,                  # K
@@ -132,6 +136,7 @@ LABELS = {
         "rs": "Mscf/stb", "density": "lb/ft3", "viscosity": "cP",
         "time": "days", "temperature": "F", "perm": "mD", "volume": "ft3",
         "reservoir_volume": "rb", "mass": "t", "rv": "stb/Mscf", "wgr": "stb/Mscf",
+        "productivity_index": "stb/d/psi", "gas_productivity_index": "Mscf/d/psi",
     },
     "METRIC": {
         "pressure": "bar", "length": "m", "liquid_surface_rate": "sm3/d",
@@ -140,6 +145,7 @@ LABELS = {
         "rs": "sm3/sm3", "density": "kg/m3", "viscosity": "cP",
         "time": "days", "temperature": "C", "perm": "mD", "volume": "m3",
         "reservoir_volume": "rm3", "mass": "t", "rv": "sm3/sm3", "wgr": "sm3/sm3",
+        "productivity_index": "sm3/d/bar", "gas_productivity_index": "sm3/d/bar",
     },
 }
 

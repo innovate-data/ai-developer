@@ -132,17 +132,22 @@ def standard_aggregation(S):
 class AggregationAMG:
     """Smoothed-aggregation AMG V-cycle (Gauss-Seidel smoothing, direct coarsest solve).
 
-    `cache` (a dict) keeps the aggregates between calls for matrices with the same size and
-    sparsity, so the (Python) aggregation runs once per model.
+    The tentative (piecewise-constant) prolongator is smoothed by one damped Jacobi step,
+    P = (I - w D^-1 A) P0 with w = 4/3 / rho and rho bounded by Gershgorin's theorem.  For the
+    nonsymmetric pressure matrices of CPR the restriction is smoothed with A^T
+    (Petrov-Galerkin, R = P0^T (I - w A D^-1)); the Galerkin choice R = P^T can give
+    divergent cycles there.  `cache` (a dict) keeps the aggregates between calls for matrices
+    with the same size and sparsity, so the (Python) aggregation runs once per model.
     """
 
-    def __init__(self, A, max_coarse=400, theta=0.08, max_levels=12, cache=None, symmetric=False):
+    def __init__(self, A, max_coarse=400, theta=0.08, max_levels=12, cache=None, symmetric=False,
+                 petrov_galerkin=True):
         self.symmetric = symmetric
         self.levels = []
         A = sp.csr_matrix(A)
         lvl = 0
         while A.shape[0] > max_coarse and lvl < max_levels:
-            key = ("agg", lvl, A.shape[0], A.nnz)
+            key = ("agg", lvl, A.shape[0])
             if cache is not None and key in cache:
                 agg, nagg = cache[key]
             else:
@@ -155,10 +160,15 @@ class AggregationAMG:
             P0 = sp.csr_matrix((np.ones(n), (np.arange(n), agg)), shape=(n, nagg))
             d = A.diagonal().copy()
             d[d == 0] = 1.0
-            DinvA = sp.diags(1.0 / d) @ A
-            rho = self._spectral_radius(DinvA)
-            P = (P0 - (4.0 / 3.0 / rho) * (DinvA @ P0)).tocsr()
-            R = P.T.tocsr()
+            Dinv = sp.diags(1.0 / d)
+            DinvA = (Dinv @ A).tocsr()
+            rho = max(float(abs(DinvA).sum(axis=1).max()), 1e-12)        # Gershgorin bound
+            w = 4.0 / 3.0 / rho
+            P = (P0 - w * (DinvA @ P0)).tocsr()
+            if petrov_galerkin:
+                R = (P0 - w * ((Dinv @ A.T) @ P0)).T.tocsr()
+            else:
+                R = P.T.tocsr()
             self.levels.append({"A": A, "P": P, "R": R, "smoother": GaussSeidel(A)})
             A = (R @ A @ P).tocsr()
             lvl += 1

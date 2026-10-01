@@ -69,9 +69,11 @@ def initialize_blackoil(model):
             zmax = max(depth.max(), eq["datum"], woc, goc) + 1.0
             zs = np.unique(np.concatenate([np.linspace(zmin, zmax, 400), [eq["datum"], woc, goc]]))
 
-            rsvd = model.rsvd[min(r, len(model.rsvd) - 1)] if model.rsvd else None
-            pbvd = model.pbvd[min(r, len(model.pbvd) - 1)] if model.pbvd else None
-            rvvd = model.rvvd[min(r, len(model.rvvd) - 1)] if model.rvvd else None
+            # EQUIL items 7/8 <= 0: saturated at the gas-oil contact instead of the RSVD/PBVD/RVVD tables
+            use_rs, use_rv = eq.get("rsvd") is not False, eq.get("rvvd") is not False
+            rsvd = model.rsvd[min(r, len(model.rsvd) - 1)] if model.rsvd and use_rs else None
+            pbvd = model.pbvd[min(r, len(model.pbvd) - 1)] if model.pbvd and use_rs else None
+            rvvd = model.rvvd[min(r, len(model.rvvd) - 1)] if model.rvvd and use_rv else None
             rs_cap = [0.0 if co2 else np.inf]
             rv_cap = [0.0 if co2 else np.inf]
 
@@ -138,30 +140,37 @@ def initialize_blackoil(model):
             po_c = np.interp(depth, zs, po)
             pw_c = np.interp(depth, zs, pw)
             pg_c = np.interp(depth, zs, pgz)
-            for c_local, cell in enumerate(cells):
-                st = model.sat[model.satnum[cell]]
-                s_w = s_g = 0.0
-                if ph["water"]:
-                    s_w = float(_invert_pc(st.swof[:, 0], st.swof[:, 3], po_c[c_local] - pw_c[c_local],
-                                           depth[c_local] > woc, 1.0, st.swof[0, 0], False))
-                if ph["gas"]:
-                    s_g = float(_invert_pc(st.sgof[:, 0], st.sgof[:, 3], pg_c[c_local] - po_c[c_local],
-                                           depth[c_local] < goc, st.sgof[-1, 0], 0.0, True))
-                    s_g = min(s_g, 1.0 - s_w)
-                pcell = po_c[c_local]
+            sf = model.satfunc
+            E = sf.D.E
+            s_w = np.zeros(cells.size)
+            s_g = np.zeros(cells.size)
+            pcell = po_c.copy()
+            if ph["water"]:
+                pc_req = po_c - pw_c
+                s_w = np.where(sf.pc_flat_w[cells], np.where(depth > woc, E["SWU"][cells], E["SWL"][cells]),
+                               sf.sw_from_pcow(pc_req, cells))
+                swi = getattr(model, "swatinit", None)
+                if swi is not None:
+                    # SWATINIT: the cell's Pcow curve is scaled so that the equilibrium capillary
+                    # pressure is reached at the given saturation (in the gas cap the gas-water one)
+                    pc_sw = np.where(depth <= goc, pg_c - pw_c, pc_req) if ph["gas"] else pc_req
+                    s_w = sf.apply_swatinit(cells, swi[cells], pc_sw)
                 # Where the capillary-pressure inversion is clamped on the wet side (water zone: the
-                # required Pcow is below the table's value at the cell saturation) the oil pressure
-                # follows the water pressure, p = pw + Pcow(Sw), as in ECLIPSE; likewise in a gas cap
-                # p = pg - Pcgo(Sg).
-                if ph["water"]:
-                    pc_s = float(np.interp(s_w, st.swof[:, 0], st.swof[:, 3]))
-                    if po_c[c_local] - pw_c[c_local] < pc_s - 1e-9 * max(abs(pc_s), 1.0):
-                        pcell = pw_c[c_local] + pc_s
-                if ph["gas"] and s_g > 0:
-                    pc_g = float(np.interp(s_g, st.sgof[:, 0], st.sgof[:, 3]))
-                    if pg_c[c_local] - po_c[c_local] > pc_g + 1e-9 * max(abs(pc_g), 1.0):
-                        pcell = pg_c[c_local] - pc_g
-                p[cell], sw[cell], sg[cell] = pcell, s_w, s_g
+                # required Pcow is below the curve's value at the cell saturation) the oil pressure
+                # follows the water pressure, p = pw + Pcow(Sw), as in ECLIPSE.
+                pc_s = sf.pcow(s_w, cells)[0]
+                wet = pc_req < pc_s - 1e-9 * np.maximum(np.abs(pc_s), 1.0)
+                pcell = np.where(wet, pw_c + pc_s, pcell)
+            if ph["gas"]:
+                pcg_req = pg_c - po_c
+                s_g = np.where(sf.pc_flat_g[cells], np.where(depth <= goc, E["SGU"][cells], 0.0),
+                               sf.sg_from_pcgo(pcg_req, cells))
+                s_g = np.minimum(s_g, 1.0 - s_w)
+                # in a gas cap p = pg - Pcgo(Sg)
+                pc_g = sf.pcgo(s_g, cells)[0]
+                dry = (s_g > 0) & (pcg_req > pc_g + 1e-9 * np.maximum(np.abs(pc_g), 1.0))
+                pcell = np.where(dry, pg_c - pc_g, pcell)
+            p[cells], sw[cells], sg[cells] = pcell, s_w, s_g
             if ph["disgas"]:
                 rsat = pvt.oil.rs_sat(p[cells])[0]
                 rs[cells] = np.array([rs_at(pp, zz) for pp, zz in zip(p[cells], depth)])

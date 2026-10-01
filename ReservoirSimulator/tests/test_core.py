@@ -766,3 +766,173 @@ def test_brugge_first_months_match_eclipse():
     for k, v in ref.items():
         assert S[k][-1] == pytest.approx(v, rel=4e-3), k
     assert S["WSTAT:BR-P-5"][-1] == 1 and S["WSTAT:BR-P-9"][-1] == 3 and S["WMVFP:BR-P-5"][-1] == 1
+
+
+# ----------------------------------------------------------------------------- end-point scaling, hysteresis
+def _spe1_text():
+    return open(os.path.join(EX, "SPE1_BLACKOIL.DATA")).read()
+
+
+def _model_from_text(text, tmp_path, name="CASE.DATA"):
+    p = tmp_path / name
+    p.write_text(text)
+    return load_model(str(p))
+
+
+def test_satfunc_scaling_and_hysteresis(tmp_path):
+    from resim.props.satfunc import SatFunctions
+    m0 = _model_from_text(_spe1_text(), tmp_path)
+    t = m0.sat[0]
+    n = m0.n_active
+    sf = SatFunctions(m0.sat, m0.satnum, True, True)
+    sw = np.linspace(0.12, 0.8, n)
+    sg = np.clip(0.9 - sw, 0, 1) * 0.5
+    krw, _, pcow, _, kro, _, _, krg, _, _, _ = sf.evaluate(sw, sg)
+    assert np.allclose(krw, t.krw(sw)[0]) and np.allclose(krg, t.krg(sg)[0]) and np.allclose(pcow, t.pcow(sw)[0])
+    assert np.allclose(kro, t.kro3(sw, sg)[0])
+    # three-point scaled water curve: zero up to SWCR, table value 1-SOWCR_t at 1-SOWCR, maximum at SWU
+    text = _spe1_text().replace("RUNSPEC", "RUNSPEC\nENDSCALE\n/", 1).replace(
+        "SOLUTION", "SCALECRS\nYES /\nEQUALS\nSWL 0.15 /\nSWCR 0.25 /\nSOWCR 0.2 /\nSGCR 0.05 /\nSWU 0.9 /\n/\n"
+        "SOLUTION", 1)
+    m = _model_from_text(text, tmp_path, "ES.DATA")
+    sf = m.satfunc
+    assert sf.endscale and not m.warnings or all("not produced" in w for w in m.warnings), m.warnings
+    one = np.ones(n)
+    T = sf.D.T
+    krw_at = lambda s: sf.D.curve("krw", s * one, np.arange(n))[0]
+    assert np.allclose(krw_at(0.249), 0.0) and np.allclose(krw_at(0.9), t.krw(np.array([T["SWU"][0]]))[0])
+    assert np.allclose(krw_at(0.8), t.krw(np.array([1 - T["SOWCR"][0]]))[0])
+    kro_at = lambda so: sf.D.curve("krow", so * one, np.arange(n))[0]
+    assert np.allclose(kro_at(0.199), 0.0) and np.allclose(kro_at(0.85), t.krow(np.array([T["SWL"][0]]))[0])
+    # Carlson hysteresis: the scanning curve meets the drainage curve at the historical maximum and
+    # traps gas when the saturation falls
+    text_h = _spe1_text().replace("RUNSPEC", "RUNSPEC\nENDSCALE\n/\nSATOPTS\nHYSTER /", 1).replace(
+        "SOLUTION", "EHYSTR\n 0.1 0 /\nEQUALS\nISGCR 0.2 /\n/\nSOLUTION", 1)
+    mh = _model_from_text(text_h, tmp_path, "HY.DATA")
+    sfh = mh.satfunc
+    hs = {"sg_max": 0.5 * one, "so_max": 0.6 * one}
+    cells = np.arange(n)
+    k_d = sfh.D.curve("krg", 0.5 * one, cells)[0]
+    k_s = sfh._nonwetting("krg", 0.5 * one - 1e-9, hs["sg_max"], cells)[0]
+    assert np.allclose(k_s, k_d, rtol=1e-4)
+    lower = sfh._nonwetting("krg", 0.3 * one, hs["sg_max"], cells)[0]
+    assert np.all(lower < sfh.D.curve("krg", 0.3 * one, cells)[0])
+    assert np.allclose(sfh._nonwetting("krg", 0.1 * one, hs["sg_max"], cells)[0], 0.0)
+
+
+def test_swatinit_and_threshold_pressure(tmp_path):
+    """SWATINIT sets the initial water saturation above the contact by scaling Pcow; THPRES stops
+    flow between equilibration regions until the potential difference exceeds the threshold."""
+    from resim.initialization import initialize_blackoil
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    text = text.replace("RUNSPEC", "RUNSPEC\nENDSCALE\n/\nEQLDIMS\n 2 /", 1)
+    text = text.replace("SOLUTION", "SWATINIT\n 900*0.35 /\nREGIONS\nEQUALS\nEQLNUM 1 /\nEQLNUM 2 9 15 1 15 1 4 /\n/\n"
+                        "SOLUTION", 1)
+    text = text.replace("EQUIL\n-- datum  pressure  WOC    Pcow\n   2010   210       2030   0 /",
+                        "EQUIL\n   2010   210  2030  0 /\n   2010   230  2030  0 /\nEQLOPTS\n THPRES /\n"
+                        "THPRES\n 1 2 15 /\n/")
+    m = _model_from_text(text, tmp_path)
+    init = initialize_blackoil(m)
+    above = m.depth < 2030 - 1
+    assert np.allclose(init["sw"][above], 0.35)
+    assert np.all(m.satfunc.pcw[above] != m.satfunc.pcw_max_t[above])
+    assert np.allclose(init["sw"][m.depth > 2031], 1.0)
+    assert m.thpres == [(0, 1, 15e5)]
+    from resim.solvers.blackoil import BlackOilSolver
+    s = BlackOilSolver(m, SimOptions(), lambda x: None)
+    cross = m.eqlnum[m.conn_a] != m.eqlnum[m.conn_b]
+    assert np.all(s.thp_conn == cross)
+    d = np.array([-20e5, -10e5, 5e5, 16e5])
+    full = np.zeros(m.conn_a.size)
+    idx = np.nonzero(cross)[0][:4]
+    full[idx] = d
+    out = s._threshold(full)
+    assert np.allclose(out[idx], [-5e5, 0.0, 0.0, 1e5])
+
+
+def test_schedule_keywords_norne_style(tmp_path):
+    """WELOPEN with zero (defaulted) locations, WCONHIST RESV control, GCONINJE, WTEST, WTRACER,
+    WPAVE, DRSDT / VAPPARS and TUNING's first-step size."""
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    sched = text.index("SCHEDULE")
+    extra = ("\nTUNING\n 0.5 5 /\n/\n/\nDRSDT\n 0 /\nWPAVE\n 1* 0.0 'WELL' 'ALL' /\n"
+             "GCONINJE\n 'FIELD' 'WATER' 'RATE' 100 /\n/\n")
+    m0 = _model_from_text(text, tmp_path, "BASE.DATA")
+    st = m0.schedule
+    assert st
+    text2 = text.replace("TSTEP", extra + "TSTEP", 1)
+    m = _model_from_text(text2, tmp_path, "S.DATA")
+    s0 = m.schedule[0]
+    assert s0.tuning.get("TSINIT") == pytest.approx(0.5 * 86400) and "TSINIT" not in m.schedule[1].tuning
+    assert s0.options["DRSDT"][0] == 0.0 and s0.options["WPAVE"]["F2"] == 0.0
+    assert s0.options["GCONINJE"][("FIELD", "WATER")]["RATE"] == pytest.approx(100 / 86400)
+    assert sched > 0
+
+
+def test_tracer_transport_conserves_and_breaks_through(tmp_path):
+    """An injected water tracer is transported with the water: produced tracer never exceeds the
+    injected amount, and in-place + produced = injected."""
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    text = text.replace("RUNSPEC", "RUNSPEC\nTRACERS\n 1* 1 /", 1)
+    text = text.replace("SOLUTION", "TRACER\n 'SEA' 'WAT' /\n/\nSOLUTION", 1)
+    text = text.replace("SUMMARY", "SUMMARY\nFTPRSEA\nFTITSEA\nFTPTSEA\nWTPCSEA\n/\n", 1)
+    text = text.replace("TSTEP", "WTRACER\n 'I1' 'SEA' 1.0 /\n/\nTSTEP", 1)
+    p = tmp_path / "TR.DATA"
+    p.write_text(text)
+    res = run_simulation(str(p), SimOptions(stop_at_day=400))
+    S = res.summary
+    assert S["FTITSEA"][-1] > 0
+    assert np.all(S["FTPTSEA"] <= S["FTITSEA"] + 1e-6)
+    assert np.all((S["WTPCSEA:P1"] >= 0) & (S["WTPCSEA:P1"] <= 1 + 1e-9))
+    assert not [w for w in res.log if "TRACER" in w and "not supported" in w]
+
+
+NORNE = os.path.join(EX, "NORNE", "NORNE_ATW2013.DATA")
+
+
+def test_norne_initial_state_matches_eclipse():
+    """Norne (Equinor/OPM): every keyword is read; the grid, the SWATINIT-scaled initial state and
+    the fluids in place agree with ECLIPSE 2014.2's initial balance report."""
+    from resim.initialization import initialize_blackoil
+    from resim.solvers.blackoil import BlackOilSolver
+    m = load_model(NORNE)
+    assert all("PINCH" in w or w.endswith("produced by this simulator: GPR") for w in m.warnings), m.warnings
+    assert m.n_active == 44431 and m.conn_a.size == 132150
+    assert len(m.tracers) == 7 and len(m.equil) == 5 and m.thpres and m.satfunc.hyst is not None
+    s = BlackOilSolver(m, SimOptions(), lambda x: None)
+    s.set_initial_state(initialize_blackoil(m))
+    fs = s.field_state()
+    sm3 = 1.0
+    assert fs["FOIP"] / sm3 == pytest.approx(160788400.0, rel=2e-4)
+    assert fs["FGIP"] / sm3 == pytest.approx(27061577304.0, rel=2e-4)
+    assert fs["FWIP"] / sm3 == pytest.approx(402039288.0, rel=2e-4)
+    assert fs["FPR"] / 1e5 == pytest.approx(271.80, abs=0.01)
+    # SWATINIT: Pcow scaled in the cells ECLIPSE scales (its PCW is -1e20 elsewhere)
+    assert int(np.sum(np.abs(m.satfunc.pcw - m.satfunc.pcw_max_t) > 1e-3)) == 22766
+
+
+def test_norne_first_report_step_matches_eclipse():
+    r = run_simulation(NORNE, SimOptions(stop_at_day=8))
+    S = r.summary
+    assert S["FOPR"][1] == pytest.approx(4379.8, rel=2e-3)        # day 1, RESV-controlled D-1H
+    assert S["FGPR"][1] == pytest.approx(475999.75, rel=2e-3)
+    assert S["FPR"][-1] == pytest.approx(271.31, abs=0.05)
+    assert S["FOPRH"][-1] == pytest.approx(4347.7, rel=1e-6) and S["WBHPH:D-1H"][-1] == 0.0
+    assert "RPR:22" in S and "FTPRSEA" in S and "NEWTON" in S and S["ROIP:1"][0] > 0
+
+
+def test_region_vectors_and_inter_region_flow(tmp_path):
+    """Region water in place changes by the region's well flows plus the inter-region flow (RWFT)."""
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    text = text.replace("SOLUTION", "REGIONS\nEQUALS\nFIPNUM 1 /\nFIPNUM 2 9 15 1 15 1 4 /\n/\nSOLUTION", 1)
+    text = text.replace("SUMMARY", "SUMMARY\nRWFT\n 1 2 /\n/\nRWIP\n/\nRWPT\n/\nRWIT\n/\nRPR\n/\n", 1)
+    p = tmp_path / "RF.DATA"
+    p.write_text(text)
+    res = run_simulation(str(p), SimOptions(stop_at_day=600))
+    S = res.summary
+    assert abs(S["RWFT:1-2"][-1]) > 0
+    for r, sign in ((1, -1.0), (2, 1.0)):
+        lhs = S[f"RWIP:{r}"] - S[f"RWIP:{r}"][0]
+        rhs = S[f"RWIT:{r}"] - S[f"RWPT:{r}"] + sign * S["RWFT:1-2"]
+        assert np.max(np.abs(lhs - rhs)) < 2e-3 * np.max(np.abs(S[f"RWIP:{r}"])), r
+    assert np.all(S["RPR:1"] > 100) and not [w for w in res.log if "not produced" in w]

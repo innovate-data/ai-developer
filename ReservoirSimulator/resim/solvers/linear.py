@@ -17,6 +17,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 AUTO_THRESHOLD = 15000   # unknowns
+STATS = {"iterations": 0}  # cumulative linear (GMRES) iterations, read for the MLINEARS summary vector
 
 
 def solve_linear(J, b, method="auto", n_cells=None, n_vars=None, rtol=1e-5):
@@ -44,10 +45,13 @@ def _block_scaling(J, n, nv):
         for j in range(nv):
             blocks[:, i, j] = J[i * n:(i + 1) * n, j * n:(j + 1) * n].diagonal()
     inv = np.zeros_like(blocks)
-    det = np.linalg.det(blocks)
-    scale = np.abs(blocks).max(axis=(1, 2)) ** nv
-    ok = np.abs(det) > 1e-14 * np.maximum(scale, 1e-300)
-    inv[ok] = np.linalg.inv(blocks[ok])
+    # singularity test on column-normalised blocks: the unknowns have very different scales
+    # (pressure in Pa against saturations), so a determinant relative to the largest entry
+    # would flag healthy blocks
+    cm = np.maximum(np.abs(blocks).max(axis=1), 1e-300)             # (n, nv) column maxima
+    bn = blocks / cm[:, None, :]
+    ok = np.abs(np.linalg.det(bn)) > 1e-12
+    inv[ok] = np.linalg.inv(bn[ok]) / cm[ok][:, :, None]
     bad = np.nonzero(~ok)[0]
     if bad.size:      # fall back to row scaling for (near) singular blocks
         rmax = np.maximum(np.abs(blocks[bad]).max(axis=2), 1e-300)
@@ -68,6 +72,9 @@ def _block_scaling(J, n, nv):
 
 
 _AMG_CACHE = {}          # aggregates per matrix size/sparsity, reused between Newton iterations
+_AMG_REUSE = {}          # the last AMG hierarchy (see cpr_gmres)
+AMG_REUSE = 8            # systems solved with one hierarchy at most
+AMG_REBUILD_ITS = 25     # rebuild when the last solve needed more GMRES iterations
 
 
 def cpr_gmres(J, b, n, nv, rtol=1e-5, maxiter=200, stage2="gs"):
@@ -88,7 +95,18 @@ def cpr_gmres(J, b, n, nv, rtol=1e-5, maxiter=200, stage2="gs"):
     Ap = Js[:n, :n].tocsr()          # decoupled pressure equations
     if len(_AMG_CACHE) > 16:
         _AMG_CACHE.clear()
-    amg = AggregationAMG(Ap, max_coarse=400, theta=0.0, symmetric=True, cache=_AMG_CACHE)
+    # The AMG hierarchy is only a preconditioner: it is reused for following systems with the
+    # same sparsity (later Newton iterations and time steps) until it has served AMG_REUSE
+    # solves or GMRES needed many iterations, which saves most of the setup cost.
+    key = Ap.shape[0]
+    old = _AMG_REUSE.get("amg")
+    if old is not None and _AMG_REUSE.get("key") == key and _AMG_REUSE["uses"] < AMG_REUSE \
+            and _AMG_REUSE.get("its", 0) <= AMG_REBUILD_ITS:
+        amg = old
+        _AMG_REUSE["uses"] += 1
+    else:
+        amg = AggregationAMG(Ap, max_coarse=400, theta=0.08, symmetric=True, cache=_AMG_CACHE)
+        _AMG_REUSE.update(amg=amg, key=key, uses=1, its=0)
     stage1 = amg.solve
     perm = np.r_[np.arange(nr).reshape(nv, n).T.ravel(), np.arange(nr, N)]
     iperm = np.argsort(perm)
@@ -115,8 +133,11 @@ def cpr_gmres(J, b, n, nv, rtol=1e-5, maxiter=200, stage2="gs"):
         r2 = r - Js @ x
         return x + second(r2[perm])[iperm]
 
+    its0 = STATS["iterations"]
     x, ok = gmres(lambda v: Js @ v, bs, prec, rtol=rtol, restart=40, maxiter=maxiter)
+    _AMG_REUSE["its"] = STATS["iterations"] - its0
     if not ok or not np.all(np.isfinite(x)):
+        _AMG_REUSE.clear()
         return None
     return x
 
@@ -166,6 +187,7 @@ def gmres(matvec, b, prec, rtol=1e-7, restart=40, maxiter=200):
             g[k] = cs[k] * g[k]
             k_used = k + 1
             total += 1
+            STATS["iterations"] += 1
             if abs(g[k + 1]) <= rtol * bnorm or total >= maxiter:
                 break
         y = np.linalg.solve(np.triu(H[:k_used, :k_used]) + np.eye(k_used) * 1e-300, g[:k_used])
