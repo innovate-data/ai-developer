@@ -21,6 +21,7 @@ so they open in ResInsight and other ECLIPSE post-processors.
 | Saturation functions | `SWOF`/`SGOF` or `SWFN`/`SGFN`/`SOF3`/`SOF2`, capillary pressure, ECLIPSE default 3-phase oil rel-perm model, `SATNUM`/`PVTNUM` regions. **End-point scaling** (`ENDSCALE`; `SWL SWCR SWU SGL SGCR SGU SOWCR SOGCR PCW PCG`, two- or three-point with `SCALECRS`) and **hysteresis** (`SATOPTS HYSTER`, `EHYSTR`: Carlson or Killough relative-permeability scanning curves for the non-wetting phases, Killough capillary-pressure scanning curves for `PC`/`BOTH`, `IMBNUM` with imbibition end points `ISWL ISGCR ... IPCW IPCG`) |
 | Initialisation | Hydrostatic `EQUIL` (gas cap, oil zone, aquifer, capillary transition zones, datum in any phase, items 7-8), `RSVD`/`PBVD`, `EQLNUM` regions, **`SWATINIT`** (capillary-pressure scaling), threshold pressures between regions (`EQLOPTS THPRES`, `THPRES`), or enumerated `PRESSURE`/`SWAT`/`SGAS`/`RS`/`PBUB` |
 | Wells & schedule | `WELSPECS`, `COMPDAT` (Peaceman well index or given CF, skin, Kh, X/Y/Z direction, wildcards like `'P*'`), `WCONPROD` (ORAT/WRAT/GRAT/LRAT/RESV/BHP/THP), `WCONINJE` (RATE/RESV/BHP/THP), `WCONHIST` (history matching with `RESV`, ORAT, ... control from observed rates), `WCONINJH`, `WELOPEN`, `WELTARG`, `TSTEP`, `DATES`, `TUNING`; group injection limits (`GCONINJE` RATE/RESV/REIN/VREP), well testing (`WTEST`), `DRSDT`/`DRVDT`/`VAPPARS`, passive **tracers** (`TRACERS`, `TRACER`, `TVDPF`, `WTRACER`); automatic switching between rate targets, BHP and THP limits; well-bore hydrostatic head. **VFP tables** (`VFPPROD`, `VFPINJ`: all FLO/WFR/GFR types, multilinear interpolation) for THP limits and THP reporting; **economic limits** (`WECON`: minimum oil/gas/liquid rates, maximum water cut/GOR/WGR/GLR, `WELL`/`PLUG`/`CON`/`+CON` workovers, secondary water cut, end-of-run); group tree (`GRUPTREE`) with group summary vectors |
+| Field management | Black-oil runs. Each control is explicit at the start of a time step and re-evaluated in the first `NUPCOL` Newton iterations (default 12):<br>• **Group production control** (`GCONPROD`): ORAT/WRAT/GRAT/LRAT/RESV targets down the group tree. The target is shared between the wells available for group control (`WCONPROD 'GRUP'`, or any well that would exceed its share, unless `WGRUPCON` withholds it) in proportion to guide rates (`WGRUPCON`, by default the production potentials). Limits with procedure `RATE` act as further targets; `WELL`/`CON`/`+CON`/`PLUG` act as workovers.<br>• **Prioritisation** (`GCONPRI`, `PRIORITY`, `WELPRI`): wells open in priority order until a limit is reached.<br>• **Drilling queues** (`QDRILL` sequential, `WDRILPRI` prioritised): the next well opens when its group cannot meet its target.<br>• **Group economic limits** (`GECON`) with workovers.<br>• **WECON follow-on wells** and **injector economic limits** (`WECONINJ`).<br>• **WTEST re-testing** of wells closed by economic (E) and group (G) limits and of closed connections (C).<br>• **Sales gas** (`GCONSALE`, `GCONSUMP`): gas re-injection set from production − fuel + import − sales target. When sales exceed the maximum, the procedure is `RATE` (cap the group's gas), `WELL`/`CON`/`+CON`/`PLUG` or `END`.<br>• **Standard production network** (`GRUPNET`, `NETBALAN`): node pressures from the terminal pressure and pipeline VFP tables raise the wells' THP limits.<br>• Summary vectors `FGSR`/`FGCR`/`FGIMR`, `GGSR`/`GGCR`/`GGIMR` and node pressure `GPR` |
 | Output | Field, group and well summary vectors: rates, cumulatives, BHP, THP, water cut, GOR, WGR, GLR, reservoir-volume rates (`WVPR`/`WVIR`), block-average pressures (`WBP`, `WBP4`, `WBP5`, `WBP9`), well status (`WSTAT`) and VFP table (`WMVFP`), in-place volumes, average pressure (`FPR`) and phase pressure potentials (`FPPO`/`FPPW`/`FPPG`); history (`...H`), potential (`WOPP` ...) and productivity-index (`WPI`) vectors, `WPAVE` averaging options; region (`RPR`, `ROIP`, `RGIPL`, ..., inter-region `RWFT`, ...), connection (`CWIR`, `CGFR`, ...) and tracer (`FTPR`, `WTPC`, ...) vectors; requested vectors that are not produced are listed as a warning. 3D arrays at each report step; `.resim.npz`, summary CSV, ECLIPSE binary files |
 | GUI | Deck editor with syntax highlighting and outline, form-based model builder, run panel with progress/log, 3D and 2D-slice viewer, summary plots with case comparison |
 
@@ -94,6 +95,7 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 | Deck | Description |
 |---|---|
 | `SPE1_BLACKOIL.DATA` | SPE1 (Odeh 1981): 10×10×3, gas injection into undersaturated live oil, 10 years |
+| `FIELD_MANAGEMENT.DATA` | Field-management showcase on the SPE1 fluid, two platforms over 5 years: a field oil target shared by guide rates, a platform gas limit, prioritised wells, a drilling queue, group GOR economics with re-testing, a follow-on well, sales gas after fuel with the remainder re-injected, and a production network |
 | `SPE5_COMPOSITIONAL.DATA` | SPE5-type 6-component Peng-Robinson fluid, 7×7×3, alternating gas/water injection (WAG) |
 | `WATERFLOOD_DEADOIL.DATA` | METRIC five-spot waterflood with BOX/EQUALS/COPY/MULTIPLY, a MULTZ barrier, `WELOPEN` workover and `WELTARG` change |
 | `CORNERPOINT_DOME.DATA` | Corner-point dome (COORD/ZCORN via `INCLUDE`) with gas cap, aquifer and capillary transition zones |
@@ -161,6 +163,13 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
   * In a 1D steam injection, the steam zone reaches the producer, with every steam cell at Tsat(p). A
     cold-water chase then condenses it completely.
   * Water (liquid + steam) and energy balance against the well terms to 1e-7.
+* **Field management** (`FIELD_MANAGEMENT.DATA` and unit tests):
+  * The field oil target is met to 0.1 % and split 2:1 by `WGRUPCON` guide rates.
+  * Under prioritisation, wells open in `WELPRI` order and the marginal well is cut back.
+  * Queued wells open one per time step in queue order.
+  * Sales gas stays within 0.2 % of its target while injection capacity allows; above it, the sales maximum caps field gas production.
+  * Network node pressures equal the THP of a THP-limited well.
+  * `GECON`, `WTEST`, follow-on wells and `WECONINJ` act on the expected wells.
 * **CO2-brine**: CO2 density within 3 % of NIST (50 C, 150 bar); solubility within 6 % of Duan & Sun (2003)
   at 50 C, 100-400 bar; CO2 inventory balance < 1e-5.
 
@@ -198,13 +207,12 @@ the ECLIPSE 100 results of that deck. ReSim reads every keyword in it, and the r
 ## Limitations
 
 ReSim is a research/teaching-grade simulator, not a replacement for commercial tools. Not (yet) supported:
-analytical aquifers, group production controls (`GCONPROD`), guide rates and networks (`GCONINJE`
-limits scale the injectors' targets in proportion), LGRs, multi-segment wells, directional/irreversible
+analytical aquifers, guide-rate formulae (`GUIDERAT`), group injection guide rates (`GCONINJE` limits scale the injectors' targets in proportion), injection networks and automatic chokes, drilling times and rigs (`WDRILTIM`, `WDRILRES`), field management in compositional runs, LGRs, multi-segment wells, directional/irreversible
 end-point scaling and vertical scaling of relative permeabilities (`KRW`, `KRO`, ...), wetting-phase
 imbibition relative permeabilities and secondary capillary-pressure scanning curves (residual CO2 trapping
 is reported from the critical gas saturation), partitioned tracers. Thermal runs lack heat loss to
 over- and underburden, non-condensable gas or volatile oil components together with steam (steam runs use dead oil), steam distillation, thermal compositional (E300 THERMAL), polymer/solvent
-options, `MULTFLT` changes inside the SCHEDULE section, and WECON follow-on wells. The compositional solver is IMPEC, so very fine grids
+options, and `MULTFLT` changes inside the SCHEDULE section. The compositional solver is IMPEC, so very fine grids
 or high-throughput cells force small time steps. Unsupported keywords are reported as warnings and do
 not stop a run.
 

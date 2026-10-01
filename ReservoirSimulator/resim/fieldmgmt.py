@@ -34,6 +34,7 @@ import numpy as np
 PHASES = ("ORAT", "WRAT", "GRAT", "LRAT", "RESV")
 RATIO_PHASE = {"max_wct": "water", "max_wgr": "water", "max_gor": "gas"}
 TOL = 1e-3
+NEWTON_TOL = 2e-3       # relative target change that makes a Newton iteration re-share the targets
 
 
 class FieldManager:
@@ -75,8 +76,8 @@ class FieldManager:
         """Apply field-management state to a report step's well set (before the perforations are
         built): queued wells stay closed until drilled, drilled and follow-on wells stay open and
         wells closed by group limits stay closed, unless the schedule sets them in this step."""
-        for name in self.queue():
-            if name in wells and name not in touched:
+        for name in self.queue():               # closed until drilled, whatever the schedule says
+            if name in wells:
                 wells[name].status = "SHUT"
         for name in list(self.drilled) + sorted(self.opened):
             if name in wells and name not in touched and wells[name].status != "OPEN":
@@ -151,10 +152,13 @@ class FieldManager:
         snap = {n: (copy.deepcopy(s.wells[n].targets), s.wells[n].control, s.controls.get(n),
                     s.orig_controls.get(n), s.wells[n].thp_limit) for n in s.perf.names}
         if self._alloc_args is not None:
+            ctrls = {n: (s.controls.get(n), s.orig_controls.get(n)) for n in s.perf.names}
             self._restore()
             self._allocate(*self._alloc_args, drill=False, current=rate)
             if self.opt.get("GRUPNET"):
                 self._network()
+            for n, (c, o) in ctrls.items():   # only the targets change; the controls switch by themselves
+                s.controls[n], s.orig_controls[n] = c, o
         if self.opt.get("GCONSALE"):
             self._sales_gas(self._rates(rate))
             s._group_injection()
@@ -172,9 +176,14 @@ class FieldManager:
                 w.targets, w.control, w.thp_limit = t, c, thp
                 s.controls[n], s.orig_controls[n] = ctrl, orig
                 continue
-            if ctrl_a != cb or any(abs((ta[k] or 0.0) - (tb[k] or 0.0)) > 1e-4 * max(abs(tb[k] or 0.0), 1e-9)
+            if ctrl_a != cb or any(abs((ta[k] or 0.0) - (tb[k] or 0.0)) > NEWTON_TOL * max(abs(tb[k] or 0.0), 1e-9)
                                    for k in keys):
                 changed = True
+        if not changed:                     # small corrections are not worth more Newton iterations
+            for n, (t, c, ctrl, orig, thp) in snap.items():
+                w = s.wells[n]
+                w.targets, w.control, w.thp_limit = t, c, thp
+                s.controls[n], s.orig_controls[n] = ctrl, orig
         return changed
 
     def _potentials(self):
@@ -352,7 +361,12 @@ class FieldManager:
             r = last.get(n)
             if r is None or min(r["ORAT"], r["WRAT"], r["GRAT"]) < 0 or r["LRAT"] + r["GRAT"] <= 0:
                 continue
-            m = min(pv[k] / r[k] for k in ("ORAT", "WRAT", "GRAT") if r[k] > 0)
+            liq = r["ORAT"] + r["WRAT"]
+            # phases that matter: a liquid phase above 0.1 % of the liquid, and gas
+            sig = [k for k in ("ORAT", "WRAT") if r[k] > 1e-3 * liq] + (["GRAT"] if r["GRAT"] > 0 else [])
+            if not sig:
+                continue
+            m = min(pv[k] / r[k] for k in sig)
             if np.isfinite(m) and m > 0:
                 pot[n] = {k: m * r[k] for k in PHASES}
         prods = [n for n in s.perf.names if n in pot and s.wells[n].is_open and s._flowing(n)]
@@ -368,6 +382,7 @@ class FieldManager:
                     fr = min(fr, t[k] / pot[n][k])
             f[n] = max(fr, 0.0)
         f0 = dict(f)
+        constrained = {n: set() for n in prods}     # phases limited by the groups above each well
 
         def available(n, group):
             """Is well n available for control by `group` (no intermediate group withholds it)?"""
@@ -382,19 +397,23 @@ class FieldManager:
                     return False
             return True
 
+        raw = self._pot_step                 # guide rates are fixed for the step (start-of-step potentials)
+
         def guide(n, phase):
             w = s.wells[n]
             if w.guide is not None and w.guide.get("rate") is not None:
                 gp = w.guide.get("phase") or phase
-                conv = pot[n][phase] / pot[n][gp] if pot[n].get(gp, 0) > 0 else 1.0
+                conv = raw[n][phase] / raw[n][gp] if raw[n].get(gp, 0) > 0 else 1.0
                 return w.guide["rate"] * (w.guide.get("scale") or 1.0) * conv
-            return pot[n][phase]
+            return raw[n][phase]
 
         def share(group, phase, target):
             members = [n for n in prods if group == "FIELD" or group in self._ancestors(s.wells[n].group)]
             if not members:
                 return False
             avail = [n for n in members if available(n, group)]
+            for n in avail:
+                constrained[n].add(phase)
             fixed = sum(f[n] * pot[n][phase] for n in members if n not in avail)
             cap = {n: f[n] * pot[n][phase] for n in avail}
             room = target - fixed
@@ -435,12 +454,21 @@ class FieldManager:
             if g in self.sales_cap:
                 share(g, "GRAT", self.sales_cap[g])
             if g in groups_pri:
+                for n in prods:
+                    if g == "FIELD" or g in self._ancestors(s.wells[n].group):
+                        constrained[n].update(k for k, p in groups_pri[g]["proc"].items() if p in ("PRI", ""))
                 if self._prioritise(g, groups_pri[g], prods, pot, f, bind):
                     unmet.add(g)
+        # wells limited by their groups get targets in every phase their groups constrain, so
+        # that they stay within all of them whatever their GOR and water cut turn out to be;
         # wells with 'GRUP' control outside any controlled group produce at their own limits
         for n in prods:
             if n in bind and f[n] < f0[n] * (1 - 1e-9):
                 ph = bind[n]
+                for k in constrained[n] - {ph}:
+                    if pot[n][k] > 0:
+                        self._set_target(n, k, min(f[n] * pot[n][k], s.wells[n].targets.get(k, np.inf)),
+                                         control=False)
                 self._set_target(n, ph, f[n] * pot[n][ph])
         if not drill or not unmet:
             return False

@@ -1188,3 +1188,201 @@ def test_spe3_gas_cycling_matches_eclipse():
     assert S["WWPR:PROD"][-1] == pytest.approx(35.04, rel=0.03)
     assert S["BRS:7,7,4"][-1] == pytest.approx(0.406812, abs=2e-3)
     assert t[-1] == pytest.approx(5475.0, abs=1.0)
+
+
+# ----------------------------------------------------------------------------- field management
+def _fm_run(tmp_path, schedule, name="FM"):
+    """SPE1 fluid and grid with the given SCHEDULE section; returns the results."""
+    text = open(os.path.join(EX, "SPE1_BLACKOIL.DATA")).read()
+    text = text[:text.index("SUMMARY")] + "SCHEDULE\n" + schedule + "\nEND\n"
+    text = text.replace("WELLDIMS\n   2 1 1 2 /", "WELLDIMS\n   10 3 3 10 /")
+    path = tmp_path / f"{name}.DATA"
+    path.write_text(text)
+    return run_simulation(str(path))
+
+
+FM_WELLS = """GRUPTREE
+ 'G1' 'FIELD' /
+ 'G2' 'FIELD' /
+/
+WELSPECS
+ 'P1' 'G1' 10 10 8400 'OIL' /
+ 'P2' 'G1' 10  1 8400 'OIL' /
+ 'P3' 'G2'  1 10 8400 'OIL' /
+ 'INJ' 'G1' 1  1 8335 'GAS' /
+/
+COMPDAT
+ 'P*'  2* 3 3 'OPEN' 2* 0.5 /
+ 'INJ' 2* 1 1 'OPEN' 2* 0.5 /
+/
+"""
+
+
+def test_group_production_control_guide_rates(tmp_path):
+    """GCONPROD shares the field target: the well with its own lower limit keeps it, the
+    'GRUP' wells share the rest in proportion to their WGRUPCON guide rates."""
+    res = _fm_run(tmp_path, FM_WELLS + """
+WCONPROD
+ 'P1' 'OPEN' 'GRUP' 5* 1000 /
+ 'P2' 'OPEN' 'GRUP' 5* 1000 /
+ 'P3' 'OPEN' 'ORAT' 3000 4* 1000 /
+/
+WGRUPCON
+ 'P1' 'YES' 2000 'OIL' /
+ 'P2' 'YES' 1000 'OIL' /
+/
+GCONPROD
+ 'FIELD' 'ORAT' 15000 /
+/
+TSTEP
+ 10 20 30 30 /
+""")
+    S = res.summary
+    assert np.allclose(S["FOPR"][1:], 15000, rtol=1e-3)
+    assert np.allclose(S["WOPR:P3"][1:], 3000, rtol=1e-3)
+    assert np.allclose(S["WOPR:P1"][1:], 8000, rtol=2e-3) and np.allclose(S["WOPR:P2"][1:], 4000, rtol=2e-3)
+    assert np.allclose(S["GOPR:G1"][1:], 12000, rtol=1e-3)
+
+
+def test_prioritisation_group_control(tmp_path):
+    """GCONPRI: wells open in order of priority (WELPRI) until the group limit; the marginal
+    well is cut back and the lowest-priority well waits."""
+    res = _fm_run(tmp_path, FM_WELLS + """
+WCONPROD
+ 'P*' 'OPEN' 'ORAT' 6000 4* 1000 /
+/
+GCONPRI
+ 'FIELD' 9000 'PRI' /
+/
+WELPRI
+ 'P1' 3 /
+ 'P2' 2 /
+ 'P3' 1 /
+/
+TSTEP
+ 10 20 30 /
+""")
+    S = res.summary
+    assert np.allclose(S["FOPR"][1:], 9000, rtol=1e-3)
+    assert np.allclose(S["WOPR:P1"][1:], 6000, rtol=1e-3) and np.allclose(S["WOPR:P2"][1:], 3000, rtol=2e-3)
+    assert np.all(S["WOPR:P3"][1:] == 0)
+
+
+def test_drilling_queue(tmp_path):
+    """QDRILL: queued wells stay closed until the field cannot meet its target; they open
+    one per time step in queue order, then share the target."""
+    res = _fm_run(tmp_path, FM_WELLS + """
+WCONPROD
+ 'P*' 'OPEN' 'ORAT' 5000 4* 1000 /
+/
+GCONPROD
+ 'FIELD' 'ORAT' 13000 /
+/
+QDRILL
+ 'P3' 'P2' /
+TSTEP
+ 1 1 1 10 30 /
+""")
+    S = res.summary
+    order = [l for l in res.log if "Drilling queue" in l]
+    assert len(order) == 2 and "P3" in order[0] and "P2" in order[1]
+    assert S["WOPR:P3"][1] > 0 and S["WOPR:P2"][1] == 0               # one well per step, in order
+    assert np.allclose(S["FOPR"][3:], 13000, rtol=1e-3)
+    assert np.all(S["WOPR:P1"][1:] <= 5000 * (1 + 1e-6))
+
+
+def test_group_economics_followon_and_wtest(tmp_path):
+    """GECON closes a group below its minimum oil rate, WTEST 'G' re-opens it after the
+    interval; WECON opens a follow-on well; WECONINJ closes an uneconomic injector."""
+    res = _fm_run(tmp_path, FM_WELLS + """
+WCONPROD
+ 'P1' 'OPEN' 'ORAT' 2000 4* 1000 /
+ 'P2' 'SHUT' 'ORAT' 2000 4* 1000 /
+ 'P3' 'OPEN' 'ORAT' 3000 4* 1000 /
+/
+WCONINJE
+ 'INJ' 'GAS' 'OPEN' 'RATE' 1000 1* 9000 /
+/
+GECON
+ 'G2' 4000 /
+/
+WTEST
+ 'P3' 30 'G' /
+/
+WECON
+ 'P1' 2500 4* 'WELL' 'NO' 'P2' /
+/
+WECONINJ
+ 'INJ' 5000 /
+/
+TSTEP
+ 10 10 10 10 10 /
+""")
+    S = res.summary
+    after = S["TIME"] > 1.5
+    assert np.all(S["WSTAT:P3"][after & (S["TIME"] < 39)] == 3)   # shut by GECON (oil rate 3000 < 4000)
+    assert any("WTEST: well P3" in l for l in res.log)     # re-tested after 30 days ...
+    assert sum("GECON G2" in l for l in res.log) >= 2       # ... and shut again
+    assert np.all(S["WSTAT:P1"][after] == 3) and np.all(S["WSTAT:P2"][after] == 1)   # follow-on opened
+    assert np.allclose(S["WOPR:P2"][after], 2000, rtol=1e-3)
+    assert np.all(S["WSTAT:INJ"][after] == 3) and np.all(S["WGIR:INJ"][after] == 0)
+
+
+def test_sales_gas_control(tmp_path):
+    """GCONSALE / GCONSUMP: the gas injector re-injects production minus fuel minus sales."""
+    res = _fm_run(tmp_path, FM_WELLS + """
+WCONPROD
+ 'P1' 'OPEN' 'ORAT' 15000 4* 1000 /
+/
+WCONINJE
+ 'INJ' 'GAS' 'OPEN' 'RATE' 100000 1* 9014 /
+/
+GCONSUMP
+ 'FIELD' 2000 /
+/
+GCONSALE
+ 'FIELD' 5000 /
+/
+TSTEP
+ 1 9 20 30 30 /
+""")
+    S = res.summary
+    assert np.allclose(S["FGCR"], 2000) and np.allclose(S["FGSR"][2:], 5000, rtol=3e-3)
+    assert np.allclose(S["FGIR"][2:], S["FGPR"][2:] - 7000, rtol=3e-3)
+
+
+def test_production_network_node_pressures(tmp_path):
+    """GRUPNET: the group's node pressure is the terminal pressure plus the pipeline loss, and a
+    THP-limited well produces against it."""
+    vfp = open(os.path.join(EX, "FIELD_MANAGEMENT.DATA")).read()
+    vfp = vfp[vfp.index("VFPPROD"):vfp.index("-- PLAT-A wells")]
+    res = _fm_run(tmp_path, FM_WELLS + vfp + """
+WCONPROD
+ 'P1' 'OPEN' 'ORAT' 50000 4* 500 100 1 /
+/
+GRUPNET
+ 'FIELD' 300 /
+ 'G1' 1* 2 /
+/
+TSTEP
+ 10 20 30 /
+""")
+    S = res.summary
+    node = S["GPR:G1"][1:]
+    assert np.all(node >= 300 - 1e-6) and np.all(node[1:] > 300) and np.all(node < 1500)
+    assert np.allclose(S["WTHP:P1"][1:], node, rtol=0.01)            # THP-limited at the node pressure
+    assert np.all(S["WOPR:P1"][1:] < 50000)
+
+
+def test_field_management_example():
+    res = run_simulation(os.path.join(EX, "FIELD_MANAGEMENT.DATA"))
+    S = res.summary
+    early = (S["TIME"] > 0) & (S["TIME"] < 800)
+    assert np.allclose(S["FOPR"][early], 18000, rtol=1e-3)            # field target met
+    assert np.allclose(S["FGSR"][early & (S["TIME"] > 2)], 10000, rtol=1e-2)   # sales target met
+    assert np.all(S["GGPR:PLAT-A"] <= 40000 * 1.002) and np.all(S["GOPR:PLAT-B"] <= 12000 * 1.002)
+    assert np.all(S["GPR:PLAT-A"][1:] >= 200 - 1e-6)
+    late = S["TIME"] > 1650
+    assert np.allclose(S["FGPR"][late], 92000, rtol=2e-3)             # sales maximum caps the gas
+    assert any("Drilling queue" in l for l in res.log) and any("GECON PLAT-A" in l for l in res.log)
+    assert abs(_mb(res, "oil")) < 1e-5 and abs(_mb(res, "gas")) < 1e-5

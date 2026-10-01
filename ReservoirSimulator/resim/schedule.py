@@ -534,10 +534,11 @@ class ScheduleBuilder:
                 continue
             for name in self._match(rec[0]):
                 phase = to_str(rec_get(rec, 3, "")).upper()[:3]
+                q = {"GAS": "gas_surface_rate", "RES": "reservoir_rate"}.get(phase, "liquid_surface_rate")
                 self.wells[name].guide = {
                     "available": to_str(rec_get(rec, 1, "YES")).upper() != "NO",
-                    "rate": self._num(rec, 2), "phase": {"WAT": "WRAT", "OIL": "ORAT", "GAS": "GRAT",
-                                                         "LIQ": "LRAT", "RES": "RESV"}.get(phase),
+                    "rate": self._num(rec, 2, q), "phase": {"WAT": "WRAT", "OIL": "ORAT", "GAS": "GRAT",
+                                                            "LIQ": "LRAT", "RES": "RESV"}.get(phase),
                     "scale": self._num(rec, 4, None, 1.0)}
 
     def _kw_QDRILL(self, data):

@@ -114,6 +114,9 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
     summary = _SummaryCollector(model, res)
     if model.schedule:            # wells of the first report step, so that t = 0 well vectors exist
         st0 = model.schedule[0]
+        if hasattr(solver, "set_options"):
+            solver.set_options(st0.options)
+        solver.groups = st0.groups
         if hasattr(solver, "economic_limits"):
             solver.setup_wells(st0.wells, touched=st0.touched, vfp=st0.vfp)
         else:
@@ -139,12 +142,12 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
         if hasattr(solver, "well_tests"):
             for name in solver.well_tests(t, rstep.wells):
                 logm(f"  WTEST: well {name} re-opened for testing")
+        if hasattr(solver, "set_options"):
+            solver.set_options(rstep.options)       # before the wells: the drilling queue applies to them
         if hasattr(solver, "economic_limits"):
             solver.setup_wells(rstep.wells, touched=rstep.touched, vfp=rstep.vfp)
         else:
             solver.setup_wells(rstep.wells)
-        if hasattr(solver, "set_options"):
-            solver.set_options(rstep.options)
         step_end = min(rstep.end_time, t_stop)
         while t < step_end - 1e-6:
             if should_stop():
