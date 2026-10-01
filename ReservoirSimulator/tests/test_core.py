@@ -997,3 +997,16 @@ def test_spe10_model1_matches_published_curve():
     t = S["TIME"]
     i = int(np.argmin(np.abs(t - 500)))
     assert r3.summary["FOPT"][-1] == pytest.approx(S["FOPT"][i], rel=1e-3)
+
+
+def test_spe9_matches_eclipse():
+    """SPE9 (corner-point OPM deck): field rates and block vectors against the ECLIPSE results
+    published with the deck, over the first 100 days."""
+    r = run_simulation(os.path.join(EX, "SPE9", "SPE9_CP.DATA"), SimOptions(stop_at_day=100))
+    S = r.summary
+    assert not [w for w in r.log if "WARNING" in w]
+    ref = {"FOPR": 34416.816, "FGPR": 68133.242, "FWPR": 551.016, "FGOR": 1.98}
+    for k, v in ref.items():
+        assert S[k][-1] == pytest.approx(v, rel=0.015), k
+    assert S["BPR:1,1,1"][-1] == pytest.approx(3146.134, abs=10.0)
+    assert S["WBHP:PRODU2"][-1] == pytest.approx(2230.96, abs=15.0)
