@@ -1070,7 +1070,14 @@ class BlackOilSolver:
             sel = self.perf.well == wi
             if np.any(sel & (self.perf.wi > 0)):
                 sel = sel & (self.perf.wi > 0)
-            if self.controls.get(name) != "BHP" and self._flowing(name) and sel.any():
+            ctrl = self.controls.get(name)
+            if self._flowing(name) and ctrl == "BHP":
+                # the BHP equation is linear: go to the limit at once instead of in clipped steps
+                # (a well that has just switched from a rate target may be far from it)
+                b = w.targets.get("BHP", b)
+            elif self._flowing(name) and ctrl == "THP" and name in self.thp_bhp:
+                b = self.thp_bhp[name]
+            elif ctrl != "BHP" and self._flowing(name) and sel.any():
                 pc = st["p"][self.perf.cell[sel]] - head[sel]
                 eps = 1e-9 * abs(b) + 1e-6
                 b = min(b, pc.max() - eps) if w.kind == "PROD" else max(b, pc.min() + eps)
