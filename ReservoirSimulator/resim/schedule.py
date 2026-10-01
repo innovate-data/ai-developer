@@ -321,14 +321,18 @@ class ScheduleBuilder:
             if not rec:
                 continue
             status = to_str(rec_get(rec, 1, "OPEN")).upper()
-            # connection location and completion numbers; zero or defaulted means "any"
+            # With all of items 3-7 defaulted the command applies to the well; otherwise it applies
+            # to the matching connections, a zero or defaulted location item matching any value
+            # ('SHUT' 0 0 0 closes every connection but leaves the well open).
+            on_conns = any(rec_get(rec, m) is not None for m in range(2, 7))
             conn = [rec_get(rec, m) for m in range(2, 5)]
             conn = [None if v is None or to_int(v, 0) <= 0 else v for v in conn]
             if any(rec_get(rec, m) is not None and to_int(rec_get(rec, m), 0) > 0 for m in (5, 6)):
-                self.warn("WELOPEN: completion-number selection (items 6-7) is not supported; whole well used")
+                self.warn("WELOPEN: completion-number selection (items 6-7) is not supported; "
+                          "the location items select the connections")
             for name in self._match(rec[0]):
                 w = self.wells[name]
-                if all(c is None for c in conn):
+                if not on_conns:
                     w.status = status
                     self.touched.add(name)
                 else:

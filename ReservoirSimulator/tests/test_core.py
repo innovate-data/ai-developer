@@ -936,3 +936,17 @@ def test_region_vectors_and_inter_region_flow(tmp_path):
         rhs = S[f"RWIT:{r}"] - S[f"RWPT:{r}"] + sign * S["RWFT:1-2"]
         assert np.max(np.abs(lhs - rhs)) < 2e-3 * np.max(np.abs(S[f"RWIP:{r}"])), r
     assert np.all(S["RPR:1"] > 100) and not [w for w in res.log if "not produced" in w]
+
+
+def test_welopen_connection_semantics(tmp_path):
+    """WELOPEN with location items (zeros meaning 'any') acts on connections, not on the well:
+    'SHUT' 0 0 0 closes every connection, and a later COMPDAT re-opens only what it lists."""
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    text = text.replace("WELOPEN\n   'P4' 'SHUT' /\n/", "WELOPEN\n   'P4' 'SHUT' 0 0 0 /\n/")
+    text = text.replace("WELOPEN\n   'P4' 'OPEN' /\n/", "COMPDAT\n   'P4' 2* 2 2 'OPEN' /\n/")
+    m = _model_from_text(text, tmp_path, "WO.DATA")
+    shut = [st for st in m.schedule if st.wells["P4"].status == "OPEN" and
+            all(c.status == "SHUT" for c in st.wells["P4"].completions)]
+    assert shut and not shut[0].wells["P4"].is_open
+    last = m.schedule[-1].wells["P4"]
+    assert last.status == "OPEN" and [c.k for c in last.completions if c.status == "OPEN"] == [1]

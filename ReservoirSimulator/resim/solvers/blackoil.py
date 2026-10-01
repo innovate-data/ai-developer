@@ -303,6 +303,8 @@ class BlackOilSolver:
             self.controls[name] = w.control
             self.orig_controls[name] = w.control
             sel = self.perf.well == wi
+            if np.any(sel & (self.perf.wi > 0)):
+                sel = sel & (self.perf.wi > 0)          # open connections decide the drawdown
             cells = self.perf.cell[sel]
             if cells.size:              # zero-flow BHP (reported before the first time step)
                 self._bhp_static[name] = pot[sel].max() if w.kind == "PROD" else pot[sel].min()
@@ -1066,6 +1068,8 @@ class BlackOilSolver:
             b = self.bhp[name] + float(np.clip(dbhp[wi], -0.2 * abs(self.bhp[name]) - 1e5, 0.2 * abs(self.bhp[name]) + 1e5))
             w = self.wells[name]
             sel = self.perf.well == wi
+            if np.any(sel & (self.perf.wi > 0)):
+                sel = sel & (self.perf.wi > 0)
             if self.controls.get(name) != "BHP" and self._flowing(name) and sel.any():
                 pc = st["p"][self.perf.cell[sel]] - head[sel]
                 eps = 1e-9 * abs(b) + 1e-6
