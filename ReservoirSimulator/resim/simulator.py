@@ -34,6 +34,9 @@ class SimOptions:
     thermal_tol: float = 0.01       # energy residual tolerance expressed in kelvin
     dT_max: float = 30.0            # max temperature change per Newton iteration (K)
     dT_target: float = 20.0         # target temperature change per time step (K)
+    # run limits: end the run early (keeping the results so far); 0 = no limit
+    stop_at_day: float = 0.0        # simulated time at which to stop
+    max_wall_s: float = 0.0         # wall-clock budget in seconds
 
 
 class SimulationAborted(Exception):
@@ -49,12 +52,24 @@ def _noop(*_a, **_k):
 
 
 def run_simulation(deck_or_path, options: SimOptions | None = None, progress=None, log=None,
-                   should_stop=None) -> Results:
-    """Run an ECLIPSE deck (path or parsed `Deck` or built `SimulationModel`)."""
+                   should_stop=None, on_step=None, on_report=None, keep_partial=False) -> Results:
+    """Run an ECLIPSE deck (path or parsed `Deck` or built `SimulationModel`).
+
+    on_step(info)              called after every time step attempt with a dict of step statistics
+                               and field values (deck units); failed attempts have ``ok=False``.
+    on_report(res, i, rows)    called after report step i is stored in `res`; `rows` are the summary
+                               rows recorded so far (dicts, deck units).
+    keep_partial               if True, a stop request ends the run normally with the results so far
+                               (``res.meta["stopped"]`` gives the reason) instead of raising
+                               `SimulationAborted`. The `stop_at_day` and `max_wall_s` limits always
+                               end the run this way.
+    """
     opt = options or SimOptions()
     progress = progress or _noop
     log = log or _noop
     should_stop = should_stop or (lambda: False)
+    on_step = on_step or _noop
+    on_report = on_report or _noop
     t_wall = time.time()
     messages = []
 
@@ -97,21 +112,32 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
          f"{u.label('liquid_surface_volume')}")
     summary = _SummaryCollector(model, res)
     summary.record(0.0, solver, None, fs0)
+    on_report(res, 0, summary.rows)
 
     t_end = model.schedule[-1].end_time if model.schedule else 0.0
+    t_stop = opt.stop_at_day * DAY if opt.stop_at_day and opt.stop_at_day > 0 else np.inf
+    t_end_run = min(t_end, t_stop)
     t = 0.0
     dt = opt.initial_dt_days * DAY
     n_steps = n_newton = n_cuts = 0
+    stopped = None
     for rstep_i, rstep in enumerate(model.schedule):
         if rstep.tuning.get("TSINIT"):
             dt = rstep.tuning["TSINIT"]
         # a TUNING maximum step in the deck overrides the run option
         max_dt = rstep.tuning.get("TSMAXZ", opt.max_dt_days * DAY)
         solver.setup_wells(rstep.wells)
-        while t < rstep.end_time - 1e-6:
+        step_end = min(rstep.end_time, t_stop)
+        while t < step_end - 1e-6:
             if should_stop():
-                raise SimulationAborted("Simulation stopped by user")
-            remaining = rstep.end_time - t
+                if not keep_partial:
+                    raise SimulationAborted("Simulation stopped by user")
+                stopped = "stopped by user"
+            elif opt.max_wall_s and time.time() - t_wall > opt.max_wall_s:
+                stopped = f"wall-clock limit of {opt.max_wall_s:g} s reached"
+            if stopped:
+                break
+            remaining = step_end - t
             dt = min(dt, max_dt)
             if remaining <= dt * 1.0001:
                 dt_try = remaining
@@ -123,6 +149,9 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
             n_newton += its
             if not ok:
                 n_cuts += 1
+                on_step({"ok": False, "t": t / DAY, "dt": dt_try / DAY, "its": its, "steps": n_steps,
+                         "cuts": n_cuts, "newton": n_newton, "frac": t / t_end_run if t_end_run > 0 else 1.0,
+                         "wall": time.time() - t_wall})
                 dt = dt_try / 3.0
                 logm(f"  t={t / DAY:10.3f} d: step of {dt_try / DAY:.4g} d failed after {its} iterations, "
                      f"cutting to {dt / DAY:.4g} d")
@@ -146,16 +175,34 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
             fac = max(fac, 0.5)
             if dt_try >= dt * 0.999 or dt_try < dt:
                 dt = max(dt_try * fac, opt.min_dt_days * DAY)
-            frac = t / t_end if t_end > 0 else 1.0
+            frac = t / t_end_run if t_end_run > 0 else 1.0
             wr = solver.well_report()
             fopr = sum(v["oil"] for v in wr.values() if v["kind"] == "PROD")
-            progress(frac, f"Day {t / DAY:.1f} / {t_end / DAY:.1f}  dt={dt_try / DAY:.3g} d  newton={its}")
+            progress(frac, f"Day {t / DAY:.1f} / {t_end_run / DAY:.1f}  dt={dt_try / DAY:.3g} d  newton={its}")
+            row = summary.rows[-1]
+            info_out = {"ok": True, "t": t / DAY, "dt": dt_try / DAY, "its": its, "steps": n_steps, "cuts": n_cuts,
+                        "newton": n_newton, "frac": frac, "wall": time.time() - t_wall}
+            for k in ("FPR", "FOPR", "FWPR", "FGPR", "FWIR", "FGIR", "FWCT", "FGOR", "FTEMP", "FCO2D"):
+                if k in row and np.isfinite(row[k]):
+                    info_out[k] = float(row[k])
+            on_step(info_out)
             logm(f"  t={t / DAY:10.3f} d  dt={dt_try / DAY:8.4f} d  it={its:2d}  "
                  f"FPR={u.from_si(fs['FPR'], 'pressure'):9.2f} {u.label('pressure')}  "
                  f"FOPR={u.from_si(fopr, 'liquid_surface_rate'):10.2f} {u.label('liquid_surface_rate')}")
+        if stopped is None and t < rstep.end_time - 1e-6:
+            stopped = f"stop time of day {opt.stop_at_day:g} reached"
+        if stopped is not None and t <= res.report_times[-1] * DAY + 1e-6:
+            break                                   # nothing new since the last report
         _record_report(res, model, solver, t)
+        on_report(res, len(res.report_times) - 1, summary.rows)
+        if stopped is not None:
+            logm(f"Run ended early at day {t / DAY:.2f}: {stopped}")
+            break
         logm(f"Report step {rstep_i + 1}/{len(model.schedule)}: {rstep.date:%d %b %Y} (day {t / DAY:.2f})")
     summary.finish()
+    if stopped is not None:
+        res.meta["stopped"] = stopped
+        res.meta["stopped_day"] = t / DAY
     wall = time.time() - t_wall
     logm(f"Simulation finished: {n_steps} time steps, {n_newton} Newton iterations, {n_cuts} cuts, "
          f"{wall:.1f} s wall time")

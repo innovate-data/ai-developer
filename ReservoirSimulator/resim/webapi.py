@@ -39,19 +39,8 @@ def results_payload(res, wall=None):
     act = np.asarray(res.active, bool)
     cell = {k: _quantise(v, act) for k, v in res.cell_data.items()}
     static = {k: _quantise(np.asarray(v)[None, :], act) for k, v in res.static.items()}
-    units = {}
-    dens = "kg/m3" if res.meta.get("units") == "METRIC" else "lb/ft3"
-    for k in cell:
-        units[k] = {"PRESSURE": res.unit_label("FPR"), "RS": res.unit_label("FGOR"), "RSW": res.unit_label("FGOR"),
-                    "RV": "stb/Mscf" if res.meta.get("units") == "FIELD" else "sm3/sm3",
-                    "RVW": "stb/Mscf" if res.meta.get("units") == "FIELD" else "sm3/sm3",
-                    "TEMP": "°F" if res.meta.get("units") == "FIELD" else "°C",
-                    "DENO": dens, "DENG": dens, "DENW": dens}.get(k, "fraction")
-    lu = "ft" if res.meta.get("units") == "FIELD" else "m"
-    for k in static:
-        units[k] = {"PERMX": "mD", "PERMY": "mD", "PERMZ": "mD", "DEPTH": lu, "DX": lu, "DY": lu, "DZ": lu,
-                    "PORV": res.unit_label("FOIP").replace("stb", "rb").replace("sm3", "rm3"),
-                    "SATNUM": "", "PVTNUM": ""}.get(k, "fraction")
+    units = _cell_units(res, cell.keys())
+    units.update(_static_units(res, static.keys()))
     summ = {}
     for k, v in res.summary.items():
         summ[k] = [None if not np.isfinite(x) else float(f"{x:.6g}") for x in np.asarray(v, float)]
@@ -66,6 +55,88 @@ def results_payload(res, wall=None):
         "cell": cell, "static": static, "summary": summ, "units": units,
         "wells": res.wells, "log": res.log[-400:], "wall": wall,
     }
+
+
+def _cell_units(res, names):
+    dens = "kg/m3" if res.meta.get("units") == "METRIC" else "lb/ft3"
+    rv = "stb/Mscf" if res.meta.get("units") == "FIELD" else "sm3/sm3"
+    table = {"PRESSURE": res.unit_label("FPR"), "RS": res.unit_label("FGOR"), "RSW": res.unit_label("FGOR"),
+             "RV": rv, "RVW": rv, "TEMP": "°F" if res.meta.get("units") == "FIELD" else "°C",
+             "DENO": dens, "DENG": dens, "DENW": dens}
+    return {k: table.get(k, "fraction") for k in names}
+
+
+def _static_units(res, names):
+    lu = "ft" if res.meta.get("units") == "FIELD" else "m"
+    table = {"PERMX": "mD", "PERMY": "mD", "PERMZ": "mD", "DEPTH": lu, "DX": lu, "DY": lu, "DZ": lu,
+             "PORV": res.unit_label("FOIP").replace("stb", "rb").replace("sm3", "rm3"), "SATNUM": "", "PVTNUM": ""}
+    return {k: table.get(k, "fraction") for k in names}
+
+
+def _summary_rows_json(rows):
+    out = []
+    for r in rows:
+        out.append({k: (None if not np.isfinite(v) else float(f"{v:.6g}")) for k, v in r.items()})
+    return out
+
+
+def run_stream(text, name, options_json, post):
+    """Run a deck, streaming results to `post(dict)` as they are produced.
+
+    Messages (all plain JSON-able dicts):
+      {"type": "run-header", meta, dims, corners, active, nactive, static, units, wells}
+          once, after initialisation (static arrays and grid geometry);
+      {"type": "run-report", index, time, date, cell: {name: {lo, hi, q}}, summary: [rows]}
+          after every report step; cell arrays are quantised per step to uint16, summary holds the
+          rows recorded since the previous report;
+      {"type": "run-step", ...}   after every time step attempt (statistics + field values);
+      {"type": "log", text}.
+    Returns the final JSON reply: {"ok": True, wall, log, summary (complete), units, stopped}.
+    A page that loses the worker mid-run (cancel) still holds every streamed report step.
+    """
+    import time
+    from .simulator import SimOptions, run_simulation
+    opts = json.loads(options_json or "{}")
+    fields = {f.name for f in dataclasses.fields(SimOptions)}
+    so = SimOptions(**{k: v for k, v in opts.items() if k in fields})
+    state = {"rows": 0, "last_step_post": 0.0}
+    t0 = time.time()
+
+    def on_report(res, i, rows):
+        act = np.asarray(res.active, bool)
+        if i == 0:
+            static = {k: _quantise(np.asarray(v)[None, :], act) for k, v in res.static.items()}
+            units = _cell_units(res, res.cell_data.keys())
+            units.update(_static_units(res, static.keys()))
+            units.update({k: res.unit_label(k) for k in rows[0] if k != "TIME"})
+            post({"type": "run-header", "meta": res.meta, "dims": [res.nx, res.ny, res.nz],
+                  "corners": _b64(np.asarray(res.corners).reshape(-1), "<f4"),
+                  "active": _b64(act.astype(np.uint8), "u1"), "nactive": int(act.sum()),
+                  "static": static, "units": units, "wells": res.wells})
+        cell = {k: _quantise(np.asarray(v[i])[None, :], act) for k, v in res.cell_data.items()}
+        post({"type": "run-report", "index": i, "time": float(res.report_times[i]),
+              "date": str(res.report_dates[i])[:10], "cell": cell,
+              "summary": _summary_rows_json(rows[state["rows"]:])})
+        state["rows"] = len(rows)
+
+    def on_step(info):
+        # failed steps and at most ~10 updates per second reach the page
+        now = time.time()
+        if info.get("ok") and now - state["last_step_post"] < 0.1:
+            return
+        state["last_step_post"] = now
+        info = {k: (float(v) if isinstance(v, (float, np.floating)) else v) for k, v in info.items()}
+        info["type"] = "run-step"
+        post(info)
+
+    res = run_simulation(_write_deck(text, name), so, log=lambda m: post({"type": "log", "text": str(m)}),
+                         on_step=on_step, on_report=on_report)
+    summ = {k: [None if not np.isfinite(x) else float(f"{x:.6g}") for x in np.asarray(v, float)]
+            for k, v in res.summary.items()}
+    units = {k: res.unit_label(k) for k in res.summary if k != "TIME"}
+    return json.dumps({"ok": True, "wall": round(time.time() - t0, 1), "log": res.log[-400:], "summary": summ,
+                       "units": units, "stopped": res.meta.get("stopped"), "meta": res.meta},
+                      separators=(",", ":"))
 
 
 def _write_deck(text, name):
@@ -146,5 +217,127 @@ def build_deck(form_json):
                       for w in f["wells"]]
     try:
         return json.dumps({"ok": True, "deck": generate_deck(spec)})
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+# ------------------------------------------------------------------ sensitivity variants
+_SECTIONS = ("RUNSPEC", "GRID", "EDIT", "PROPS", "REGIONS", "SOLUTION", "SUMMARY", "SCHEDULE")
+_PROD_COL = {"ORAT": 4, "WRAT": 5, "GRAT": 6, "LRAT": 7, "RESV": 8, "BHP": 9}   # 1-based WCONPROD items
+_INJ_COL = {"RATE": 5, "RESV": 6, "BHP": 7}                                       # 1-based WCONINJE items
+
+
+def _kw_of(line):
+    tok = line.split("--")[0].strip()
+    return tok if tok and tok.replace("_", "").isalnum() and tok[0].isalpha() and tok.upper() == tok \
+        and len(tok) <= 8 and "/" not in tok else None
+
+
+def _expand_items(body):
+    """Split a record body into items, expanding n* repeat counts."""
+    out = []
+    for tok in body.replace(",", " ").split():
+        if "*" in tok and not tok.startswith(("'", '"')):
+            n, _, v = tok.partition("*")
+            out.extend([v or "1*"] * int(n or 1))
+        else:
+            out.append(tok)
+    return out
+
+
+def _set_well_item(line, item, value):
+    code, sep, comment = line.partition("--")
+    body, slash, rest = code.partition("/")
+    items = _expand_items(body)
+    while len(items) < item:
+        items.append("1*")
+    items[item - 1] = f"{value:g}"
+    return "  " + " ".join(items) + " /" + rest.rstrip() + ((" --" + comment) if sep else "")
+
+
+def make_variant(text, spec_json):
+    """Return a modified deck for one sensitivity case, as JSON {ok, deck, changes} or {ok: False, error}.
+
+    spec: {"kind": "multiply", "array": "PERMX", "value": 1.5}
+              -> MULTIPLY record appended to the end of the GRID section (or the EDIT section for
+                 PORV and TRAN*), so it acts on the array however it was defined;
+          {"kind": "well", "well": "PROD", "target": "rate" | "bhp", "value": 1500}
+              -> the rate target of the well's active control (or its BHP item) in every WCONPROD /
+                 WCONINJE record for that well; '*' matches all wells;
+          {"kind": "replace", "find": "@RATE@", "value": 1500}
+              -> every occurrence of the token.
+    """
+    sp = json.loads(spec_json)
+    kind = sp.get("kind")
+    value = float(sp["value"])
+    lines = text.split("\n")
+    try:
+        if kind == "multiply":
+            arr = str(sp["array"]).upper()
+            edit_arrays = arr == "PORV" or arr.startswith("TRAN")
+            target_sec = "EDIT" if edit_arrays else "GRID"
+            sec, insert_at, have_edit = None, None, False
+            for i, ln in enumerate(lines):
+                k = _kw_of(ln)
+                if k in _SECTIONS:
+                    if sec == target_sec and insert_at is None:
+                        insert_at = i
+                    if k == "EDIT":
+                        have_edit = True
+                    sec = k
+            block = ["MULTIPLY", f"  {arr} {value:g} /", "/", ""]
+            if insert_at is None and edit_arrays and not have_edit:
+                # no EDIT section: create one before PROPS
+                for i, ln in enumerate(lines):
+                    if _kw_of(ln) == "PROPS":
+                        insert_at = i
+                        block = ["EDIT", ""] + block
+                        break
+            if insert_at is None:
+                return json.dumps({"ok": False, "error": f"no {target_sec} section to add MULTIPLY {arr} to"})
+            lines[insert_at:insert_at] = ["-- sensitivity variant"] + block
+            return json.dumps({"ok": True, "deck": "\n".join(lines), "changes": 1})
+        if kind == "well":
+            well = str(sp["well"]).strip("'\"").upper()
+            target = sp.get("target", "rate")
+            changes, kw = 0, None
+            for i, ln in enumerate(lines):
+                k = _kw_of(ln)
+                if k:
+                    kw = k
+                    continue
+                code = ln.split("--")[0].strip()
+                if kw not in ("WCONPROD", "WCONINJE") or not code:
+                    continue
+                if code.startswith("/"):
+                    kw = None
+                    continue
+                items = _expand_items(code.partition("/")[0])
+                if not items:
+                    continue
+                name = items[0].strip("'\"").upper()
+                if not (well == "*" or name == well or (well.endswith("*") and name.startswith(well[:-1]))):
+                    continue
+                if kw == "WCONPROD":
+                    ctrl = items[2].strip("'\"").upper() if len(items) > 2 else "ORAT"
+                    col = _PROD_COL["BHP"] if target == "bhp" else _PROD_COL.get(ctrl)
+                else:
+                    ctrl = items[3].strip("'\"").upper() if len(items) > 3 else "RATE"
+                    col = _INJ_COL["BHP"] if target == "bhp" else _INJ_COL.get(ctrl)
+                if col is None or col == (_PROD_COL["BHP"] if kw == "WCONPROD" else _INJ_COL["BHP"]) and target == "rate":
+                    continue                    # BHP-controlled well has no rate target to change
+                lines[i] = _set_well_item(ln, col, value)
+                changes += 1
+            if not changes:
+                return json.dumps({"ok": False, "error": f"no rate-controlled WCONPROD/WCONINJE record for well {well}"
+                                   if target == "rate" else f"no WCONPROD/WCONINJE record for well {well}"})
+            return json.dumps({"ok": True, "deck": "\n".join(lines), "changes": changes})
+        if kind == "replace":
+            find = str(sp["find"])
+            n = text.count(find)
+            if not find or not n:
+                return json.dumps({"ok": False, "error": f"text {find!r} not found in the deck"})
+            return json.dumps({"ok": True, "deck": text.replace(find, f"{value:g}"), "changes": n})
+        return json.dumps({"ok": False, "error": f"unknown variant kind {kind!r}"})
     except Exception as exc:  # noqa: BLE001
         return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})

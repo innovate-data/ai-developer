@@ -513,3 +513,54 @@ def test_co2_storage_balance_and_trapping():
     assert 0.05 < s["FGIPL"][-1] / s["FGIP"][-1] < 0.6               # part of the CO2 dissolved
     assert abs(s["FGIPL"][-1] + s["FGIPG"][-1] - s["FGIP"][-1]) < 1e-6 * s["FGIP"][-1]
     assert {"SWAT", "SGAS", "RSW", "DENG"} <= set(res.cell_data)
+
+
+def test_run_limits_and_streaming(tmp_path, monkeypatch):
+    """stop_at_day ends the run early with partial results; run_stream's report messages add up
+    to the final summary."""
+    import json
+    from resim import webapi
+    monkeypatch.setattr(webapi, "WORK", str(tmp_path))
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    msgs = []
+    out = json.loads(webapi.run_stream(text, "WF", json.dumps({"stop_at_day": 75}), msgs.append))
+    assert out["ok"] and "day 75" in out["stopped"]
+    assert msgs[0]["type"] == "log" and any(m["type"] == "run-header" for m in msgs)
+    reps = [m for m in msgs if m["type"] == "run-report"]
+    assert [r["index"] for r in reps] == list(range(len(reps)))
+    assert reps[-1]["time"] == pytest.approx(75.0)
+    assert sum(len(r["summary"]) for r in reps) == len(out["summary"]["TIME"])
+    assert out["summary"]["TIME"][-1] == pytest.approx(75.0)
+    steps = [m for m in msgs if m["type"] == "run-step"]
+    assert steps and all(isinstance(s["t"], float) for s in steps)
+    json.dumps(msgs)                                  # everything must be JSON-able for postMessage
+
+
+def test_sensitivity_variants(tmp_path, monkeypatch):
+    import json
+    from resim import webapi
+    monkeypatch.setattr(webapi, "WORK", str(tmp_path))
+    spe1 = open(os.path.join(EX, "SPE1_BLACKOIL.DATA")).read()
+    wf = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+
+    def variant(text, **spec):
+        return json.loads(webapi.make_variant(text, json.dumps(spec)))
+
+    r = variant(spe1, kind="multiply", array="PERMX", value=2)
+    m0 = load_model(webapi._write_deck(spe1, "A"))
+    m1 = load_model(webapi._write_deck(r["deck"], "B"))
+    assert r["ok"] and np.allclose(m1.perm[0], 2 * m0.perm[0]) and np.allclose(m1.perm[2], m0.perm[2])
+    r = variant(wf, kind="multiply", array="PORV", value=1.1)
+    m0 = load_model(webapi._write_deck(wf, "A"))
+    m1 = load_model(webapi._write_deck(r["deck"], "B"))
+    assert r["ok"] and np.allclose(m1.pore_volume, 1.1 * m0.pore_volume)
+    r = variant(spe1, kind="well", well="PROD", target="rate", value=15000)
+    assert r["ok"] and r["changes"] == 1 and "'ORAT' 15000 1* 1* 1* 1* 1000 /" in r["deck"]
+    r = variant(spe1, kind="well", well="PROD", target="bhp", value=1500)
+    assert r["ok"] and "'ORAT' 20000 1* 1* 1* 1* 1500 /" in r["deck"]
+    r = variant(wf, kind="well", well="*", target="rate", value=777)
+    assert r["ok"] and r["changes"] == 2
+    assert not variant(spe1, kind="well", well="NOPE", target="rate", value=1)["ok"]
+    assert not variant(spe1, kind="replace", find="@X@", value=1)["ok"]
+    r = variant(spe1.replace("20000", "@Q@"), kind="replace", find="@Q@", value=12345)
+    assert r["ok"] and "12345" in r["deck"]
