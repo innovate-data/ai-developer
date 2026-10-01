@@ -47,7 +47,7 @@ HANDLED = {
     # end-point scaling, hysteresis, array operators in PROPS / REGIONS
     "ENDSCALE", "SATOPTS", "SCALECRS", "EHYSTR", "EQUALS", "COPY", "ADD", "MULTIPLY", "BOX", "ENDBOX",
     "MINVALUE", "MAXVALUE", "SWATINIT", "SWL", "SWCR", "SWU", "SGL", "SGCR", "SGU", "SOWCR", "SOGCR", "ISWL",
-    "ISWCR", "ISWU", "ISGL", "ISGCR", "ISGU", "ISOWCR", "ISOGCR", "PCW", "PCG", "IMBNUM", "ENDNUM",
+    "ISWCR", "ISWU", "ISGL", "ISGCR", "ISGU", "ISOWCR", "ISOGCR", "PCW", "PCG", "IPCW", "IPCG", "IMBNUM", "ENDNUM",
 }
 
 
@@ -908,10 +908,13 @@ class ModelBuilder:
         if hyster:
             eh = d.get("EHYSTR")
             rec = eh.data[0] if eh is not None and eh.data else []
-            hyst = {"model": to_int(rec_get(rec, 1), 0)}
             what = to_str(rec_get(rec, 4), "BOTH").upper()
-            if what in ("BOTH", "PC"):
-                self.warn("EHYSTR: capillary pressure hysteresis is not supported; relative permeability only")
+            hyst = {"model": to_int(rec_get(rec, 1), 0), "kr": what in ("BOTH", "KR"),
+                    "pc": what in ("BOTH", "PC"), "eps": to_float(rec_get(rec, 0), 0.1) or 0.1}
+            if what not in ("BOTH", "KR", "PC"):
+                self.warn(f"EHYSTR item 5 {what}: not recognised; both relative permeability and capillary "
+                          "pressure hysteresis used")
+                hyst["kr"] = hyst["pc"] = True
             if hyst["model"] in (1, 3, 4):
                 self.warn(f"EHYSTR model {hyst['model']}: wetting-phase imbibition curves are not modelled; "
                           "the wetting phases follow their drainage curves")
@@ -923,12 +926,16 @@ class ModelBuilder:
                 np.nan_to_num(np.asarray(im, float)[ac], nan=1).astype(int) - 1, 0, len(model.sat) - 1)
         elif d.get("EHYSTR") is not None:
             self.warn("EHYSTR given without SATOPTS HYSTER; hysteresis is off")
+        ipcw = arr("IPCW") if es is not None and gp.has("IPCW") else None
+        ipcg = arr("IPCG") if es is not None and gp.has("IPCG") else None
         pcw = arr("PCW") if es is not None and gp.has("PCW") else None
         pcg = arr("PCG") if es is not None and gp.has("PCG") else None
         model.satfunc = SatFunctions(model.sat, model.satnum, model.phases["water"], model.phases["gas"],
                                      cell_ep=cell_ep, scalecrs=bool(scalecrs), imbnum=imbnum, cell_iep=cell_iep,
                                      hysteresis=hyst, pcw=None if pcw is None else pcw * P,
-                                     pcg=None if pcg is None else pcg * P)
+                                     pcg=None if pcg is None else pcg * P,
+                                     ipcw=None if ipcw is None else ipcw * P,
+                                     ipcg=None if ipcg is None else ipcg * P)
         model.swatinit = arr("SWATINIT") if gp.has("SWATINIT") else None
         if model.swatinit is not None and not model.phases["water"]:
             model.swatinit = None

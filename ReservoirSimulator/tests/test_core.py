@@ -950,3 +950,32 @@ def test_welopen_connection_semantics(tmp_path):
     assert shut and not shut[0].wells["P4"].is_open
     last = m.schedule[-1].wells["P4"]
     assert last.status == "OPEN" and [c.k for c in last.completions if c.status == "OPEN"] == [1]
+
+
+def test_capillary_pressure_hysteresis(tmp_path):
+    """EHYSTR PC: after drainage to Sw_min, Pcow moves from the drainage curve to the imbibition
+    curve (IPCW) along Killough's scanning curve; derivatives are consistent."""
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    text = text.replace("RUNSPEC", "RUNSPEC\nENDSCALE\n/\nSATOPTS\n HYSTER /", 1)
+    text = text.replace("SOLUTION", "EHYSTR\n 0.1 0 1* 1* PC /\nEQUALS\nIPCW 0.2 /\nISOWCR 0.3 /\n/\nSOLUTION", 1)
+    m = _model_from_text(text, tmp_path, "PCH.DATA")
+    sf = m.satfunc
+    assert sf.hyst["pc"] and not sf.hyst["kr"] and not [w for w in m.warnings if "EHYSTR" in w]
+    n = m.n_active
+    cells = np.arange(n)
+    one = np.ones(n)
+    hs = sf.init_hysteresis(0.3 * one, 0 * one)
+    pd = lambda s: sf.pcow(s * one, cells)[0]
+    ph = lambda s: sf._pc_hysteresis("w", s * one, hs, cells)
+    assert np.allclose(ph(0.3)[0], pd(0.3))                           # on the drainage curve at S_hy
+    assert np.allclose(ph(0.3 + 1e-7)[0], pd(0.3), rtol=1e-4)         # continuous
+    imb = sf.I.curve("pcw", 0.7 * one, cells)[0] * sf._fac("w", cells, imb=True)
+    assert np.allclose(ph(0.7)[0], imb) and np.all(imb < pd(0.7))     # imbibition at S_m = 1 - ISOWCR
+    mid, dmid = ph(0.47)
+    assert np.all(mid <= pd(0.47) + 1e-9) and np.all(mid >= sf.I.curve("pcw", 0.47 * one, cells)[0] *
+                                                     sf._fac("w", cells, imb=True) - 1e-9)
+    h = 1e-6
+    fd = (ph(0.47 + h)[0] - ph(0.47 - h)[0]) / (2 * h)
+    assert np.allclose(dmid, fd, rtol=1e-3, atol=1e-3 * np.abs(fd).max())
+    res = run_simulation(m, SimOptions(stop_at_day=300))
+    assert res.summary["FOPR"][-1] > 0

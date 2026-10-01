@@ -22,7 +22,9 @@ system and oil in the oil-water system.  A cell that has seen a higher non-wetti
 saturation S_hy follows a scanning curve when the saturation falls: Carlson's model
 shifts the imbibition curve (IMBNUM table, ISxxx end points) so that it meets the
 drainage curve at S_hy; Killough's model scales the imbibition curve between the
-trapped saturation and S_hy.  Wetting phases follow their drainage curves.
+trapped saturation and S_hy.  Wetting phases follow their drainage curves.  With EHYSTR
+item 5 = PC or BOTH the capillary pressures follow Killough's scanning curves between the
+drainage and imbibition curves.
 
 SWATINIT sets the initial water saturation: the cell's capillary pressure curve is
 scaled vertically (PCW) so that the equilibrium capillary pressure is reached at the
@@ -203,14 +205,15 @@ class SatFunctions:
     """Saturation functions for every active cell (see the module docstring)."""
 
     def __init__(self, tables, satnum, has_water, has_gas, cell_ep=None, scalecrs=False, imbnum=None,
-                 cell_iep=None, hysteresis=None, pcw=None, pcg=None):
+                 cell_iep=None, hysteresis=None, pcw=None, pcg=None, ipcw=None, ipcg=None):
         self.tables = tables
         self.satnum = satnum
         self.n = satnum.size
         self.has_w, self.has_g = has_water, has_gas
         self.endscale = cell_ep is not None
         self.D = _CurveSet(tables, satnum, cell_ep or {}, scalecrs)
-        self.hyst = hysteresis                     # None or {"model": int}
+        # None or {"model": EHYSTR item 2, "kr": bool, "pc": bool, "eps": Pc curvature (item 1)}
+        self.hyst = hysteresis
         self.I = _CurveSet(tables, imbnum if imbnum is not None else satnum, cell_iep or {}, scalecrs) \
             if hysteresis else None
         T = self.D.T
@@ -218,6 +221,9 @@ class SatFunctions:
         self.pcg_max_t = T["PCG"]
         self.pcw = np.where(np.isnan(pcw), T["PCW"], pcw) if pcw is not None else T["PCW"].copy()
         self.pcg = np.where(np.isnan(pcg), T["PCG"], pcg) if pcg is not None else T["PCG"].copy()
+        # imbibition capillary-pressure maxima (IPCW / IPCG; defaulted: the drainage values)
+        self.ipcw = np.where(np.isnan(ipcw), self.pcw, ipcw) if ipcw is not None else None
+        self.ipcg = np.where(np.isnan(ipcg), self.pcg, ipcg) if ipcg is not None else None
         self.pc_flat_w = np.array([t.swof is None or np.ptp(t.swof[:, 3]) < 1e-6 for t in tables])[satnum]
         self.pc_flat_g = np.array([t.sgof is None or np.ptp(t.sgof[:, 3]) < 1e-6 for t in tables])[satnum]
         self.swatinit_applied = False
@@ -226,8 +232,13 @@ class SatFunctions:
     def scaled(self):
         return self.endscale or self.hyst is not None
 
-    def _fac(self, which, cells):
-        pmax, p = (self.pcw_max_t, self.pcw) if which == "w" else (self.pcg_max_t, self.pcg)
+    def _fac(self, which, cells, imb=False):
+        if imb:
+            pmax = self.I.T["PCW"] if which == "w" else self.I.T["PCG"]
+            p = (self.ipcw if self.ipcw is not None else self.pcw) if which == "w" else \
+                (self.ipcg if self.ipcg is not None else self.pcg)
+        else:
+            pmax, p = (self.pcw_max_t, self.pcw) if which == "w" else (self.pcg_max_t, self.pcg)
         return np.where(pmax[cells] > 0, p[cells] / np.where(pmax[cells] > 0, pmax[cells], 1.0), 1.0)
 
     @property
@@ -278,17 +289,54 @@ class SatFunctions:
     def init_hysteresis(self, sw, sg):
         if not self.hyst:
             return None
-        return {"sg_max": np.asarray(sg, float).copy(), "so_max": 1.0 - np.asarray(sw, float) - np.asarray(sg, float)}
+        sw, sg = np.asarray(sw, float), np.asarray(sg, float)
+        return {"sg_max": sg.copy(), "so_max": 1.0 - sw - sg, "sw_min": sw.copy()}
 
     def update_hysteresis(self, hs, sw, sg):
         if hs is None:
             return None
-        return {"sg_max": np.maximum(hs["sg_max"], sg), "so_max": np.maximum(hs["so_max"], 1.0 - sw - sg)}
+        return {"sg_max": np.maximum(hs["sg_max"], sg), "so_max": np.maximum(hs["so_max"], 1.0 - sw - sg),
+                "sw_min": np.minimum(hs["sw_min"], sw)}
+
+    def _pc_hysteresis(self, which, s, hs, cells):
+        """Capillary pressure with Killough's scanning curves (EHYSTR item 5 PC or BOTH).
+
+        After the drainage curve has been followed to a turning point S_hy (smallest Sw for
+        Pcow, largest Sg for Pcgo), a reversal follows
+            Pc = Pc_drn(S) + F (Pc_imb(S) - Pc_drn(S)),
+            F = (1/(|S - S_hy| + e) - 1/e) / (1/(|S_m - S_hy| + e) - 1/e),
+        from the drainage value at S_hy (F = 0) to the imbibition curve at S_m (F = 1), where S_m is
+        the end of the imbibition curve (1 - ISOWCR for water, ISGCR for gas) and e the curvature
+        parameter (EHYSTR item 1). Moving back towards S_hy retraces the same scanning curve."""
+        if which == "w":
+            vd, dd = self.pcow(s, cells)
+            sh, sm, sign = hs["sw_min"][cells], 1.0 - self.I.E["SOWCR"][cells], 1.0
+        else:
+            vd, dd = self.pcgo(s, cells)
+            sh, sm, sign = hs["sg_max"][cells], self.I.E["SGCR"][cells], -1.0
+        x = sign * (s - sh)                          # distance travelled back from the turning point
+        span = sign * (sm - sh)
+        scan = (x > 1e-10) & (span > 1e-10)
+        if not scan.any():
+            return vd, dd
+        name = "pcw" if which == "w" else "pcg"
+        vi, di = self.I.curve(name, s, cells)
+        fi = self._fac(which, cells, imb=True)
+        vi, di = vi * fi, di * fi
+        e = self.hyst.get("eps", 0.1) or 0.1
+        den = 1.0 / (np.maximum(span, 0.0) + e) - 1.0 / e
+        den = np.where(np.abs(den) > EPS, den, -1.0)
+        xc = np.clip(x, 0.0, np.maximum(span, 0.0))
+        F = (1.0 / (xc + e) - 1.0 / e) / den
+        dF = np.where((x > 0) & (x < span), -1.0 / (xc + e) ** 2 / den * sign, 0.0)
+        v = vd + F * (vi - vd)
+        d = dd + dF * (vi - vd) + F * (di - dd)
+        return np.where(scan, v, vd), np.where(scan, d, dd)
 
     def _nonwetting(self, name, s, s_hy, cells):
         """Hysteretic non-wetting relative permeability (krg in Sg or krow in So)."""
         vd, dd = self.D.curve(name, s, cells)
-        if s_hy is None:
+        if s_hy is None or not self.hyst.get("kr", True):
             return vd, dd
         s_hy = s_hy[cells]
         scan = s < s_hy - 1e-10
@@ -329,11 +377,13 @@ class SatFunctions:
         krg = dkrg = pcgo = dpcgo = z
         if self.has_w:
             krw, dkrw = self.D.curve("krw", sw, cells)
-            pcow, dpcow = self.pcow(sw, cells)
+            pcow, dpcow = self._pc_hysteresis("w", sw, hs, cells) if (hs and self.hyst.get("pc")) \
+                else self.pcow(sw, cells)
             krow, dkrow = self._nonwetting("krow", so, hs and hs["so_max"], cells)
         if self.has_g:
             krg, dkrg = self._nonwetting("krg", sg, hs and hs["sg_max"], cells)
-            pcgo, dpcgo = self.pcgo(sg, cells)
+            pcgo, dpcgo = self._pc_hysteresis("g", sg, hs, cells) if (hs and self.hyst.get("pc")) \
+                else self.pcgo(sg, cells)
             krog, dkrog = self.D.curve("krog", so, cells)
         if self.has_w and self.has_g:
             swco = self.D.E["SWL"][cells]
