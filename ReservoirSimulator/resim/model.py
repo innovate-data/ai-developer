@@ -25,7 +25,7 @@ HANDLED = {
     "TITLE", "DIMENS", "INIT", "OIL", "WATER", "GAS", "DISGAS", "FIELD", "METRIC", "START", "TABDIMS", "WELLDIMS",
     "EQLDIMS", "REGDIMS", "COMPS", "EOS", "NCOMPS", "UNIFOUT", "UNIFIN", "FMTOUT", "NOSIM", "ECHO", "NOECHO",
     "FULLIMP", "IMPES", "NSTACK", "AQUDIMS", "VFPPDIMS", "VFPIDIMS", "FAULTDIM", "MESSAGES", "RUNSUM",
-    "RPTRUNSP", "GRIDOPTS", "ROCKCOMP", "ISGAS", "NUPCOL", "UDQDIMS", "UDADIMS", "SMRYDIMS", "LIVEOIL",
+    "RPTRUNSP", "GRIDOPTS", "ROCKCOMP", "CPR", "ISGAS", "NUPCOL", "UDQDIMS", "UDADIMS", "SMRYDIMS", "LIVEOIL",
     # GRID/EDIT
     "COORD", "ZCORN", "MINPV", "MINPORV", "RPTGRID", "INIT", "GRIDFILE", "NEWTRAN", "OLDTRAN", "MAPAXES",
     "MAPUNITS", "GRIDUNIT", "COORDSYS", "PINCH", "NOGGF", "SPECGRID", "FAULTS", "MULTFLT", "GDORIENT",
@@ -105,6 +105,7 @@ class SimulationModel:
     tracers: list = field(default_factory=list)  # [{'name', 'phase', 'init': [depth/conc tables]}]
     summary_connections: dict = field(default_factory=dict)
     summary_region_flows: dict = field(default_factory=dict)
+    summary_blocks: dict = field(default_factory=dict)
     n_fip_regions: int = 1
 
     @property
@@ -1053,6 +1054,7 @@ class ModelBuilder:
               "VPR", "VIR"},
         "R": {"PR", "OIP", "OIPL", "OIPG", "GIP", "GIPL", "GIPG", "WIP", "OP", "OPR", "WPR", "GPR", "OIR", "WIR",
               "GIR", "OPT", "WPT", "GPT", "OIT", "WIT", "GIT", "OFR", "OFT", "WFR", "WFT", "GFR", "GFT"},
+        "B": {"PR", "OSAT", "WSAT", "GSAT", "RS", "RV", "DENO", "DENW", "DENG"},
         "C": {"OFR", "WFR", "GFR", "OPR", "WPR", "GPR", "OIR", "WIR", "GIR", "OPT", "WPT", "GPT", "OIT", "WIT",
               "GIT"},
     }
@@ -1076,6 +1078,21 @@ class ModelBuilder:
         model.n_fip_regions = max(to_int(rec_get(rd.data[0], 0), 1) if rd is not None and rd.data else 1,
                                   to_int(rec_get(td.data[0], 4), 1) if td is not None and td.data else 1,
                                   int(model.fipnum.max()) + 1 if model.fipnum is not None and model.fipnum.size else 1)
+        # block vectors (BPR, BOSAT, ...): the cells requested, as active indices
+        model.summary_blocks = {}
+        for kw in self.deck.section("SUMMARY"):
+            if kw.name[:1] == "B" and kw.name[1:] in self.SUMMARY_SUPPORTED["B"]:
+                for r in (kw.data or []):
+                    if not r or len(r) < 3:
+                        continue
+                    i, j, k = (to_int(r[m]) - 1 for m in range(3))
+                    nx, ny, nz = model.grid.shape
+                    a = model.global_to_active[i + nx * (j + ny * k)] if (0 <= i < nx and 0 <= j < ny and 0 <= k < nz) \
+                        else -1
+                    if a < 0:
+                        self.warn(f"{kw.name}: block ({i + 1},{j + 1},{k + 1}) is inactive or outside the grid")
+                        continue
+                    model.summary_blocks.setdefault(kw.name, []).append(((i + 1, j + 1, k + 1), int(a)))
         # inter-region flows (ROFR/ROFT, RGFR/RGFT, RWFR/RWFT): the region pairs requested
         model.summary_region_flows = {}
         for kw in self.deck.section("SUMMARY"):

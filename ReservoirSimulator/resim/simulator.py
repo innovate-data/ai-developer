@@ -375,6 +375,7 @@ class _SummaryCollector:
         self._regions(row, solver, dt)
         self._connections(row, solver, dt)
         self._region_flows(row, solver, dt)
+        self._blocks(row, solver)
         # cumulative voidage / liquid, gas sales (production - injection - consumption, no fuel here)
         for k, q in (("VPR", "reservoir_volume"), ("VIR", "reservoir_volume")):
             if "F" + k in row:
@@ -534,6 +535,37 @@ class _SummaryCollector:
         for r in range(nreg):
             if f"ROPT:{r + 1}" in row:
                 row[f"ROP:{r + 1}"] = row[f"ROPT:{r + 1}"]
+
+    def _blocks(self, row, solver):
+        """Block vectors requested in SUMMARY: BPR, BOSAT, BWSAT, BGSAT, BRS, BRV, BDENO/W/G."""
+        spec = getattr(self.m, "summary_blocks", None)
+        if not spec:
+            return
+        u = self.m.units
+        st = solver.state
+        so = 1.0 - st["sw"] - st.get("sg", 0.0)
+        dens = None
+        for vec, cells in spec.items():
+            key = vec[1:]
+            for (i, j, k), a in cells:
+                if key == "PR":
+                    v = u.from_si(st["p"][a], "pressure")
+                elif key == "OSAT":
+                    v = so[a]
+                elif key == "WSAT":
+                    v = st["sw"][a]
+                elif key == "GSAT":
+                    v = st["sg"][a] if "sg" in st else 0.0
+                elif key in ("RS", "RV"):
+                    v = u.from_si(st[key.lower()][a], key.lower()) if key.lower() in st else 0.0
+                else:
+                    if dens is None:
+                        _, pr = solver.accumulation_values(st)
+                        dens = {ph: np.asarray(getattr(pr.get(f"rho_{ph}"), "val", pr.get(f"rho_{ph}")))
+                                for ph in "owg" if f"rho_{ph}" in pr}
+                    d = dens.get(key[-1].lower())
+                    v = u.from_si(float(d[a]), "density") if d is not None else 0.0
+                row[f"{vec}:{i},{j},{k}"] = float(v)
 
     def _region_flows(self, row, solver, dt):
         """Inter-region flow rates and totals (R?FR / R?FT for the region pairs listed in SUMMARY)."""

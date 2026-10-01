@@ -34,6 +34,7 @@ class Completion:
     r0: Optional[float] = None
     wi: float = 0.0                     # computed well index (SI, m3)
     cell: int = -1                      # active cell index
+    pimult: float = 1.0                 # WPIMULT multiplier of the connection factor
 
 
 @dataclass
@@ -535,3 +536,21 @@ class ScheduleBuilder:
             for name in self._match(rec[0]):
                 per[name] = self._num(rec, 1, "length")
             self.options["WPAVEDEP"] = per
+
+    def _kw_WPIMULT(self, data):
+        """Multiply connection factors (cumulative, as in ECLIPSE). Location items that are zero or
+        defaulted match any value; completion numbers (items 6-7) are not used."""
+        for rec in data:
+            if not rec:
+                continue
+            f = to_float(rec_get(rec, 1), 1.0)
+            loc = [rec_get(rec, m) for m in range(2, 5)]
+            loc = [None if v is None or to_int(v, 0) <= 0 else to_int(v) - 1 for v in loc]
+            if any(rec_get(rec, m) is not None and to_int(rec_get(rec, m), 0) > 0 for m in (5, 6)):
+                self.warn("WPIMULT: completion-number selection (items 6-7) is not supported; "
+                          "the location items select the connections")
+            for name in self._match(rec[0]):
+                w = self.wells[name]
+                for c in w.completions:
+                    if all(v is None or v == x for v, x in zip(loc, (c.i, c.j, c.k))):
+                        c.pimult *= f

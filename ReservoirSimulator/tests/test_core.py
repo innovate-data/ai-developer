@@ -979,3 +979,21 @@ def test_capillary_pressure_hysteresis(tmp_path):
     assert np.allclose(dmid, fd, rtol=1e-3, atol=1e-3 * np.abs(fd).max())
     res = run_simulation(m, SimOptions(stop_at_day=300))
     assert res.summary["FOPR"][-1] > 0
+
+
+SPE10 = os.path.join(EX, "SPE10")
+
+
+def test_spe10_model1_matches_published_curve():
+    """SPE10 Model 1 (two-phase, corner-point form): cumulative oil follows the OPM Flow curve
+    published with the decks (about 30,000 stb at 1,000 days); the three-phase Cartesian form of
+    the same model gives the same answer."""
+    r2 = run_simulation(os.path.join(SPE10, "SPE10-MOD01-04.DATA"), SimOptions(stop_at_day=1000))
+    S = r2.summary
+    assert not [w for w in r2.log if "WARNING" in w]
+    assert S["FOPT"][-1] == pytest.approx(29467, rel=2e-3)
+    assert S["FOPT"][-1] == pytest.approx(30000, rel=0.03)
+    r3 = run_simulation(os.path.join(SPE10, "SPE10-MOD01-01.DATA"), SimOptions(stop_at_day=500))
+    t = S["TIME"]
+    i = int(np.argmin(np.abs(t - 500)))
+    assert r3.summary["FOPT"][-1] == pytest.approx(S["FOPT"][i], rel=1e-3)

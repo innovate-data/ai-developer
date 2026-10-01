@@ -74,8 +74,8 @@ def build_perforations(model, wells: dict, warn=None) -> PerforationSet:
             c.cell = a
             cells.append(a)
             widx.append(w_i)
-            wis.append(c.wi if c.status == "OPEN" else 0.0)
-            ctf.append(c.wi)
+            wis.append(c.wi * c.pimult if c.status == "OPEN" else 0.0)
+            ctf.append(c.wi * c.pimult)
             depths.append(model.depth[a])
             if first_depth is None:
                 first_depth = model.depth[a]
