@@ -127,7 +127,7 @@ class CompositionalSolver:
                  f"{int(fr.two_phase.sum())} two-phase / {nsat} single-phase cells")
 
     # ------------------------------------------------------------------ wells
-    def setup_wells(self, wells):
+    def setup_wells(self, wells, touched=(), vfp=None):
         self.wells = wells
         self.perf = build_perforations(self.m, wells, self.log)
         p = self.state["p"]

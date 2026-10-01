@@ -149,10 +149,18 @@ def initialize_blackoil(model):
                                            depth[c_local] < goc, st.sgof[-1, 0], 0.0, True))
                     s_g = min(s_g, 1.0 - s_w)
                 pcell = po_c[c_local]
-                if ph["water"] and depth[c_local] > woc and np.ptp(st.swof[:, 3]) < 1e-6:
-                    pcell = pw_c[c_local]
-                elif ph["gas"] and depth[c_local] < goc and np.ptp(st.sgof[:, 3]) < 1e-6:
-                    pcell = pg_c[c_local]
+                # Where the capillary-pressure inversion is clamped on the wet side (water zone: the
+                # required Pcow is below the table's value at the cell saturation) the oil pressure
+                # follows the water pressure, p = pw + Pcow(Sw), as in ECLIPSE; likewise in a gas cap
+                # p = pg - Pcgo(Sg).
+                if ph["water"]:
+                    pc_s = float(np.interp(s_w, st.swof[:, 0], st.swof[:, 3]))
+                    if po_c[c_local] - pw_c[c_local] < pc_s - 1e-9 * max(abs(pc_s), 1.0):
+                        pcell = pw_c[c_local] + pc_s
+                if ph["gas"] and s_g > 0:
+                    pc_g = float(np.interp(s_g, st.sgof[:, 0], st.sgof[:, 3]))
+                    if pg_c[c_local] - po_c[c_local] > pc_g + 1e-9 * max(abs(pc_g), 1.0):
+                        pcell = pg_c[c_local] - pc_g
                 p[cell], sw[cell], sg[cell] = pcell, s_w, s_g
             if ph["disgas"]:
                 rsat = pvt.oil.rs_sat(p[cells])[0]

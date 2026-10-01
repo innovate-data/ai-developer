@@ -61,6 +61,13 @@ class BlackOilSolver:
         self.wells = {}
         self.perf = None
         self.last_rates = {}
+        self.econ_shut = {}          # wells closed by WECON -> status (SHUT/STOP), until reopened in the schedule
+        self.econ_conns = set()      # (well, i, j, k) connections closed by WECON workovers
+        self.thp_bhp = {}            # BHP (at the well datum) corresponding to the THP limit, per well
+        self.vfp = {}
+        self._rho_w = None
+        self.last_perf = {}
+        self._bhp_static = {}
         self.order = ["o"] + (["w"] if self.has_w else []) + (["g"] if self.has_g else []) + \
                      (["e"] if self.thermal else [])
 
@@ -84,6 +91,8 @@ class BlackOilSolver:
             st["rs"] = np.where(state == 1, st["rs"], self.rs_sat(st["p"])[0])
         st["state"] = state
         self.state = st
+        if getattr(self.m, "rock_store", False):          # ROCKOPTS STORE: initial pressure is the reference
+            self.rock_pref = st["p"].copy()
 
     # ------------------------------------------------------------------ properties
     def _regional(self, regions, fn, *vals):
@@ -220,28 +229,64 @@ class BlackOilSolver:
         out["T"] = T
 
     # ------------------------------------------------------------------ wells
-    def setup_wells(self, wells):
-        """Called at the start of each report step with the active well set."""
+    def _log_once(self, msg):
+        seen = self.__dict__.setdefault("_logged", set())
+        if msg not in seen:
+            seen.add(msg)
+            self.log(msg)
+
+    def setup_wells(self, wells, touched=(), vfp=None):
+        """Called at the start of each report step with the active well set.
+
+        `touched` names the wells whose status the schedule set in this step: a well closed by
+        an economic limit stays closed unless the schedule opens it again."""
+        self.vfp = vfp or {}
+        for name in list(self.econ_shut):
+            if name not in wells:
+                continue
+            if name in touched:
+                del self.econ_shut[name]
+                self.econ_conns = {c for c in self.econ_conns if c[0] != name}
+            else:
+                wells[name].status = self.econ_shut[name]
+        for name, i, j, k in self.econ_conns:
+            if name in wells:
+                for c in wells[name].completions:
+                    if (c.i, c.j, c.k) == (i, j, k):
+                        c.status = "SHUT"
         self.wells = wells
-        self.perf = build_perforations(self.m, wells, self.log)
+        self.perf = build_perforations(self.m, wells, self._log_once)
         self.Sw = self.perf.sum_matrix()
         nperf = self.perf.cell.size
         self.Pc = sp.csr_matrix((np.ones(nperf), (self.perf.cell, np.arange(nperf))), shape=(self.n, nperf))
+        self._wbp_neighbours()
         p = self.state["p"]
+        # perforation pressures referred to the well's BHP datum with the wellbore head, so that the
+        # initial BHP gives inflow (producers) or outflow (injectors) in at least one connection
+        pot = p[self.perf.cell].copy() if nperf else np.zeros(0)
+        if nperf:
+            _, pr0 = self.accumulation_values(self.state)
+            rho = self._well_density(pr0)
+            pot -= rho[self.perf.well] * self.m.gravity * (self.perf.depth - self.perf.ref_depth[self.perf.well])
         for wi, name in enumerate(self.perf.names):
             w = wells[name]
             self.controls[name] = w.control
             self.orig_controls[name] = w.control
-            cells = self.perf.cell[self.perf.well == wi]
+            sel = self.perf.well == wi
+            cells = self.perf.cell[sel]
+            if cells.size:              # zero-flow BHP (reported before the first time step)
+                self._bhp_static[name] = pot[sel].max() if w.kind == "PROD" else pot[sel].min()
             if name not in self.bhp:
-                pc = p[cells].mean() if cells.size else 1e7
-                self.bhp[name] = pc - 1e5 if w.kind == "PROD" else pc + 1e5
+                if cells.size:
+                    self.bhp[name] = pot[sel].max() - 1e5 if w.kind == "PROD" else pot[sel].min() + 1e5
+                else:
+                    self.bhp[name] = 1e7
             elif cells.size and w.is_open:
                 # make sure a (re)opened well starts with a drawdown in the right direction
                 if w.kind == "PROD":
-                    self.bhp[name] = min(self.bhp[name], p[cells].min() - 1e5)
+                    self.bhp[name] = min(self.bhp[name], pot[sel].max() - 1e5)
                 else:
-                    self.bhp[name] = max(self.bhp[name], p[cells].max() + 1e5)
+                    self.bhp[name] = max(self.bhp[name], pot[sel].min() + 1e5)
 
     def _well_density(self, pr):
         """Explicit mixture density per well for the wellbore hydrostatic head."""
@@ -320,13 +365,18 @@ class BlackOilSolver:
                 q[ph] = q[ph] + qi
                 qinj[ph] = qi
         rate = {ph: A.matmul(self.Sw, q[ph]) for ph in q}
-        resv = qph["o"] / pr["bo"][c]
-        if self.has_w:
-            resv = resv + qph["w"] / pr["bw"][c]
+        # reservoir-volume rates with the formation volume factors at the field average pressure
+        # (as ECLIPSE does for RESV controls and the WVPR/WVIR vectors): split the surface
+        # components into free phases with Rs and Rv at that pressure
+        Bf = self._resv_factors(c)
+        qo_c, qg_c = q["o"], q.get("g", 0.0)
+        rs_, rv_ = Bf["rs"], Bf["rv"]
+        den = 1.0 - rs_ * rv_
+        resv = (qo_c - rv_ * qg_c) * (Bf["bo"] / den)
         if self.has_g:
-            resv = resv + qph["g"] / pr["bg"][c]
-        for ph, qi in qinj.items():
-            resv = resv + qi / pr[{"o": "bo", "w": "bw", "g": "bg"}[ph]][c]
+            resv = resv + (qg_c - rs_ * qo_c) * (Bf["bg"] / den)
+        if self.has_w:
+            resv = resv + q["w"] * Bf["bw"]
         rate["resv"] = A.matmul(self.Sw, resv)
         # energy: producers carry the cell enthalpy, injectors the injection enthalpy
         if self.thermal:
@@ -357,6 +407,11 @@ class BlackOilSolver:
             first[wi_] = p.val[cells[0]] if cells.size else bhp.val[wi_]
         eq = where(~active, bhp - first, zero)
         eq = eq + where(active & (ctrl == "BHP"), bhp - tgt_bhp, zero)
+        if np.any(ctrl == "THP"):
+            # THP control: BHP equal to the VFP-table BHP for the THP limit at the current rates
+            # (lagged by one Newton iteration, see _update_thp)
+            tgt_thp = np.array([self.thp_bhp.get(n, tgt_bhp[i]) for i, n in enumerate(perf.names)], float)
+            eq = eq + where(active & (ctrl == "THP"), bhp - tgt_thp, zero)
         prod_w = active & (kind == "PROD")
         inj_w = active & (kind == "INJ")
         liq = rate["o"] + rate["w"] if "w" in rate else rate["o"]
@@ -443,6 +498,7 @@ class BlackOilSolver:
             Tt = pr["T"]
             comp["e"] = ef - (Tt[b] - Tt[a]) * m.thermal["conn_k"]       # conduction a->b
         q, rate, weq = self._well_terms(p, pr, bhp, rho_w)
+        self._q_last = q
         acc = self.accumulations(pr)
         eqs = {}
         for key in acc:
@@ -467,6 +523,9 @@ class BlackOilSolver:
         st0 = self.state
         old, pr0 = self.accumulation_values(st0)
         rho_w = self._well_density(pr0) if self.perf.cell.size else np.zeros(self.perf.n_wells)
+        self._rho_step = rho_w
+        hc = self.m.pore_volume * np.maximum(1.0 - st0["sw"], 1e-12)
+        self._p_avg = float(np.sum(st0["p"] * hc) / np.sum(hc))
         st = {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in st0.items()}
         saved_bhp = dict(self.bhp)
         saved_ctrl = dict(self.controls)
@@ -495,6 +554,7 @@ class BlackOilSolver:
             bhp = ads[k]
             args = (p, sw, x, T, bhp)
             eqs, weq, pr, rate = self.assemble(args, old, dt, rho_w)
+            self._update_thp(rate, rho_w)
             if it <= self.opt.max_newton - 3 and check_controls(self, rate, bhp.val):
                 eqs, weq, pr, rate = self.assemble(args, old, dt, rho_w)
             # convergence check
@@ -525,7 +585,8 @@ class BlackOilSolver:
                 break
             R = A.vstack([eqs[k_] for k_ in self.order] + ([weq] if nw else []))
             try:
-                dx = solve_linear(R.jac, -R.val, self.opt.linear_solver, self.n, len(self.order))
+                dx = solve_linear(R.jac, -R.val, self.opt.linear_solver, self.n, len(self.order),
+                                  rtol=getattr(self.opt, "linear_tol", 1e-5))
             except Exception as exc:  # singular matrix etc.
                 self.log(f"    linear solver failure: {exc}")
                 break
@@ -544,6 +605,8 @@ class BlackOilSolver:
             info["factor"] = min(2.0, self.opt.dT_target / max(dT, 1e-9))
         self.state = st
         self.last_rates = {k_: v.val.copy() for k_, v in rate.items()}
+        self.last_perf = {k_: A.value(v).copy() for k_, v in self._q_last.items()}
+        self._rho_w = self._rho_step
         self.last_rates["bhp"] = np.array([self.bhp[n] for n in self.perf.names])
         return True, it, info
 
@@ -635,6 +698,193 @@ class BlackOilSolver:
                 b = min(b, pc.max() - eps) if w.kind == "PROD" else max(b, pc.min() + eps)
             self.bhp[name] = max(b, 1e3)
 
+    def _resv_factors(self, cells):
+        """Formation volume factors (and saturated Rs, Rv) at the field hydrocarbon-weighted average
+        pressure of the start of the step, per perforation (its PVT region)."""
+        key = (id(self.perf), getattr(self, "_p_avg", None))
+        if getattr(self, "_resv_key", None) == key:
+            return self._resv_cache
+        pavg = getattr(self, "_p_avg", None)
+        if pavg is None:
+            st = self.state
+            hc = self.m.pore_volume * np.maximum(1.0 - st["sw"], 1e-12)
+            pavg = float(np.sum(st["p"] * hc) / np.sum(hc))
+        n = cells.size
+        P = np.full(n, pavg)
+        out = {"bo": np.ones(n), "bw": np.ones(n), "bg": np.ones(n), "rs": np.zeros(n), "rv": np.zeros(n)}
+        reg = self.m.pvtnum[cells] if n else np.zeros(0, int)
+        for r in np.unique(reg):
+            sel = reg == r
+            pvt = self.m.pvt[r]
+            pp = P[sel]
+            rs = pvt.oil.rs_sat(pp)[0] if (self.disgas and not self.co2) else np.zeros(sel.sum())
+            out["rs"][sel] = rs
+            out["bo"][sel] = 1.0 / pvt.oil.eval(pp, rs)[0]
+            if self.has_w:
+                out["bw"][sel] = 1.0 / pvt.water.eval(pp)[0]
+            if self.has_g:
+                rv = pvt.gas.rv_sat(pp)[0] if self.vapoil else np.zeros(sel.sum())
+                out["rv"][sel] = rv
+                out["bg"][sel] = 1.0 / pvt.gas.eval(pp, rv)[0]
+        self._resv_key, self._resv_cache = key, out
+        return out
+
+    # ------------------------------------------------------------------ VFP / THP
+    def _vfp_table(self, w):
+        if not w.vfp_table:
+            return None
+        return self.vfp.get(("PROD" if w.kind == "PROD" else "INJ", w.vfp_table))
+
+    def _surface_rates(self, rate, wi):
+        """(oil, water, gas) surface rates of well wi, production positive, in the solver slots."""
+        v = lambda k: float(A.value(rate[k])[wi]) if k in rate else 0.0
+        o, wa, g = v("o"), v("w"), v("g")
+        if self.co2:
+            o, wa = 0.0, o
+        return o, wa, g
+
+    def _update_thp(self, rate, rho_w):
+        """BHP at the well datum that corresponds to each well's THP limit at its current rates."""
+        for wi, name in enumerate(self.perf.names):
+            w = self.wells[name]
+            if not w.thp_limit or not w.is_open:
+                continue
+            t = self._vfp_table(w)
+            if t is None:
+                continue
+            o, wa, g = self._surface_rates(rate, wi)
+            if w.kind == "INJ":
+                o, wa, g = -o, -wa, -g
+            b = float(t.bhp_from_thp(w.thp_limit, o, wa, g, w.alq)[0])
+            self.thp_bhp[name] = b + rho_w[wi] * self.m.gravity * (self.perf.ref_depth[wi] - t.datum)
+
+    def well_thp(self, wi):
+        """Tubing-head pressure of well wi from its VFP table and last rates (0 without a table)."""
+        name = self.perf.names[wi]
+        w = self.wells[name]
+        t = self._vfp_table(w)
+        if t is None or not w.is_open or self._rho_w is None:
+            return 0.0
+        o, wa, g = self._surface_rates(self.last_rates, wi)
+        if w.kind == "INJ":
+            o, wa, g = -o, -wa, -g
+        if o + wa + g <= 0:
+            return 0.0
+        b = self.bhp[name] - self._rho_w[wi] * self.m.gravity * (self.perf.ref_depth[wi] - t.datum)
+        return float(t.thp_from_bhp(b, o, wa, g, w.alq)[0])
+
+    # ------------------------------------------------------------------ block-average pressures
+    def _wbp_neighbours(self):
+        """Active horizontal neighbours (4 and 8) of every perforation cell, for WBP4/5/9."""
+        g = self.m.grid
+        nx, ny = g.nx, g.ny
+        g2a = self.m.global_to_active
+        ac = self.m.active_cells
+        nb4, nb8 = [], []
+        for cell in self.perf.cell:
+            i, j, k = (int(x) for x in g.ijk(ac[cell]))
+            l4, l8 = [], []
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+                ii, jj = i + di, j + dj
+                if 0 <= ii < nx and 0 <= jj < ny:
+                    a = g2a[ii + nx * (jj + ny * k)]
+                    if a >= 0:
+                        l8.append(a)
+                        if abs(di) + abs(dj) == 1:
+                            l4.append(a)
+            nb4.append(np.array(l4, int))
+            nb8.append(np.array(l8, int))
+        self._nb4, self._nb8 = nb4, nb8
+
+    def well_block_pressures(self, wi):
+        """(WBP, WBP4, WBP5, WBP9) of well wi (Pa): connection-factor weighted averages over the
+        open connections of the block pressures (WBP), the 4 horizontal neighbours (WBP4) and
+        0.5 * block + 0.5 * neighbours (WBP5: 4 neighbours, WBP9: 8), each referred to the
+        well's BHP datum with the wellbore density (no correction for a shut well)."""
+        p = self.state["p"]
+        sel = np.nonzero(self.perf.well == wi)[0]
+        if sel.size == 0:
+            return (0.0,) * 4
+        name = self.perf.names[wi]
+        w = self.wells[name]
+        rho = self._rho_w[wi] if (self._rho_w is not None and w.is_open) else 0.0
+        zref = self.perf.ref_depth[wi]
+        z = self.m.depth
+        cp = lambda cells: p[cells] - rho * self.m.gravity * (z[cells] - zref)
+        wts = self.perf.wi[sel]
+        if wts.sum() <= 0:
+            wts = np.ones(sel.size)
+        pc = cp(self.perf.cell[sel])
+        p4 = np.array([cp(self._nb4[m]).mean() if self._nb4[m].size else pc[n] for n, m in enumerate(sel)])
+        p8 = np.array([cp(self._nb8[m]).mean() if self._nb8[m].size else pc[n] for n, m in enumerate(sel)])
+        avg = lambda v: float(np.sum(v * wts) / np.sum(wts))
+        return avg(pc), avg(p4), avg(0.5 * pc + 0.5 * p4), avg(0.5 * pc + 0.5 * p8)
+
+    # ------------------------------------------------------------------ economic limits
+    def economic_limits(self):
+        """Apply WECON limits after a converged time step. Returns (messages, end_run)."""
+        msgs, end_run = [], False
+        if self.perf is None:
+            return msgs, end_run
+        rep = self.well_report()
+        for wi, name in enumerate(self.perf.names):
+            w = self.wells[name]
+            e = w.econ
+            if not e or w.kind != "PROD" or not w.is_open:
+                continue
+            r = rep[name]
+            o, wa, g = max(r["oil"], 0.0), max(r["water"], 0.0), max(r["gas"], 0.0)
+            liq = o + wa
+            if liq + g <= 0:
+                continue
+            reason, action = None, None
+            for key, val in (("min_orat", o), ("min_grat", g), ("min_lrat", liq)):
+                if e.get(key) and val < e[key]:
+                    reason, action = f"{key.split('_')[1].upper()} below the economic limit", "WELL"
+                    break
+            if reason is None:
+                ratios = {"max_wct": wa / liq if liq > 0 else 0.0, "max_gor": g / o if o > 0 else 0.0,
+                          "max_wgr": wa / g if g > 0 else 0.0, "max_glr": g / liq if liq > 0 else 0.0}
+                worst = [k for k, v in ratios.items() if e.get(k) and v > e[k]]
+                if worst:
+                    key = worst[0]
+                    reason = f"{key.split('_')[1].upper()} {ratios[key]:.4g} above the limit {e[key]:.4g}"
+                    action = e.get("workover", "NONE")
+                    if key == "max_wct" and e.get("sec_wct") and ratios[key] > e["sec_wct"]:
+                        action = e.get("sec_workover") or "WELL"
+            if reason is None or action == "NONE":
+                continue
+            if action in ("CON", "+CON"):
+                sel = np.nonzero((self.perf.well == wi) & (self.perf.wi > 0))[0]
+                qo = self.last_perf.get("o", np.zeros(self.perf.cell.size))[sel]
+                qw = self.last_perf.get("w", np.zeros(self.perf.cell.size))[sel]
+                tot = np.maximum(qo + qw, 1e-30)
+                worst_i = sel[int(np.argmax(qw / tot))] if sel.size > 1 else None
+                if worst_i is not None:
+                    close = [worst_i]
+                    if action == "+CON":
+                        d0 = self.perf.depth[worst_i]
+                        close = [m for m in sel if self.perf.depth[m] >= d0]
+                    comps = [c for c in w.completions if c.status == "OPEN" and c.cell >= 0]
+                    for m in close:
+                        for c in comps:
+                            if c.cell == self.perf.cell[m]:
+                                c.status = "SHUT"
+                                self.econ_conns.add((name, c.i, c.j, c.k))
+                        self.perf.wi[m] = 0.0
+                    msgs.append(f"WECON: {name} {reason}; closed {len(close)} connection(s)")
+                    if e.get("end_run"):
+                        end_run = True
+                    continue
+                action = "WELL"            # last open connection: close the well
+            # WELL or PLUG (plugging back is approximated by shutting the well)
+            w.status = w.auto_shut if w.auto_shut in ("SHUT", "STOP") else "SHUT"
+            self.econ_shut[name] = w.status
+            msgs.append(f"WECON: {name} {reason}; well {w.status.lower()}")
+            if e.get("end_run"):
+                end_run = True
+        return msgs, end_run
+
     # ------------------------------------------------------------------ reporting
     def well_report(self):
         """Per-well surface rates (production positive) and BHP from the last step."""
@@ -650,20 +900,77 @@ class BlackOilSolver:
             gg = r.get("g", np.zeros(nw))[wi]
             if self.co2:                      # brine is carried in the liquid (oil) slot
                 o, wa = 0.0, o
-            out[name] = {"oil": o, "water": wa, "gas": gg, "bhp": self.bhp[name], "open": w.is_open,
+            bhp = self.bhp[name] if r else self._bhp_static.get(name, self.bhp[name])
+            out[name] = {"oil": o, "water": wa, "gas": gg, "bhp": bhp, "open": w.is_open,
                          "kind": w.kind, "control": self.controls.get(name)}
+        return out
+
+    def well_extras(self):
+        """Per-well quantities beyond the surface rates: {well: {mnemonic: (SI value, quantity)}}."""
+        out = {}
+        if self.perf is None:
+            return out
+        r = self.last_rates
+        nw = self.perf.n_wells
+        for wi, name in enumerate(self.perf.names):
+            w = self.wells[name]
+            open_ = w.is_open
+            resv = float(r.get("resv", np.zeros(nw))[wi]) if open_ and r else 0.0
+            o, wa, g = self._surface_rates(r, wi) if (open_ and r) else (0.0, 0.0, 0.0)
+            prod = w.kind == "PROD"
+            wbp = self.well_block_pressures(wi)
+            d = {"WBP": (wbp[0], "pressure"), "WBP4": (wbp[1], "pressure"), "WBP5": (wbp[2], "pressure"),
+                 "WBP9": (wbp[3], "pressure"),
+                 "WTHP": (self.well_thp(wi), "pressure"),
+                 "WVPR": (max(resv, 0.0) if prod else 0.0, "reservoir_rate"),
+                 "WVIR": (max(-resv, 0.0) if not prod else 0.0, "reservoir_rate"),
+                 "WOIR": (max(-o, 0.0) if not prod else 0.0, "liquid_surface_rate"),
+                 "WLPR": (max(o, 0.0) + max(wa, 0.0) if prod else 0.0, "liquid_surface_rate"),
+                 "WWGR": (wa / g if prod and g > 0 else 0.0, "wgr"),
+                 "WGLR": (g / (o + wa) if prod and o + wa > 0 else 0.0, "rs"),
+                 "WMVFP": (float(w.vfp_table), None),
+                 # before the first step ECLIPSE reports the well type; afterwards open/shut/stopped
+                 "WSTAT": (float((1 if prod else 2) if (open_ or not r) else (4 if w.status == "STOP" else 3)), None)}
+            out[name] = d
+        return out
+
+    def phase_potentials(self, pr):
+        """FPPO / FPPW / FPPG: phase pressures referred to the EQUIL datum depth of each cell's
+        equilibration region with the phase density, averaged with weights PV0 * S_phase."""
+        m = self.m
+        st = self.state
+        v = A.value
+        if not m.equil:
+            return {}
+        datum = np.array([e["datum"] for e in m.equil])[np.clip(m.eqlnum, 0, len(m.equil) - 1)]
+        dz = m.depth - datum
+        pv0 = m.pore_volume
+        p = st["p"]
+        out = {}
+        sw = v(pr["sw"]) if self.has_w else np.zeros(self.n)
+        sg = v(pr["sg"]) if self.has_g else np.zeros(self.n)
+        so = 1.0 - sw - sg
+        def avg(val, s):
+            wt = pv0 * s
+            return float(np.sum(val * wt) / np.sum(wt)) if np.sum(wt) > 0 else 0.0
+        out["FPPO"] = avg(p - v(pr["rho_o"]) * m.gravity * dz, so)
+        if self.has_w:
+            out["FPPW"] = avg(p - v(pr["pcow"]) - v(pr["rho_w"]) * m.gravity * dz, sw)
+        if self.has_g:
+            out["FPPG"] = avg(p + v(pr["pcgo"]) - v(pr["rho_g"]) * m.gravity * dz, sg)
         return out
 
     summary_units = {"FGIPL": "gas_surface_volume", "FGIPG": "gas_surface_volume", "FGIPM": "gas_surface_volume",
                      "FGIPR": "gas_surface_volume", "FCO2M": "mass", "FCO2D": None, "FTEMP": "temperature",
-                     "FOIPL": "liquid_surface_volume", "FOIPG": "liquid_surface_volume"}
+                     "FOIPL": "liquid_surface_volume", "FOIPG": "liquid_surface_volume",
+                     "FPPO": "pressure", "FPPW": "pressure", "FPPG": "pressure"}
 
     def field_state(self):
         st = self.state
         acc, pr = self.accumulation_values(st)
         v = A.value
         pvv = v(pr["pv"])
-        hc = pvv * (1.0 - st["sw"])
+        hc = self.m.pore_volume * (1.0 - st["sw"])          # hydrocarbon pore volume at reference pressure
         out = {"FPR": float(np.sum(st["p"] * hc) / max(np.sum(hc), 1e-30)),
                "FOIP": float(np.sum(acc["o"])),
                "FGIP": float(np.sum(acc["g"])) if self.has_g else 0.0,
@@ -686,6 +993,8 @@ class BlackOilSolver:
             out["FCO2D"] = out["FGIPL"] / out["FGIP"] if out["FGIP"] > 0 else 0.0
         if self.thermal:
             out["FTEMP"] = float(np.sum(st["T"] * pvv) / np.sum(pvv))
+        if not self.co2:
+            out.update(self.phase_potentials(pr))
         return out
 
     def cell_arrays(self):
@@ -699,7 +1008,12 @@ class BlackOilSolver:
             out["DENG"] = A.value(pr["rho_g"])
             out["DENW"] = A.value(pr["rho_o"])
             return out
-        out = {"PRESSURE": st["p"], "SWAT": st["sw"], "SGAS": st["sg"], "SOIL": so}
+        out = {"PRESSURE": st["p"]}
+        if self.has_w:
+            out["SWAT"] = st["sw"]
+        if self.has_g:
+            out["SGAS"] = st["sg"]
+        out["SOIL"] = so
         if self.disgas:
             out["RS"] = st["rs"]
         if self.vapoil:

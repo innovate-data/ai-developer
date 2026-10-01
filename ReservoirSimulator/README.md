@@ -13,15 +13,15 @@ so they open in ResInsight and other ECLIPSE post-processors.
 | Area | What is supported |
 |---|---|
 | Deck reader | Full ECLIPSE syntax: `--` comments, repeat counts (`3*0.25`, `2*`), quoted/unquoted strings, `INCLUDE` (relative paths, `PATHS` aliases), sections, multi-record keywords, numbered tables, `PVTO`/`PVTG` record tables. Unknown keywords are skipped with a warning. |
-| Grids | Block-centred (`DX/DY/DZ/TOPS`, `DXV/DYV/DZV`) and corner-point (`COORD/ZCORN`), `ACTNUM`, `MINPV`, `NTG`, `MULTX/Y/Z`, `MULTPV`, `PORV`, `TRANX/Y/Z` overrides; `BOX`, `EQUALS`, `MULTIPLY`, `ADD`, `COPY`, `MINVALUE`, `MAXVALUE` operators |
-| Black-oil (E100) | Fully implicit 3-phase water/oil/gas with dissolved gas (`DISGAS`) and **vaporised oil** (`VAPOIL`, wet gas `PVTG`), dead oil (`PVDO`, `PVCDO`), live oil (`PVTO` with undersaturated branches), dry gas (`PVDG`), `PVTW`, `ROCK`, `DENSITY`/`GRAVITY`; 2-phase oil-water and oil-gas also work |
+| Grids | Block-centred (`DX/DY/DZ/TOPS`, `DXV/DYV/DZV`) and corner-point (`SPECGRID`, `COORD/ZCORN`, `COORDSYS`), `ACTNUM`, `MINPV`, `NTG`, `MULTX/Y/Z`, `MULTPV`, `PORV`, `TRANX/Y/Z` overrides; `BOX`, `EQUALS`, `MULTIPLY`, `ADD`, `COPY`, `MINVALUE`, `MAXVALUE` operators. **Faults**: exact face overlaps across displaced (faulted) corner-point columns with non-neighbour connections, `FAULTS` + `MULTFLT`; `PINCH` connections across pinched-out cells (threshold, `GAP`/`NOGAP`, maximum gap, `TOPBOT`/`ALL`); exact trilinear cell volumes. Transmissibilities and pore volumes match ECLIPSE's for the Brugge grid |
+| Black-oil (E100) | Fully implicit 3-phase water/oil/gas with dissolved gas (`DISGAS`) and **vaporised oil** (`VAPOIL`, wet gas `PVTG`), dead oil (`PVDO`, `PVCDO`), live oil (`PVTO` with undersaturated branches), dry gas (`PVDG`), `PVTW`, `ROCK` (`ROCKOPTS`: `PVTNUM`/`SATNUM`/`ROCKNUM` tables, `STORE`), `DENSITY`/`GRAVITY`; 2-phase oil-water and oil-gas also work |
 | Thermal | `THERMAL`: fully implicit energy equation (temperature as a 4th unknown) with convection, conduction (`THCONR`), rock heat capacity (`HEATCR`), fluid specific heats (`SPECHEAT`), viscosity vs temperature (`OILVISCT`/`WATVISCT`/`GASVISCT`), water expansion (`WATDENT`), ideal-gas expansion of gas, initial temperature (`RTEMP`, `TEMPI`, `RTEMPVD`) and injection temperature (`WTEMP`) |
 | CO2 storage (CCUS) | `CO2STORE` with `GAS` + `WATER`: built-in CO2-brine properties (Spycher-Pruess solubility with salinity `SALINITY`, water vaporisation `VAPWAT`, volume-shifted Peng-Robinson CO2 density, Batzle-Wang brine), gas-brine saturation functions (`SGWFN`, `WSF`/`GSF`), CO2 inventory split into dissolved, mobile and residually trapped CO2 (`FGIPL`, `FGIPG`, `FGIPM`, `FGIPR`, `FCO2M`) |
 | Compositional (E300) | `COMPS`, `EOS` (PR/SRK), `CNAMES`, `TCRIT`, `PCRIT`, `VCRIT`/`ZCRIT`, `ACF`, `MW`, `BIC`, `OMEGAA/B`, `SSHIFT`, `ZI`/`ZMFVD`, `RTEMP`, `STCOND`, `WELLSTRE` + `WINJGAS` injection streams; Michelsen stability test + successive-substitution flash; Lohrenz-Bray-Clark viscosity; immiscible water phase |
 | Saturation functions | `SWOF`/`SGOF` or `SWFN`/`SGFN`/`SOF3`/`SOF2`, capillary pressure, ECLIPSE default 3-phase oil rel-perm model, `SATNUM`/`PVTNUM` regions |
 | Initialisation | Hydrostatic `EQUIL` (gas cap, oil zone, aquifer, capillary transition zones, datum in any phase), `RSVD`/`PBVD`, `EQLNUM` regions, or enumerated `PRESSURE`/`SWAT`/`SGAS`/`RS`/`PBUB` |
-| Wells & schedule | `WELSPECS`, `COMPDAT` (Peaceman well index or given CF, skin, Kh, X/Y/Z direction, wildcards like `'P*'`), `WCONPROD` (ORAT/WRAT/GRAT/LRAT/RESV/BHP), `WCONINJE` (RATE/RESV/BHP), `WCONHIST`, `WCONINJH`, `WELOPEN`, `WELTARG`, `TSTEP`, `DATES`, `TUNING`; automatic switching between rate targets and BHP limits; well-bore hydrostatic head |
-| Output | Field and well summary vectors (rates, cumulatives, BHP, water cut, GOR, in-place volumes, average pressure), 3D arrays at each report step; `.resim.npz`, summary CSV, ECLIPSE binary files |
+| Wells & schedule | `WELSPECS`, `COMPDAT` (Peaceman well index or given CF, skin, Kh, X/Y/Z direction, wildcards like `'P*'`), `WCONPROD` (ORAT/WRAT/GRAT/LRAT/RESV/BHP/THP), `WCONINJE` (RATE/RESV/BHP/THP), `WCONHIST`, `WCONINJH`, `WELOPEN`, `WELTARG`, `TSTEP`, `DATES`, `TUNING`; automatic switching between rate targets, BHP and THP limits; well-bore hydrostatic head. **VFP tables** (`VFPPROD`, `VFPINJ`: all FLO/WFR/GFR types, multilinear interpolation) for THP limits and THP reporting; **economic limits** (`WECON`: minimum oil/gas/liquid rates, maximum water cut/GOR/WGR/GLR, `WELL`/`PLUG`/`CON`/`+CON` workovers, secondary water cut, end-of-run); group tree (`GRUPTREE`) with group summary vectors |
+| Output | Field, group and well summary vectors: rates, cumulatives, BHP, THP, water cut, GOR, WGR, GLR, reservoir-volume rates (`WVPR`/`WVIR`), block-average pressures (`WBP`, `WBP4`, `WBP5`, `WBP9`), well status (`WSTAT`) and VFP table (`WMVFP`), in-place volumes, average pressure (`FPR`) and phase pressure potentials (`FPPO`/`FPPW`/`FPPG`); requested vectors that are not produced are listed as a warning. 3D arrays at each report step; `.resim.npz`, summary CSV, ECLIPSE binary files |
 | GUI | Deck editor with syntax highlighting and outline, form-based model builder, run panel with progress/log, 3D and 2D-slice viewer, summary plots with case comparison |
 
 ## Installation
@@ -100,19 +100,25 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 | `GASCOND_VAPOIL.DATA` | Gas condensate at its dew point (`VAPOIL`, `PVTG`, `RVVD`): depletion drops condensate near the producer, then dry-gas cycling |
 | `THERMAL_HOTWATER.DATA` | Hot-water (180 C) injection into 600 cP heavy oil at 40 C (`THERMAL`, `OILVISCT`, `WTEMP`) |
 | `CO2_STORAGE.DATA` | 1 Mt of CO2 injected over 10 years into a saline aquifer, then 40 years of plume migration, dissolution and trapping (`CO2STORE`) |
+| `BRUGGE/BRUGGE60K_FY-SF-KM-1-1.DATA` | The **Brugge** field benchmark (TNO, SPE ATW 2008), unchanged multi-file deck: 139×48×9 corner-point grid with a fault, 43,474 active cells, 20 producers and 10 water injectors over 10 years with VFP tables, `WECON` water-cut limits, 7 saturation regions. See `examples/BRUGGE/README.md` for attribution |
 
 ## Numerical methods
 
 * **Discretisation**: cell-centred finite volumes with two-point flux approximation. Transmissibilities
-  come from the actual corner-point geometry: half-transmissibilities `k·|A·c|/|c|²` from face area
-  vectors and centroid distances, with NTG and multipliers. Cell volumes are computed by tetrahedral decomposition.
+  come from the actual corner-point geometry (ECLIPSE NEWTRAN): half-transmissibilities `k·|A·d|/|d|²`
+  from face area vectors and centre-to-face-centre distances, with NTG and multipliers. Across faults the
+  area is the exact overlap of the two faces on the shared pillar pair, which also yields the
+  non-neighbour connections. Cell volumes are the exact volumes of trilinear hexahedra.
 * **Black-oil**: fully implicit in oil pressure, Sw, and a switching variable (Sg when gas is
   present, Rs when the oil is undersaturated). The Jacobian is assembled exactly with a vectorised
   forward-mode automatic-differentiation module (`resim/ad.py`). Newton's method uses saturation and
   pressure chopping and ECLIPSE-like convergence criteria (CNV 1e-3, material balance 1e-7). Well BHPs are
   solved implicitly with the reservoir equations.
 * **Linear solvers**: sparse LU for small systems. Large systems use GMRES with a two-stage **CPR**
-  preconditioner: an AMG solve on the true-IMPES pressure system, then ILU on the full system.
+  preconditioner: one smoothed-aggregation AMG V-cycle on the true-IMPES pressure system, then a symmetric
+  Gauss-Seidel sweep on the full system (ILU as a fallback). The AMG (`resim/solvers/amg.py`) needs only
+  NumPy/SciPy, so the same solver runs in the browser build. GMRES stops at a 1e-5 residual reduction
+  (inexact Newton, `linear_tol`).
 * **Compositional**: IMPEC volume-balance formulation (Ács/Watts). Partial molar volumes come from
   perturbed flashes, upwind directions are re-checked after the pressure solve, and the explicit
   composition update has CFL and composition-change time-step control. Surface rates use a
@@ -141,6 +147,22 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 * **CO2-brine**: CO2 density within 3 % of NIST (50 C, 150 bar); solubility within 6 % of Duan & Sun (2003)
   at 50 C, 100-400 bar; CO2 inventory balance < 1e-5.
 
+### Brugge field against ECLIPSE
+
+`examples/BRUGGE` is the Brugge benchmark deck exactly as TNO distributes it, and TNO also publishes
+the ECLIPSE 100 results of that deck. ReSim reads every keyword in it, and the results agree:
+
+| Quantity | ReSim vs ECLIPSE |
+|---|---|
+| Grid | 43,474 active cells and 122,543 connections, including the 152 fault NNCs, identical; transmissibilities within 0.07 %, pore volumes within 1e-7 |
+| Initial state | pressures within 0.01 bar in every cell, saturations within 3e-4, oil and water in place within 1e-4 |
+| Field rates, 10 years | FOPR, FWPR, FWCT within 0.2 % (largest deviation, relative to the vector's maximum); cumulative oil −0.03 % |
+| Field pressures | FPR, FPPO, FPPW within 0.08 % |
+| Wells (20 producers, 10 injectors) | BHP and THP within 1.0 bar (median of the per-well maxima 0.3 bar), WBP/WBP9 within 0.9 bar, water cut within 0.005 |
+| Economic limits | the three producers shut by `WECON` (water cut > 0.9) close within 2–25 days of ECLIPSE |
+
+`tests/test_core.py` checks the grid, the initial state and the first 60 days against the ECLIPSE values.
+
 ### Performance (4-core cloud VM, Python 3.11)
 
 | Case | Cells | Simulated | Wall time |
@@ -153,16 +175,16 @@ write_eclipse(res, "SPE1")                         # SPE1.EGRID / .INIT / .UNRST
 | Thermal hot-water flood, 3 years | 675 | 87 steps | ~21 s |
 | CO2 storage, 50 years | 1,350 | 199 steps | ~28 s |
 | SPE1 fluid on a refined 40×40×10 grid | 16,000 | 1 year, 53 steps (CPR-AMG) | ~14 min |
+| **Brugge field** (TNO benchmark), corner-point with fault | 43,474 | 10 years, 161 steps, 823 Newton iterations (CPR-AMG) | ~7 min |
 
 ## Limitations
 
 ReSim is a research/teaching-grade simulator, not a replacement for commercial tools. Not (yet) supported:
-analytical aquifers, fault NNCs across
-non-matching corner-point faces (neighbours are connected logically only), group controls and
-network/VFP tables, LGRs, multi-segment wells, end-point scaling, hysteresis (residual CO2 trapping is reported
+analytical aquifers, group production/injection controls (`GCONPROD`/`GCONINJE`) and networks, LGRs,
+multi-segment wells, end-point scaling (`FILLEPS` is accepted; it only affects output), hysteresis (residual CO2 trapping is reported
 from the critical gas saturation, not from a hysteresis model), steam/phase change and heat loss to
 over- and underburden in thermal runs, thermal compositional (E300 THERMAL), polymer/solvent
-options and economic limits (`WECON` is ignored). The compositional solver is IMPEC, so very fine grids
+options, `MULTFLT` changes inside the SCHEDULE section, and WECON follow-on wells. The compositional solver is IMPEC, so very fine grids
 or high-throughput cells force small time steps. Unsupported keywords are reported as warnings and do
 not stop a run.
 
@@ -171,13 +193,14 @@ not stop a run.
 ```
 resim/
   deck/        parser.py (tokenizer/parser), keywords.py (layout registry), gridprops.py (BOX/EQUALS/...)
-  props/       blackoil_pvt.py, eos.py (PR/SRK, flash, LBC), relperm.py, tables.py
+  props/       blackoil_pvt.py, eos.py (PR/SRK, flash, LBC), relperm.py, tables.py, co2brine.py
   solvers/     blackoil.py (fully implicit), compositional.py (IMPEC), linear.py (LU / CPR-GMRES),
-               wellcontrol.py
+               amg.py (aggregation AMG, Gauss-Seidel), wellcontrol.py
   gui/         main_window, deck_editor, highlighter, model_builder (+ deckgen), run_panel,
                viewer3d, plots, vtk_view
-  ad.py  grid.py  model.py  initialization.py  schedule.py  wells.py
-  simulator.py  results.py  eclipse_io.py  __main__.py (CLI)
-examples/      example decks (+ include/ and tools/ for the corner-point grid)
+  ad.py  grid.py  faults.py (fault overlaps, NNCs, PINCH)  model.py  initialization.py
+  schedule.py  wells.py  vfp.py (VFPPROD/VFPINJ)  simulator.py  results.py  eclipse_io.py
+  webapi.py (browser bridge)  __main__.py (CLI)
+examples/      example decks (+ include/ and tools/ for the corner-point grid, BRUGGE/ benchmark)
 tests/         test_core.py (numerics), test_gui_smoke.py (headless GUI)
 ```

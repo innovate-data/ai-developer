@@ -9,6 +9,7 @@ import numpy as np
 
 from .deck.gridprops import GridProperties
 from .deck.parser import Deck, parse_deck, rec_get, to_float, to_int, to_str
+from .faults import fault_overlaps, half_trans_area, pinch_connections
 from .grid import Grid, cartesian_corners, corner_point_corners
 from .props.blackoil_pvt import (BlackOilPVT, ConstCompressibilityFluid, DeadOil, DryGas, LiveOil, TabulatedFluid,
                                  TemperatureFunction, WetGas)
@@ -26,7 +27,8 @@ HANDLED = {
     "RPTRUNSP", "GRIDOPTS", "ROCKCOMP", "ISGAS", "NUPCOL", "UDQDIMS", "UDADIMS", "SMRYDIMS", "LIVEOIL",
     # GRID/EDIT
     "COORD", "ZCORN", "MINPV", "MINPORV", "RPTGRID", "INIT", "GRIDFILE", "NEWTRAN", "OLDTRAN", "MAPAXES",
-    "MAPUNITS", "GRIDUNIT", "COORDSYS", "PINCH", "NOGGF",
+    "MAPUNITS", "GRIDUNIT", "COORDSYS", "PINCH", "NOGGF", "SPECGRID", "FAULTS", "MULTFLT", "GDORIENT",
+    "MONITOR", "NOMONITO", "NUMRES", "FILLEPS",
     # PROPS
     "THERMAL", "CO2STORE", "VAPOIL", "VAPWAT", "DISGASW", "SALINITY", "SPECHEAT", "HEATCR", "THCONR",
     "OILVISCT", "WATVISCT", "GASVISCT", "WATDENT", "RTEMPVD", "WTEMP", "RVVD", "SGWFN", "WSF", "GSF",
@@ -38,7 +40,8 @@ HANDLED = {
     "EQUIL", "RSVD", "PBVD", "RPTSOL", "RPTRST", "ZMFVD", "TEMPVD",
     # SCHEDULE
     "RPTSCHED", "TUNING", "WELSPECS", "COMPDAT", "WCONPROD", "WCONINJE", "WCONHIST", "WCONINJH", "WELOPEN",
-    "WELTARG", "WELLSTRE", "WINJGAS", "TSTEP", "DATES", "WECON", "RPTSMRY",
+    "WELTARG", "WELLSTRE", "WINJGAS", "TSTEP", "DATES", "WECON", "RPTSMRY", "GRUPTREE", "VFPPROD", "VFPINJ",
+    "ROCKOPTS",
 }
 
 
@@ -147,7 +150,16 @@ class ModelBuilder:
         gp = GridProperties(nx, ny, nz, self.warn)
         coord = zcorn = None
         minpv = 1e-6
+        pinch = None
+        faults = {}          # fault name -> list of (low-side natural cell index, direction 'I'/'J'/'K')
+        multflt = []         # (pattern, multiplier) in deck order
         for kw in d.keywords:
+            if kw.name == "MULTFLT" and kw.section in ("GRID", "EDIT"):
+                multflt.extend((str(r[0]), to_float(rec_get(r, 1), 1.0)) for r in kw.data if r)
+                continue
+            if kw.name == "MULTFLT" and kw.section == "SCHEDULE":
+                self.warn("MULTFLT in SCHEDULE (changing fault multipliers during the run) is not supported; ignored")
+                continue
             if kw.section not in ("GRID",):
                 continue
             if kw.name == "COORD":
@@ -156,6 +168,40 @@ class ModelBuilder:
                 zcorn = kw.data
             elif kw.name in ("MINPV", "MINPORV"):
                 minpv = units.to_si(to_float(kw.data[0][0], 1e-6), "volume")
+            elif kw.name == "PINCH":
+                r = kw.data[0] if kw.data else []
+                pinch = {"threshold": to_float(rec_get(r, 0), 0.001) * units.to_si(1.0, "length"),
+                         "gap": to_str(rec_get(r, 1), "GAP").upper() != "NOGAP",
+                         "max_gap": to_float(rec_get(r, 2), 1e20) * units.to_si(1.0, "length"),
+                         "trans": to_str(rec_get(r, 3), "TOPBOT").upper(),
+                         "multz": to_str(rec_get(r, 4), "TOP").upper()}
+            elif kw.name == "FAULTS":
+                for r in kw.data:
+                    if not r:
+                        continue
+                    name = str(r[0])
+                    i1, i2, j1, j2, k1, k2 = (to_int(rec_get(r, m), 1) - 1 for m in range(1, 7))
+                    face = to_str(rec_get(r, 7), "X").upper().replace("I", "X").replace("J", "Y").replace("K", "Z")
+                    dirn = {"X": "I", "Y": "J", "Z": "K"}[face[0]]
+                    minus = face.endswith("-")
+                    for k in range(k1, k2 + 1):
+                        for j in range(j1, j2 + 1):
+                            for i in range(i1, i2 + 1):
+                                ii, jj, kk = i, j, k
+                                if minus:            # the X- face of a cell is the X+ face of its neighbour
+                                    ii, jj, kk = (i - 1, j, k) if dirn == "I" else (i, j - 1, k) if dirn == "J" else (i, j, k - 1)
+                                if ii >= 0 and jj >= 0 and kk >= 0:
+                                    faults.setdefault(name.upper(), []).append((ii + nx * (jj + ny * kk), dirn))
+            elif kw.name == "SPECGRID":
+                r = kw.data[0] if kw.data else []
+                sg = tuple(to_int(rec_get(r, m), 0) for m in range(3))
+                if sg != (nx, ny, nz):
+                    raise ValueError(f"SPECGRID dimensions {sg} differ from DIMENS {(nx, ny, nz)}")
+                if to_int(rec_get(r, 3), 1) > 1:
+                    self.warn("SPECGRID: more than one reservoir (NUMRES) is not supported; treated as one grid")
+            elif kw.name == "COORDSYS":
+                if kw.data is not None and len(kw.data) > 6 and to_str(kw.data[2], "COMP").upper() == "INCOMP":
+                    pass    # single reservoir, completely contained in the grid: nothing to join
             elif not gp.process(kw):
                 self._unhandled(kw)
         L = units.to_si(1.0, "length")
@@ -177,6 +223,7 @@ class ModelBuilder:
                                         tz.ravel(order="F") * L)
             cp = False
         grid = Grid(nx, ny, nz, corners, gp.get("ACTNUM").astype(int), cp)
+        grid.pillars = (np.asarray(coord, float).reshape((ny + 1, nx + 1, 6)).transpose(1, 0, 2) * L) if cp else None
 
         for req in ("PORO", "PERMX"):
             if not gp.has(req):
@@ -190,6 +237,7 @@ class ModelBuilder:
         # transmissibilities (deck units so that EDIT operations apply naturally)
         tu = units.to_si(1.0, "transmissibility")
         tran = {}
+        nnc = []          # non-neighbour connections: (cell a, cell b, T in SI, direction of the face)
         for dirn, face_p, face_m, perm, mult in (("I", "I+", "I-", kx * ntg, "MULTX"),
                                                  ("J", "J+", "J-", ky * ntg, "MULTY"),
                                                  ("K", "K+", "K-", kz, "MULTZ")):
@@ -199,8 +247,44 @@ class ModelBuilder:
             with np.errstate(divide="ignore", invalid="ignore"):
                 t = np.where((ta > 0) & (tb > 0), ta * tb / (ta + tb), 0.0)
             full = np.zeros(grid.n_cells)
-            full[a] = t * np.nan_to_num(gp.get(mult), nan=1.0)[a]
+            mval = np.nan_to_num(gp.get(mult), nan=1.0)
+            full[a] = t * mval[a]
+            if cp and dirn in ("I", "J"):
+                # displaced (faulted) column interfaces: exact face overlaps; same-layer overlaps
+                # stay logical-neighbour connections, the others become NNCs
+                faulted, fa, fb, farea = fault_overlaps(grid, grid.pillars, dirn)
+                full[faulted] = 0.0
+                if fa.size:
+                    ha = half_trans_area(grid, fa, face_p, farea, perm)
+                    hb = half_trans_area(grid, fb, face_m, farea, perm)
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        tf = np.where((ha > 0) & (hb > 0), ha * hb / (ha + hb), 0.0) * mval[fa]
+                    step = 1 if dirn == "I" else nx
+                    same = fb == fa + step
+                    full[fa[same]] = tf[same]
+                    for x, y, tv in zip(fa[~same], fb[~same], tf[~same]):
+                        if tv > 0:
+                            nnc.append((x, y, tv, dirn))
             tran[dirn] = full
+        # fault transmissibility multipliers (MULTFLT on faces named in FAULTS)
+        face_mult = {}
+        for pat, mval in multflt:
+            import fnmatch
+            names = [n for n in faults if fnmatch.fnmatchcase(n, pat.upper())]
+            if not names:
+                self.warn(f"MULTFLT: fault {pat} is not defined in FAULTS")
+            for n in names:
+                for key in faults[n]:
+                    face_mult[key] = face_mult.get(key, 1.0) * mval
+        if face_mult:
+            for (cell, dirn), mval in face_mult.items():
+                tran[dirn][cell] *= mval
+            step = {"I": 1, "J": nx}
+            for n_i, (x, y, tv, dirn) in enumerate(nnc):
+                f = face_mult.get((x, dirn), face_mult.get((y - step[dirn], dirn), 1.0))
+                if f != 1.0:
+                    nnc[n_i] = (x, y, tv * f, dirn)
+        self.faults = faults
         gp.arrays["TRANX"] = tran["I"] / tu
         gp.arrays["TRANY"] = tran["J"] / tu
         gp.arrays["TRANZ"] = tran["K"] / tu
@@ -217,6 +301,26 @@ class ModelBuilder:
                         self._unhandled(kw)
         pv_full = np.nan_to_num(gp.get("PORV")) * units.to_si(1.0, "volume")
         active = (grid.actnum > 0) & (pv_full > minpv)
+        if pinch is not None:
+            # vertical connections across pinched-out (thin) cells, and with GAP across cells removed by MINPV
+            thick = grid.cell_dims()[2]
+            bridge = (thick < pinch["threshold"]) | (pinch["gap"] & (grid.actnum > 0) & ~active)
+            pu, pl = pinch_connections(grid, active, bridge, thick, pinch["max_gap"])
+            if pu.size:
+                tu_half = grid.half_trans("K+", kz)[pu]
+                tl_half = grid.half_trans("K-", kz)[pl]
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    tp = np.where((tu_half > 0) & (tl_half > 0), tu_half * tl_half / (tu_half + tl_half), 0.0)
+                mz = np.nan_to_num(gp.get("MULTZ"), nan=1.0)
+                for x, y, tv in zip(pu, pl, tp):
+                    if pinch["multz"] == "ALL":
+                        col = np.arange(x, y, nx * ny)
+                        tv *= mz[col].min()
+                    else:
+                        tv *= mz[x]
+                    if tv > 0:
+                        nnc.append((x, y, tv, "K"))
+                self.warn(f"PINCH: {pu.size} vertical connections across pinched-out cells") if pu.size else None
         g2a = np.full(grid.n_cells, -1, int)
         act_cells = np.nonzero(active)[0]
         g2a[act_cells] = np.arange(act_cells.size)
@@ -243,6 +347,18 @@ class ModelBuilder:
                     kc = np.where((ka > 0) & (kb > 0), ka * kb / (ka + kb), 0.0)
                 conn_k.append(kc[ok])
 
+        # non-neighbour connections (fault juxtapositions, PINCH)
+        nnc_kept = []
+        for x, y, tv, dirn in nnc:
+            if active[x] and active[y]:
+                conn_a.append(np.array([g2a[x]]))
+                conn_b.append(np.array([g2a[y]]))
+                conn_T.append(np.array([tv]))
+                nnc_kept.append((x, y, tv, dirn))
+                if thermal:
+                    conn_k.append(np.array([0.0]))
+        self.nnc = nnc_kept
+
         def region(name):
             arr = gp.get(name)
             return (np.nan_to_num(arr, nan=1).astype(int) - 1)[act_cells]
@@ -259,6 +375,19 @@ class ModelBuilder:
             eqlnum=region("EQLNUM"),
         )
         model.co2store = co2
+        model.nnc = self.nnc                 # [(natural cell a, natural cell b, T in SI, direction)]
+        model.faults = self.faults
+        # ROCKOPTS: which region array selects the ROCK table, and STORE (reference pressure = initial pressure)
+        ro = d.get("ROCKOPTS")
+        rr = ro.data[0] if ro is not None and ro.data else []
+        rock_region = to_str(rec_get(rr, 2), "PVTNUM").upper()
+        if rock_region not in ("PVTNUM", "SATNUM", "ROCKNUM"):
+            self.warn(f"ROCKOPTS: unknown table selector {rock_region}; using PVTNUM")
+            rock_region = "PVTNUM"
+        model.rocknum = region(rock_region)
+        model.rock_store = to_str(rec_get(rr, 1), "NOSTORE").upper() == "STORE"
+        if to_str(rec_get(rr, 0), "PRESSURE").upper() == "STRESS":
+            self.warn("ROCKOPTS: STRESS option not supported; rock compaction uses pressure")
         self._props(model)
         if thermal:
             self._thermal(model, gp, np.concatenate(conn_k))
@@ -697,5 +826,27 @@ class ModelBuilder:
                         w.control = "ORAT"
         model.schedule = sb.steps
 
+    # summary mnemonics (after the F/W/G prefix) that the simulator produces
+    SUMMARY_SUPPORTED = {
+        "F": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
+              "WGR", "PR", "OIP", "GIP", "WIP", "VPR", "VIR", "PPO", "PPW", "PPG", "GIPL", "GIPG", "GIPM",
+              "GIPR", "CO2M", "CO2D", "OIPL", "OIPG", "TEMP"},
+        "W": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
+              "WGR", "GLR", "BHP", "THP", "BP", "BP4", "BP5", "BP9", "VPR", "VIR", "STAT", "MVFP"},
+        "G": {"OPR", "WPR", "GPR", "LPR", "WIR", "GIR", "OPT", "WPT", "GPT", "WIT", "GIT", "WCT", "GOR",
+              "VPR", "VIR"},
+    }
+    SUMMARY_CONTROL = {"SUMMARY", "RUNSUM", "SEPARATE", "EXCEL", "RPTONLY", "RPTSMRY", "ALL", "DATE", "TIMESTEP",
+                       "ELAPSED", "NEWTON", "MLINEARS", "TCPU", "PERFORMA", "NARROW", "INCLUDE", "ECHO", "NOECHO"}
+
     def _summary(self, model):
         model.summary_keywords = [k.name for k in self.deck.section("SUMMARY") if k.name != "SUMMARY"]
+        missing = []
+        for name in model.summary_keywords:
+            if name in self.SUMMARY_CONTROL:
+                continue
+            sup = self.SUMMARY_SUPPORTED.get(name[0], set())
+            if name[1:] not in sup:
+                missing.append(name)
+        if missing:
+            self.warn("SUMMARY vectors not produced by this simulator: " + " ".join(missing))

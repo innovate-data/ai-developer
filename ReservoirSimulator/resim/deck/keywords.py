@@ -37,6 +37,7 @@ GRIDUNIT TUNING_ NUPCOL MESSAGES MULTFLT_ AQUDIMS FAULTDIM VFPPDIMS VFPIDIMS
 UDQDIMS UDADIMS PIMTDIMS NETWORK LGR ACTDIMS DATUM PETOPTS FORMOPTS SMRYOPTS
 NEXTSTEP DRSDT DRVDT OPTIONS OPTIONS3 MISCIBLE SEPCOND_ WELLSTRE_ TEMPI_ NNEWTF
 MSGFILE CART NPROCS PARALLEL MEMORY SALINITY
+PINCH SPECGRID NUMRES ROCKOPTS VFPCHK GDORIENT
 """.split()
 
 _ARRAYS = """
@@ -78,7 +79,7 @@ _RECORDS = {"EQUIL": "NTEQUL"}
 _TABLE_RECORDS = {"PVTO": "NTPVT", "PVTG": "NTPVT"}
 
 _KNOWN = set(_FLAGS) | set(_RECORD) | set(_ARRAYS) | set(_STRINGS) | set(_MULTI) | set(_TABLES) \
-    | set(_RECORDS) | set(_TABLE_RECORDS) | SECTIONS | {"END", "PATHS", "RTEMP", "TUNING"}
+    | set(_RECORDS) | set(_TABLE_RECORDS) | SECTIONS | {"END", "PATHS", "RTEMP", "TUNING", "VFPPROD", "VFPINJ"}
 
 
 def is_known_keyword(name: str) -> bool:
@@ -99,6 +100,8 @@ def keyword_layout(name: str, section: str):
         return ("line",)
     if name == "TUNING":
         return ("records", 3)
+    if name in ("VFPPROD", "VFPINJ"):
+        return ("vfp", name)
     if name == "PATHS":
         return MULTI
     if name in _STRINGS:

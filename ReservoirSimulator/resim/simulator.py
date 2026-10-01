@@ -24,6 +24,7 @@ class SimOptions:
     newton_tol: float = 1e-3        # CNV tolerance (saturation units)
     max_newton: int = 15
     linear_solver: str = "auto"     # "auto", "direct" or "iterative" (CPR-AMG preconditioned GMRES)
+    linear_tol: float = 1e-5        # relative residual reduction of the iterative solver (inexact Newton)
     ds_max: float = 0.2             # max saturation change per Newton iteration
     ds_target: float = 0.2          # target saturation change per time step
     dp_target_bar: float = 50.0     # target pressure change per time step
@@ -111,6 +112,12 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
          f"{u.label('gas_surface_volume')}, water {u.from_si(fs0['FWIP'], 'liquid_surface_volume'):.6g} "
          f"{u.label('liquid_surface_volume')}")
     summary = _SummaryCollector(model, res)
+    if model.schedule:            # wells of the first report step, so that t = 0 well vectors exist
+        st0 = model.schedule[0]
+        if hasattr(solver, "economic_limits"):
+            solver.setup_wells(st0.wells, touched=st0.touched, vfp=st0.vfp)
+        else:
+            solver.setup_wells(st0.wells)
     summary.record(0.0, solver, None, fs0)
     on_report(res, 0, summary.rows)
 
@@ -122,11 +129,15 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
     n_steps = n_newton = n_cuts = 0
     stopped = None
     for rstep_i, rstep in enumerate(model.schedule):
+        summary._step_index = rstep_i
         if rstep.tuning.get("TSINIT"):
             dt = rstep.tuning["TSINIT"]
         # a TUNING maximum step in the deck overrides the run option
         max_dt = rstep.tuning.get("TSMAXZ", opt.max_dt_days * DAY)
-        solver.setup_wells(rstep.wells)
+        if hasattr(solver, "economic_limits"):
+            solver.setup_wells(rstep.wells, touched=rstep.touched, vfp=rstep.vfp)
+        else:
+            solver.setup_wells(rstep.wells)
         step_end = min(rstep.end_time, t_stop)
         while t < step_end - 1e-6:
             if should_stop():
@@ -162,6 +173,12 @@ def run_simulation(deck_or_path, options: SimOptions | None = None, progress=Non
             n_steps += 1
             fs = solver.field_state()
             summary.record(t, solver, dt_try, fs)
+            if hasattr(solver, "economic_limits"):
+                econ_msgs, econ_end = solver.economic_limits()
+                for msg_ in econ_msgs:
+                    logm(f"  t={t / DAY:10.3f} d  {msg_}")
+                if econ_end and stopped is None:
+                    stopped = "economic limit with end-of-run requested (WECON)"
             # next step size
             fac = 2.0
             if "ds" in info:
@@ -307,7 +324,7 @@ class _SummaryCollector:
                       "WIR": "liquid_surface_rate", "GIR": "gas_surface_rate"}
             for k, v in vals.items():
                 row[f"W{k}:{name}"] = u.from_si(v, rate_q[k])
-            row[f"WBHP:{name}"] = u.from_si(w["bhp"], "pressure")
+            row[f"WBHP:{name}"] = u.from_si(w["bhp"], "pressure") if w["open"] else 0.0     # 0 when shut, as ECLIPSE
             liq = vals["OPR"] + vals["WPR"]
             row[f"WWCT:{name}"] = vals["WPR"] / liq if liq > 0 else 0.0
             row[f"WGOR:{name}"] = u.from_si(vals["GPR"] / vals["OPR"], "rs") if vals["OPR"] > 0 else 0.0
@@ -323,6 +340,20 @@ class _SummaryCollector:
                 self.cum[ck] = self.cum.get(ck, 0.0) + tot[k] * dt
             row[ck] = u.from_si(self.cum.get(ck, 0.0),
                                 "gas_surface_volume" if k[0] == "G" or k == "GIR" else "liquid_surface_volume")
+        # further well vectors (block pressures, THP, voidage, status ...) and their field totals
+        ex = solver.well_extras() if hasattr(solver, "well_extras") else {}
+        ftot = {"VPR": 0.0, "VIR": 0.0, "OIR": 0.0}
+        for name, d in ex.items():
+            for key, (val, q) in d.items():
+                row[f"{key}:{name}"] = u.from_si(val, q) if q else val
+            for k in ftot:
+                ftot[k] += d["W" + k][0]
+        if ex:
+            row["FVPR"] = u.from_si(ftot["VPR"], "reservoir_rate")
+            row["FVIR"] = u.from_si(ftot["VIR"], "reservoir_rate")
+            row["FOIR"] = u.from_si(ftot["OIR"], "liquid_surface_rate")
+            row["FWGR"] = u.from_si(tot["WPR"] / tot["GPR"], "wgr") if tot["GPR"] > 0 else 0.0
+        self._groups(row, wr)
         row["FLPR"] = row["FOPR"] + row["FWPR"]
         liq = tot["OPR"] + tot["WPR"]
         row["FWCT"] = tot["WPR"] / liq if liq > 0 else 0.0
@@ -337,6 +368,38 @@ class _SummaryCollector:
                 q = extra_units.get(key)
                 row[key] = u.from_si(val, q) if q else val
         self.rows.append(row)
+
+    def _groups(self, row, wr):
+        """Group vectors (GOPR, GWIR, ...) summed over the wells below each group of GRUPTREE."""
+        if not self.m.schedule:
+            return
+        step = self.m.schedule[min(len(self.m.schedule) - 1, getattr(self, "_step_index", 0))]
+        tree = getattr(step, "groups", None) or {}
+        groups = [g for g in tree if g and g != "FIELD"]
+        if not groups:
+            return
+        u = self.m.units
+        def ancestors(g):
+            seen = []
+            while g and g != "FIELD" and g not in seen:
+                seen.append(g)
+                g = tree.get(g, "FIELD")
+            return seen
+        members = {g: [] for g in groups}
+        for name in wr:
+            w = step.wells.get(name)
+            if w is not None:
+                for g in ancestors(w.group):
+                    if g in members:
+                        members[g].append(name)
+        rates = ("OPR", "WPR", "GPR", "WIR", "GIR")
+        for g, names in members.items():
+            for k in rates + ("OPT", "WPT", "GPT", "WIT", "GIT", "VPR", "VIR"):
+                row[f"G{k}:{g}"] = sum(row.get(f"W{k}:{n}", 0.0) for n in names)
+            o, wa, gg = row[f"GOPR:{g}"], row[f"GWPR:{g}"], row[f"GGPR:{g}"]
+            row[f"GLPR:{g}"] = o + wa
+            row[f"GWCT:{g}"] = wa / (o + wa) if o + wa > 0 else 0.0
+            row[f"GGOR:{g}"] = gg / o if o > 0 else 0.0           # already in deck units
 
     def finish(self):
         keys = []

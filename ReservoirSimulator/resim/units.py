@@ -66,6 +66,7 @@ FIELD = UnitSystem(
         "reservoir_rate": STB / DAY,
         "rs": MSCF / STB,
         "rv": STB / MSCF,
+        "wgr": STB / MSCF,
         "bo": 1.0,
         "bg": STB / MSCF,
         "density": LB_FT3,
@@ -103,6 +104,7 @@ METRIC = UnitSystem(
         "reservoir_rate": 1.0 / DAY,
         "rs": 1.0,
         "rv": 1.0,
+        "wgr": 1.0,
         "bo": 1.0,
         "bg": 1.0,
         "density": 1.0,
@@ -129,7 +131,7 @@ LABELS = {
         "liquid_surface_volume": "stb", "gas_surface_volume": "Mscf",
         "rs": "Mscf/stb", "density": "lb/ft3", "viscosity": "cP",
         "time": "days", "temperature": "F", "perm": "mD", "volume": "ft3",
-        "reservoir_volume": "rb", "mass": "t", "rv": "stb/Mscf",
+        "reservoir_volume": "rb", "mass": "t", "rv": "stb/Mscf", "wgr": "stb/Mscf",
     },
     "METRIC": {
         "pressure": "bar", "length": "m", "liquid_surface_rate": "sm3/d",
@@ -137,7 +139,7 @@ LABELS = {
         "liquid_surface_volume": "sm3", "gas_surface_volume": "sm3",
         "rs": "sm3/sm3", "density": "kg/m3", "viscosity": "cP",
         "time": "days", "temperature": "C", "perm": "mD", "volume": "m3",
-        "reservoir_volume": "rm3", "mass": "t", "rv": "sm3/sm3",
+        "reservoir_volume": "rm3", "mass": "t", "rv": "sm3/sm3", "wgr": "sm3/sm3",
     },
 }
 

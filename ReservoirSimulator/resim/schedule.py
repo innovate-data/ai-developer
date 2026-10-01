@@ -53,6 +53,12 @@ class Well:
     inj_composition: Optional[np.ndarray] = None
     history: bool = False
     inj_temp: Optional[float] = None    # injection temperature (K), WTEMP
+    auto_shut: str = "SHUT"             # WELSPECS item 9: SHUT or STOP when closed automatically
+    crossflow: bool = True              # WELSPECS item 10
+    vfp_table: int = 0                  # VFP table number (WCONPROD item 11 / WCONINJE item 9)
+    thp_limit: float = 0.0              # THP limit (Pa); 0 = none
+    alq: float = 0.0
+    econ: Optional[dict] = None         # WECON economic limits
 
     def limit(self, key):
         return self.targets.get(key, None)
@@ -68,6 +74,9 @@ class ReportStep:
     date: datetime
     wells: dict
     tuning: dict = field(default_factory=dict)
+    touched: set = field(default_factory=set)     # wells whose status was set by keywords in this step
+    vfp: dict = field(default_factory=dict)       # (kind, table number) -> VFPTable
+    groups: dict = field(default_factory=dict)    # group -> parent group (GRUPTREE)
 
 
 def parse_start(deck):
@@ -101,6 +110,9 @@ class ScheduleBuilder:
         self.time = 0.0
         self.tuning: dict = {}
         self.ncomps = ncomps
+        self.touched: set = set()
+        self.vfp: dict = {}
+        self.groups: dict = {"FIELD": None}
 
     # -------------------------------------------------------------- helpers
     def _match(self, pattern):
@@ -120,7 +132,9 @@ class ScheduleBuilder:
     def _add_step(self, end_time, date):
         if end_time <= self.time + 1e-6:
             return
-        self.steps.append(ReportStep(end_time, date, copy.deepcopy(self.wells), dict(self.tuning)))
+        self.steps.append(ReportStep(end_time, date, copy.deepcopy(self.wells), dict(self.tuning),
+                                     set(self.touched), dict(self.vfp), dict(self.groups)))
+        self.touched = set()
         self.time = end_time
 
     # -------------------------------------------------------------- keywords
@@ -143,7 +157,11 @@ class ScheduleBuilder:
             w.j = to_int(rec_get(rec, 3), 1) - 1
             w.ref_depth = self._num(rec, 4, "length")
             w.phase = to_str(rec_get(rec, 5, "OIL")).upper()
+            w.auto_shut = to_str(rec_get(rec, 8, "SHUT")).upper()
+            w.crossflow = to_str(rec_get(rec, 9, "YES")).upper() != "NO"
             self.wells[name] = w
+            if w.group not in self.groups:
+                self.groups[w.group] = "FIELD"
 
     def _kw_COMPDAT(self, data):
         for rec in data:
@@ -190,7 +208,17 @@ class ScheduleBuilder:
                     if v is not None:
                         t[key] = v
                 t.setdefault("BHP", ATM)
+                thp = self._num(rec, 9, "pressure")
+                w.thp_limit = thp or 0.0
+                if thp:
+                    t["THP"] = thp
+                w.vfp_table = to_int(rec_get(rec, 10), 0) or 0
+                w.alq = to_float(rec_get(rec, 11), 0.0) or 0.0
                 w.targets = t
+                self.touched.add(name)
+                if w.control == "THP" and not (thp and w.vfp_table):
+                    self.warn(f"WCONPROD {name}: THP control needs a THP limit and a VFP table; using BHP")
+                    w.control = "BHP"
                 if w.control not in t and w.control != "BHP":
                     self.warn(f"WCONPROD {name}: control {w.control} has no target; using BHP")
                     w.control = "BHP"
@@ -234,7 +262,16 @@ class ScheduleBuilder:
                 if v is not None:
                     t["RESV"] = v
                 t["BHP"] = self._num(rec, 6, "pressure", 1.0e5 * PSI)
+                thp = self._num(rec, 7, "pressure")
+                w.thp_limit = thp or 0.0
+                if thp:
+                    t["THP"] = thp
+                w.vfp_table = to_int(rec_get(rec, 8), 0) or 0
                 w.targets = t
+                self.touched.add(name)
+                if w.control == "THP" and not (thp and w.vfp_table):
+                    self.warn(f"WCONINJE {name}: THP control needs a THP limit and a VFP table; using BHP")
+                    w.control = "BHP"
                 if w.control not in t:
                     w.control = "BHP"
 
@@ -262,6 +299,7 @@ class ScheduleBuilder:
                 w = self.wells[name]
                 if all(c is None for c in conn):
                     w.status = status
+                    self.touched.add(name)
                 else:
                     for c in w.completions:
                         ijk = (c.i, c.j, c.k)
@@ -333,4 +371,35 @@ class ScheduleBuilder:
                 self.wells[name].inj_temp = self._num(rec, 1, "temperature")
 
     def _kw_WECON(self, data):
-        self.warn("WECON economic limits are ignored")
+        """Economic limits, checked at the end of every time step (see BlackOilSolver.economic_limits)."""
+        for rec in data:
+            if not rec:
+                continue
+            e = {"min_orat": self._num(rec, 1, "liquid_surface_rate"), "min_grat": self._num(rec, 2, "gas_surface_rate"),
+                 "max_wct": self._num(rec, 3), "max_gor": self._num(rec, 4, "rs"), "max_wgr": self._num(rec, 5, "wgr"),
+                 "workover": to_str(rec_get(rec, 6, "NONE")).upper(), "end_run": to_str(rec_get(rec, 7, "NO")).upper() == "YES",
+                 "quantity": to_str(rec_get(rec, 9, "RATE")).upper(), "sec_wct": self._num(rec, 10),
+                 "sec_workover": to_str(rec_get(rec, 11, "NONE")).upper(), "max_glr": self._num(rec, 12, "rs"),
+                 "min_lrat": self._num(rec, 13, "liquid_surface_rate")}
+            followon = rec_get(rec, 8)
+            if followon is not None and str(followon).strip("'") not in ("", "1*"):
+                self.warn(f"WECON: follow-on well {followon} is not supported")
+            if e["quantity"] == "POTN":
+                self.warn("WECON: limits on well potentials (POTN) are checked against the actual rates")
+            for name in self._match(rec[0]):
+                self.wells[name].econ = dict(e)
+
+    def _kw_GRUPTREE(self, data):
+        for rec in data:
+            if rec:
+                self.groups[to_str(rec[0])] = to_str(rec_get(rec, 1, "FIELD"))
+
+    def _kw_VFPPROD(self, data):
+        from .vfp import parse_vfp
+        t = parse_vfp("PROD", data, self.u)
+        self.vfp[("PROD", t.number)] = t
+
+    def _kw_VFPINJ(self, data):
+        from .vfp import parse_vfp
+        t = parse_vfp("INJ", data, self.u)
+        self.vfp[("INJ", t.number)] = t

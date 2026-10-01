@@ -36,8 +36,13 @@ def check_controls(solver, rate, bhp):
                 keys = (orig,) if orig != "BHP" else ()
             else:
                 keys = [k for k in PROD_KEYS if k in t and t[k] is not None]
+            thp_b = getattr(solver, "thp_bhp", {}).get(name) if getattr(w, "thp_limit", 0) else None
             if ctrl != "BHP" and bhp[wi] < t.get("BHP", 0.0) * (1 - 1e-9):
                 new = "BHP"
+            elif ctrl not in ("BHP", "THP") and thp_b is not None and bhp[wi] < thp_b * (1 - 1e-9):
+                new = "THP"
+            elif ctrl == "BHP" and thp_b is not None and thp_b > t.get("BHP", 0.0) * (1 + 1e-9):
+                new = "THP"
             else:
                 worst, ratio = None, 1.0 + 1e-6
                 for k in keys:
@@ -50,8 +55,13 @@ def check_controls(solver, rate, bhp):
         else:
             key = {"WATER": "w", "GAS": "g", "OIL": "o"}.get(w.inj_type, "w")
             vals = {"RATE": -r.get(key, np.zeros(len(names)))[wi], "RESV": -r.get("resv", np.zeros(len(names)))[wi]}
+            thp_b = getattr(solver, "thp_bhp", {}).get(name) if getattr(w, "thp_limit", 0) else None
             if ctrl != "BHP" and bhp[wi] > t.get("BHP", 1e30) * (1 + 1e-9):
                 new = "BHP"
+            elif ctrl not in ("BHP", "THP") and thp_b is not None and bhp[wi] > thp_b * (1 + 1e-9):
+                new = "THP"
+            elif ctrl == "BHP" and thp_b is not None and thp_b < t.get("BHP", 1e30) * (1 - 1e-9):
+                new = "THP"
             else:
                 worst, ratio = None, 1.0 + 1e-6
                 for k in ("RATE", "RESV"):

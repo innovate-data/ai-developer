@@ -38,6 +38,9 @@ SUMMARY_UNITS = {
     "GOR": "rs", "GIPL": "gas_surface_volume", "GIPG": "gas_surface_volume", "GIPM": "gas_surface_volume",
     "GIPR": "gas_surface_volume", "CO2M": "mass", "OIPL": "liquid_surface_volume", "OIPG": "liquid_surface_volume",
     "TEMP": "temperature",
+    "BP": "pressure", "BP4": "pressure", "BP5": "pressure", "BP9": "pressure", "THP": "pressure",
+    "VPR": "reservoir_rate", "VIR": "reservoir_rate", "OIR": "liquid_surface_rate", "WGR": "wgr", "GLR": "rs",
+    "PPO": "pressure", "PPW": "pressure", "PPG": "pressure",
 }
 
 
@@ -72,6 +75,8 @@ class Results:
         base = key.split(":")[0]
         if base.endswith("WCT") or base == "FCO2D":
             return "fraction"
+        if base in ("WSTAT", "WMVFP"):
+            return ""
         for suffix, q in SUMMARY_UNITS.items():
             if base[1:] == suffix:
                 return u.label(q)

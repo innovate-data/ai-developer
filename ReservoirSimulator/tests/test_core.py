@@ -564,3 +564,205 @@ def test_sensitivity_variants(tmp_path, monkeypatch):
     assert not variant(spe1, kind="replace", find="@X@", value=1)["ok"]
     r = variant(spe1.replace("20000", "@Q@"), kind="replace", find="@Q@", value=12345)
     assert r["ok"] and "12345" in r["deck"]
+
+
+def _faulted_deck(throw=2.0, extra_grid="", nz=3):
+    """2x1xnz corner-point grid with vertical pillars; the column at i=2 is shifted down by `throw`."""
+    coord = []
+    for j in range(2):
+        for i in range(3):
+            x, y = 10.0 * i, 10.0 * j
+            coord += [x, y, 0.0, x, y, 100.0]
+    z = []
+    for k in range(nz):
+        for top in (True, False):
+            depth = 1000.0 + 4.0 * k + (0.0 if top else 4.0)
+            for j in range(1):
+                for jj in range(2):
+                    for i in range(2):
+                        for ii in range(2):
+                            z.append(depth + (throw if i == 1 else 0.0))
+    return f"""RUNSPEC
+DIMENS
+ 2 1 {nz} /
+OIL
+WATER
+METRIC
+START
+ 1 JAN 2000 /
+GRID
+COORD
+ {' '.join(map(str, coord))} /
+ZCORN
+ {' '.join(map(str, z))} /
+PORO
+ {2 * nz}*0.2 /
+PERMX
+ {2 * nz}*100 /
+PERMY
+ {2 * nz}*100 /
+PERMZ
+ {2 * nz}*10 /
+{extra_grid}
+PROPS
+PVTW
+ 100 1.0 4e-5 0.5 0 /
+PVDO
+ 50 1.0 1.0
+ 300 0.98 1.0 /
+DENSITY
+ 800 1000 1 /
+SWOF
+ 0.2 0 1 0
+ 1 1 0 0 /
+ROCK
+ 100 5e-5 /
+SOLUTION
+EQUIL
+ 1000 100 2000 0 /
+SCHEDULE
+TSTEP
+ 1 /
+"""
+
+
+def test_fault_overlaps_and_nnc():
+    from resim.deck.parser import parse_deck_string
+    from resim.model import load_model as build_model
+    m = build_model(parse_deck_string(_faulted_deck(throw=2.0)))
+    tu = m.units.to_si(1.0, "transmissibility")
+    # half-cell throw: each cell touches two cells across the fault (same layer and the one above)
+    pairs = {(int(m.active_cells[a]), int(m.active_cells[b])) for a, b in zip(m.conn_a, m.conn_b)}
+    assert (0, 1) in pairs and (2, 3) in pairs and (2, 1) in pairs and (4, 3) in pairs
+    T = {(int(m.active_cells[a]), int(m.active_cells[b])): t / tu for a, b, t in zip(m.conn_a, m.conn_b, m.conn_T)}
+    # overlap 2 m x 10 m for both, so equal transmissibilities: k A / (d/2 + d/2) = 100 mD * 20 m2 / 10 m
+    assert T[(2, 3)] == pytest.approx(T[(2, 1)], rel=1e-9)
+    assert T[(2, 3)] == pytest.approx(0.008527 * 100 * 20 / 10, rel=1e-3)
+    # no throw: plain neighbour connections with the full 4 m face
+    m0 = build_model(parse_deck_string(_faulted_deck(throw=0.0)))
+    T0 = {(int(m0.active_cells[a]), int(m0.active_cells[b])): t / tu for a, b, t in zip(m0.conn_a, m0.conn_b, m0.conn_T)}
+    assert T0[(2, 3)] == pytest.approx(2 * T[(2, 3)], rel=1e-9) and (2, 1) not in T0
+
+
+def test_multflt_and_pinch():
+    from resim.deck.parser import parse_deck_string
+    from resim.model import load_model as build_model
+    faults = "FAULTS\n 'F1' 1 1 1 1 1 3 'X' /\n/\nMULTFLT\n 'F1' 0.1 /\n/\n"
+    m = build_model(parse_deck_string(_faulted_deck(throw=2.0, extra_grid=faults)))
+    m0 = build_model(parse_deck_string(_faulted_deck(throw=2.0)))
+    T = {(int(m.active_cells[a]), int(m.active_cells[b])): t for a, b, t in zip(m.conn_a, m.conn_b, m.conn_T)}
+    T0 = {(int(m0.active_cells[a]), int(m0.active_cells[b])): t for a, b, t in zip(m0.conn_a, m0.conn_b, m0.conn_T)}
+    for key in ((0, 1), (2, 3), (2, 1)):               # logical and NNC connections across the fault
+        assert T[key] == pytest.approx(0.1 * T0[key])
+    assert T[(0, 2)] == pytest.approx(T0[(0, 2)])      # vertical connections untouched
+    # PINCH: a thin middle layer made inactive is bridged; a thick one is not
+    thin = "MINPV\n 1e-3 /\nPINCH\n 0.5 /\nMULTPV\n 2*1 2*1e-9 2*1 /\n"
+    mp = build_model(parse_deck_string(_faulted_deck(throw=0.0, extra_grid=thin)))
+    pairs = {(int(mp.active_cells[a]), int(mp.active_cells[b])) for a, b in zip(mp.conn_a, mp.conn_b)}
+    assert (0, 4) in pairs and (1, 5) in pairs and mp.n_active == 4
+    nogap = "MINPV\n 1e-3 /\nPINCH\n 0.5 NOGAP /\nMULTPV\n 2*1 2*1e-9 2*1 /\n"
+    mn = build_model(parse_deck_string(_faulted_deck(throw=0.0, extra_grid=nogap)))
+    pairs = {(int(mn.active_cells[a]), int(mn.active_cells[b])) for a, b in zip(mn.conn_a, mn.conn_b)}
+    assert (0, 4) not in pairs                          # 4 m cells are thicker than the 0.5 m threshold
+
+
+def _vfp_text():
+    return """VFPPROD
+  1 1500.0 'OIL' 'WCT' 'GOR' /
+  50 100 200 /
+  10 90 170 /
+  0.1 0.8 /
+  0 /
+  0 /
+  1 1 1 1  20 25 35 /
+  1 2 1 1  30 36 48 /
+  2 1 1 1  95 100 110 /
+  2 2 1 1  110 117 130 /
+  3 1 1 1  175 181 192 /
+  3 2 1 1  190 198 212 /
+/
+"""
+
+
+def test_vfp_table_interpolation_and_inverse():
+    from resim.deck.parser import parse_deck_string
+    from resim.units import get_units
+    from resim.vfp import parse_vfp
+    d = parse_deck_string("RUNSPEC\nMETRIC\nSCHEDULE\n" + _vfp_text())
+    t = parse_vfp("PROD", d.get("VFPPROD").data, get_units("METRIC"))
+    day = 86400.0
+    # on a node
+    assert t.bhp_from_thp(90e5, 100 / day, 100 / 9 / day, 0)[0] == pytest.approx(100e5)
+    # midway in THP and rate at WCT 0.1
+    b = t.bhp_from_thp(50e5, 75 / day, 75 / 9 / day, 0)[0]
+    assert b == pytest.approx(0.25 * (20 + 25 + 95 + 100) * 1e5)
+    # the inverse returns the THP
+    for thp in (15e5, 60e5, 150e5, 200e5):            # 200 bar: extrapolated
+        for q in (60, 150, 250):
+            bb = t.bhp_from_thp(thp, q / day, 0.3 * q / 0.7 / day, 0)
+            assert t.thp_from_bhp(bb, q / day, 0.3 * q / 0.7 / day, 0)[0] == pytest.approx(thp, rel=1e-9)
+
+
+def test_wecon_shuts_well_and_summary_vectors(tmp_path):
+    """A water-cut limit shuts a producer for good; WSTAT, WTHP, WBP*, WVPR and FPPO are reported."""
+    text = open(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA")).read()
+    text = text.replace("WCONPROD\n   'P*'  'OPEN' 'LRAT' 3* 150 1* 120 /\n/",
+                        "WCONPROD\n   'P*'  'OPEN' 'LRAT' 3* 150 1* 120 1* 1 /\n/\n" + _vfp_text() +
+                        "\nWECON\n  'P1' 1* 1* 0.3 2* 'WELL' /\n/\nGRUPTREE\n 'G' 'FIELD' /\n/\n")
+    text = text.replace("SUMMARY", "SUMMARY\nWBP9\n/\nWTHP\n/\nFPPO\nWSTAT\n/\n", 1)
+    from resim.simulator import run_simulation
+    path = tmp_path / "WF.DATA"
+    path.write_text(text)
+    res = run_simulation(str(path))
+    S = res.summary
+    st = S["WSTAT:P1"]
+    shut_at = np.argmax(st == 3)
+    assert shut_at > 0 and np.all(st[shut_at:] == 3)
+    assert S["WWCT:P1"][shut_at - 1] > 0.3 and np.all(S["WOPR:P1"][shut_at + 1:] == 0)
+    assert np.all(S["WSTAT:P2"][1:] == 1) and np.all(S["WSTAT:I1"][1:] == 2)
+    assert np.all(S["WMVFP:P2"] == 1) and np.all(S["WMVFP:I1"] == 0)
+    # THP below BHP and positive while producing; zero for the injector without a table
+    assert np.all((S["WTHP:P2"][1:] > 0) & (S["WTHP:P2"][1:] < S["WBHP:P2"][1:])) and np.all(S["WTHP:I1"] == 0)
+    for k in ("WBP", "WBP4", "WBP5", "WBP9"):
+        assert np.all(S[f"{k}:P2"][1:] > S["WBHP:P2"][1:])
+    assert np.allclose(S["WBP5:P2"], 0.5 * (S["WBP:P2"] + S["WBP4:P2"]))
+    assert np.all(S["FVPR"][1:] > 0) and "FPPO" in S and "GOPR:G" in S
+    assert np.allclose(S["GOPR:G"], S["FOPR"]) and np.allclose(S["FVIR"][1:], S["WVIR:I1"][1:])
+    assert not [w for w in res.log if "not produced" in w or "not supported" in w]
+
+
+BRUGGE = os.path.join(EX, "BRUGGE", "BRUGGE60K_FY-SF-KM-1-1.DATA")
+
+
+def test_brugge_grid_matches_eclipse():
+    """Brugge (TNO): active cells, connections (incl. the 152 fault NNCs), pore volume and the
+    initial fluids in place equal ECLIPSE's (values from the ECLIPSE run distributed by TNO)."""
+    from resim.initialization import initialize_blackoil
+    from resim.simulator import SimOptions
+    from resim.solvers.blackoil import BlackOilSolver
+    m = load_model(BRUGGE)
+    assert not m.warnings or all("inactive" in w for w in m.warnings), m.warnings
+    assert m.n_active == 43474 and m.conn_a.size == 122543 and len(m.nnc) == 152
+    assert m.pore_volume.sum() == pytest.approx(853894713.0, rel=1e-7)
+    assert np.all(np.isfinite(m.conn_T)) and np.all(m.conn_T > 0)
+    s = BlackOilSolver(m, SimOptions(), lambda x: None)
+    s.set_initial_state(initialize_blackoil(m))
+    fs = s.field_state()
+    assert fs["FOIP"] == pytest.approx(122256868.0, rel=1e-4)
+    assert fs["FWIP"] == pytest.approx(732261424.0, rel=2e-4)
+    assert fs["FPR"] / 1e5 == pytest.approx(162.358, abs=0.01)
+    assert fs["FPPW"] / 1e5 == pytest.approx(169.999, abs=0.01)
+    st = m.schedule[0]
+    assert ("PROD", 1) in st.vfp and st.groups.get("GROUP 1") == "FIELD"
+    assert st.wells["BR-P-5"].econ["max_wct"] == pytest.approx(0.9)
+
+
+def test_brugge_first_months_match_eclipse():
+    from resim.simulator import SimOptions, run_simulation
+    r = run_simulation(BRUGGE, SimOptions(stop_at_day=60))
+    S = r.summary
+    ref = {"FOPR": 500.364, "FWPR": 8.791, "FPR": 161.913, "WBHP:BR-P-5": 122.229, "WBP:BR-P-5": 150.195,
+           "WBP9:BR-P-5": 152.988, "WTHP:BR-P-5": 112.201, "FPPO": 169.324, "FPPW": 169.788, "FVPR": 509.685}
+    for k, v in ref.items():
+        assert S[k][-1] == pytest.approx(v, rel=4e-3), k
+    assert S["WSTAT:BR-P-5"][-1] == 1 and S["WSTAT:BR-P-9"][-1] == 3 and S["WMVFP:BR-P-5"][-1] == 1

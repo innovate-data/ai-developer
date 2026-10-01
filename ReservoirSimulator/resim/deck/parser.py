@@ -390,6 +390,19 @@ class DeckParser:
                     break
                 recs.append(self._read_record(stream))
             return recs
+        if kind == "vfp":
+            # VFPPROD: header, FLO, THP, WFR, GFR, ALQ axes, then NT*NW*NG*NA rows;
+            # VFPINJ: header, FLO, THP axes, then NT rows
+            recs = [self._read_record(stream)]
+            n_axes = 5 if layout[1] == "VFPPROD" else 2
+            for _ in range(n_axes):
+                recs.append(self._read_record(stream))
+            n_rows = 1
+            for ax in recs[2:]:
+                n_rows *= max(1, len(ax))
+            for _ in range(n_rows):
+                recs.append(self._read_record(stream))
+            return recs
         if kind == "unknown":
             # Heuristic: keyword without data if the next line is a keyword
             if self._looks_like_keyword_line(stream):

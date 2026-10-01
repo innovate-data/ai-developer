@@ -74,11 +74,24 @@ def corner_point_corners(nx, ny, nz, coord, zcorn):
 
 
 def hex_volume(corners):
+    """Exact volume of trilinear hexahedra (as ECLIPSE computes corner-point bulk volumes):
+    the Jacobian determinant is at most quadratic in each reference coordinate, so 2-point
+    Gauss-Legendre quadrature per direction integrates it exactly."""
+    g = (0.5 - 0.5 / np.sqrt(3.0), 0.5 + 0.5 / np.sqrt(3.0))
     v = np.zeros(corners.shape[0])
-    for a, b, c, d in _TETS:
-        pa = corners[:, a]
-        v += np.abs(np.einsum("ij,ij->i", corners[:, b] - pa, np.cross(corners[:, c] - pa, corners[:, d] - pa))) / 6.0
-    return v
+    for a in g:
+        for b in g:
+            for c in g:
+                da = np.zeros((corners.shape[0], 3)); db = np.zeros_like(da); dc = np.zeros_like(da)
+                for n in range(8):
+                    di, dj, dk = n & 1, (n >> 1) & 1, (n >> 2) & 1
+                    fa, fb, fc = (a if di else 1 - a), (b if dj else 1 - b), (c if dk else 1 - c)
+                    x = corners[:, n]
+                    da += (1 if di else -1) * fb * fc * x
+                    db += fa * (1 if dj else -1) * fc * x
+                    dc += fa * fb * (1 if dk else -1) * x
+                v += np.einsum("ij,ij->i", da, np.cross(db, dc)) / 8.0
+    return np.abs(v)
 
 
 def face_geometry(corners, face):
@@ -136,8 +149,9 @@ class Grid:
         if getattr(self, "_dims", None) is not None:
             return self._dims
         c = self.corners
-        dx = np.linalg.norm(c[:, FACE_CORNERS["I+"], :].mean(1) - c[:, FACE_CORNERS["I-"], :].mean(1), axis=1)
-        dy = np.linalg.norm(c[:, FACE_CORNERS["J+"], :].mean(1) - c[:, FACE_CORNERS["J-"], :].mean(1), axis=1)
+        # horizontal distance between opposite face centres (as ECLIPSE reports DX, DY)
+        dx = np.linalg.norm(c[:, FACE_CORNERS["I+"], :2].mean(1) - c[:, FACE_CORNERS["I-"], :2].mean(1), axis=1)
+        dy = np.linalg.norm(c[:, FACE_CORNERS["J+"], :2].mean(1) - c[:, FACE_CORNERS["J-"], :2].mean(1), axis=1)
         dz = c[:, FACE_CORNERS["K+"], 2].mean(1) - c[:, FACE_CORNERS["K-"], 2].mean(1)
         self._dims = (dx, dy, np.abs(dz))
         return self._dims

@@ -102,13 +102,18 @@ class MainWindow(QMainWindow):
 
     def _fill_examples_menu(self):
         self.examples_menu.clear()
-        files = sorted(EXAMPLES_DIR.glob("*.DATA")) + sorted(EXAMPLES_DIR.glob("*.data")) \
-            if EXAMPLES_DIR.is_dir() else []
+        files = []
+        if EXAMPLES_DIR.is_dir():
+            # decks in the examples folder and in its sub-folders (multi-file decks such as Brugge,
+            # whose INCLUDE files sit next to the main deck)
+            for pat in ("*.DATA", "*.data", "*/*.DATA", "*/*.data"):
+                files += sorted(EXAMPLES_DIR.glob(pat))
         if not files:
             a = self.examples_menu.addAction("(no examples found)")
             a.setEnabled(False)
         for f in files:
-            self.examples_menu.addAction(self._action(f.name, lambda p=str(f): self.new_from_example(p)))
+            label = str(f.relative_to(EXAMPLES_DIR))
+            self.examples_menu.addAction(self._action(label, lambda p=str(f): self.new_from_example(p)))
 
     def _recent(self):
         val = self.settings.value("recent_files", [])

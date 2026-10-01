@@ -4,9 +4,10 @@ methods
 -------
 direct     SuperLU sparse LU
 iterative  GMRES with a two-stage CPR preconditioner (alias: "cpr"):
-           stage 1 solves a decoupled pressure system with algebraic multigrid
-           (pyamg if installed, otherwise incomplete LU), stage 2 applies ILU to
-           the full system in cell-interleaved ordering.
+           stage 1 solves a decoupled pressure system with smoothed-aggregation
+           algebraic multigrid (resim.solvers.amg), stage 2 applies a symmetric
+           Gauss-Seidel sweep (ILU as a fallback) to the full system in
+           cell-interleaved ordering.
 auto       direct for small systems, CPR-GMRES for large ones
 """
 from __future__ import annotations
@@ -18,17 +19,18 @@ import scipy.sparse.linalg as spla
 AUTO_THRESHOLD = 15000   # unknowns
 
 
-def solve_linear(J, b, method="auto", n_cells=None, n_vars=None):
+def solve_linear(J, b, method="auto", n_cells=None, n_vars=None, rtol=1e-5):
     method = (method or "auto").lower()
     N = J.shape[0]
     use_cpr = method in ("iterative", "cpr") or (method == "auto" and N > AUTO_THRESHOLD)
     if use_cpr and n_cells and n_vars:
-        try:
-            x = cpr_gmres(J, b, n_cells, n_vars)
-            if x is not None:
-                return x
-        except Exception:   # fall back to the direct solver on any failure
-            pass
+        for stage2 in ("gs", "ilu"):
+            try:
+                x = cpr_gmres(J, b, n_cells, n_vars, rtol=rtol, stage2=stage2)
+                if x is not None:
+                    return x
+            except Exception:   # fall back to the next method on any failure
+                pass
     return spla.spsolve(sp.csc_matrix(J), b)
 
 
@@ -65,7 +67,18 @@ def _block_scaling(J, n, nv):
     return sp.csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(N, N))
 
 
-def cpr_gmres(J, b, n, nv, rtol=1e-8, maxiter=200):
+_AMG_CACHE = {}          # aggregates per matrix size/sparsity, reused between Newton iterations
+
+
+def cpr_gmres(J, b, n, nv, rtol=1e-5, maxiter=200, stage2="gs"):
+    """GMRES with a two-stage CPR preconditioner.
+
+    Stage 1: the decoupled pressure system (true-IMPES block scaling) is solved approximately
+    by one smoothed-aggregation AMG V-cycle (resim.solvers.amg, NumPy/SciPy only).
+    Stage 2: one symmetric Gauss-Seidel sweep on the full system in cell-interleaved ordering
+    (stage2="gs"), or an incomplete LU factorisation (stage2="ilu", slower, more robust).
+    `rtol` is the relative residual reduction (inexact Newton)."""
+    from .amg import AggregationAMG, GaussSeidel
     J = sp.csr_matrix(J)
     N = J.shape[0]
     nr = n * nv
@@ -73,33 +86,34 @@ def cpr_gmres(J, b, n, nv, rtol=1e-8, maxiter=200):
     Js = (D @ J).tocsr()
     bs = D @ b
     Ap = Js[:n, :n].tocsr()          # decoupled pressure equations
-    try:
-        import pyamg
-        ml = pyamg.smoothed_aggregation_solver(Ap, max_coarse=500)
-
-        def stage1(r):
-            return ml.solve(r, tol=1e-3, maxiter=1)
-    except ImportError:
-        ilu_p = spla.spilu(Ap.tocsc(), drop_tol=1e-4, fill_factor=10)
-        stage1 = ilu_p.solve
+    if len(_AMG_CACHE) > 16:
+        _AMG_CACHE.clear()
+    amg = AggregationAMG(Ap, max_coarse=400, theta=0.0, symmetric=True, cache=_AMG_CACHE)
+    stage1 = amg.solve
     perm = np.r_[np.arange(nr).reshape(nv, n).T.ravel(), np.arange(nr, N)]
     iperm = np.argsort(perm)
-    Jp = Js[perm][:, perm].tocsc()
-    ilu = None
-    for spec, tol, fill in (("MMD_AT_PLUS_A", 1e-4, 5), ("COLAMD", 1e-5, 8)):
-        try:
-            ilu = spla.spilu(Jp, drop_tol=tol, fill_factor=fill, permc_spec=spec, diag_pivot_thresh=0.0)
-            break
-        except RuntimeError:
-            continue
-    if ilu is None:
-        return None
+    Jp = Js[perm][:, perm].tocsr()
+    if stage2 == "gs":
+        smoother = GaussSeidel(Jp)
+        second = smoother.symmetric
+    else:
+        ilu = None
+        Jc = Jp.tocsc()
+        for spec, tol, fill in (("MMD_AT_PLUS_A", 1e-4, 5), ("COLAMD", 1e-5, 8)):
+            try:
+                ilu = spla.spilu(Jc, drop_tol=tol, fill_factor=fill, permc_spec=spec, diag_pivot_thresh=0.0)
+                break
+            except RuntimeError:
+                continue
+        if ilu is None:
+            return None
+        second = ilu.solve
 
     def prec(r):
         x = np.zeros_like(r)
         x[:n] = stage1(r[:n])
         r2 = r - Js @ x
-        return x + ilu.solve(r2[perm])[iperm]
+        return x + second(r2[perm])[iperm]
 
     x, ok = gmres(lambda v: Js @ v, bs, prec, rtol=rtol, restart=40, maxiter=maxiter)
     if not ok or not np.all(np.isfinite(x)):
