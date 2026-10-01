@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.resim.npz
+*_summary.csv
+*_run.DATA
+.pytest_cache/

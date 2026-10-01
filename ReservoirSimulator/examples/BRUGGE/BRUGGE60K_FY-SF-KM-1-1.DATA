@@ -1,0 +1,153 @@
+-- (c) 2009-2016 TNO, The Hague, the Netherlands. All copyrights and other intellectual property rights reserved.
+
+-- This file (and the related include files) is an Eclipse input deck for the fictitious “Brugge” field. 
+-- as developed for the SPE ATW workshop in June 2008 on Closed-Loop reservoir management. 
+-- The file pertains to a reservoir-model based on synthetic data. The underlying data is available from TNO on request. 
+
+-- This file is provided to you as a courtesy, but on a strict “as is” basis. 
+-- TNO does not assume any responsibility or liability for any damage that might result from its use by you. 
+-- You may redistribute this file for your own purposes, 
+-- however all references to TNO in the file header should be maintained as is and the file must remain unchanged. 
+-- Reasonable changes to the file as proposed by you will be considered by TNO. 
+
+-- This input deck belongs to ensemble member FY-SF-KM-1-1. 
+-- Input decks for the other ensemble members can be generated with the information in the full Brugge dataset.
+
+-- Further information about the Brugge benchmark study can be found in: 
+-- Results Of The Brugge Benchmark Study For Flooding Optimisation And History Matching (2010) Peters, E., Arts, R.J., Brouwer,
+-- G.K., Geel, C.R., Cullick, S., Lorentzen R.J., Chen, Y., Dunlop, K.N.B., Vossepoel, F.C,  Xu, R., Sarma, P., Alhutali,  A.H.,
+-- Reynolds, A.C.. SPE Res Eval & Eng  13 (3): 391-405. SPE-119094-PA. doi: 10.2118/119094-PA.
+
+
+
+-- Technical notes:
+-- Please be aware that for the calculation of the well connectivity the grid block values were used 
+-- and not the logs that were also supplied in the original workshop. 
+-- Radius of the wells is 2 inch (5 cm).
+
+
+-- Generated [
+-- Format      : ECLIPSE keywords (ASCII)
+-- Exported by : Petrel 2014.3 (64-bit) Schlumberger
+-- User name   : peterse
+-- Date        : Friday, December 23 2016 14:06:28
+-- Project     : Brugge_60K_ResEng.pet
+-- Generated ]
+
+RUNSPEC
+
+FAULTDIM                               -- Generated : Petrel
+  45 /
+
+WELLDIMS                               -- Generated : Petrel
+  30 11 2 30 /
+
+START                                  -- Generated : Petrel
+  1 JAN 2000 /
+
+UNIFOUT
+
+WATER                                  -- Generated : Petrel
+
+OIL                                    -- Generated : Petrel
+
+MONITOR                                -- Generated : Petrel
+
+METRIC                                 -- Generated : Petrel 
+
+NUMRES
+1 /
+
+EQLDIMS
+ 1 /
+
+DIMENS                                 -- Generated : Petrel
+  139 48 9 /
+
+TITLE
+BRUGGE60K_ECLIPSE100
+
+TABDIMS                                -- Generated : Petrel
+  7 1* 24 1* 7 7* 1 /
+
+VFPPDIMS
+  5 3 4 1 1 1 /
+
+GRID
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_GRID.INC' /
+
+NOECHO                                 -- Generated : Petrel
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_GRID.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_PERMX.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_PERMY.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_PERMZ.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_PORO.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_NTG.GRDECL' /
+
+ECHO                                   -- Generated : Petrel
+
+EDIT
+
+PROPS
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROPS.INC' /
+
+REGIONS
+
+-- Format      : Generic ECLIPSE style (ASCII) properties (*.GRDECL, *.*)
+-- Exported by : Petrel 2008.1 Schlumberger
+-- User name   : epeters
+-- Date        : Monday, April 27 2009 12:54:34
+-- Project     : Brugge_60K_ResEng.pet
+-- Grid        : Part of 60K Grid
+-- Unit system : ECLIPSE-Metric
+
+NOECHO                                 -- Generated : Petrel
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_SATNUM.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_PVTNUM.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_EQLNUM.GRDECL' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_PROP_FIPNUM.GRDECL' /
+
+ECHO                                   -- Generated : Petrel
+
+SOLUTION
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_SOL.INC' /
+
+SUMMARY
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_SUM.INC' /
+
+SCHEDULE
+
+INCLUDE
+'VFP_BRUGGE.INC' /
+
+INCLUDE                                -- Generated : Petrel
+'BRUGGE60K_FY-SF-KM-1-1_SCH.INC' /
+

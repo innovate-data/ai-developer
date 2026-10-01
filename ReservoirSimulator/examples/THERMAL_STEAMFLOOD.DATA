@@ -1,0 +1,174 @@
+-- =====================================================================
+-- Steamflood of a heavy-oil reservoir (THERMAL with a steam phase, METRIC).
+-- Quarter five-spot, 11 x 11 x 4 grid.  Wet steam (quality 0.7) is
+-- injected into a shallow 30 C reservoir holding 600 cP oil.  GAS without
+-- a gas PVT table makes the gas phase steam: water evaporates and
+-- condenses at the saturation temperature of the local pressure (steam
+-- tables), carrying latent heat ahead of the hot-water bank.
+-- =====================================================================
+RUNSPEC
+TITLE
+   Steamflood of heavy oil (thermal, steam phase)
+
+DIMENS
+   11 11 4 /
+
+OIL
+WATER
+GAS
+THERMAL
+
+METRIC
+
+TABDIMS
+ 1 1 20 20 /
+
+WELLDIMS
+ 2 4 1 2 /
+
+START
+   1 'JAN' 2025 /
+
+GRID
+
+DXV
+   11*10 /
+DYV
+   11*10 /
+DZV
+   4*5 /
+TOPS
+   121*250 /
+PORO
+   484*0.33 /
+PERMX
+   121*2000 121*3000 121*3000 121*2500 /
+COPY
+   PERMX PERMY /
+   PERMX PERMZ /
+/
+MULTIPLY
+   PERMZ 0.5 /
+/
+-- rock heat capacity (kJ/m3/K, per unit rock volume) and conductivity (kJ/m/day/K)
+HEATCR
+   484*2400 /
+THCONR
+   484*170 /
+
+PROPS
+
+PVTW
+-- pref  Bw     cw      muw   cv
+   25    1.005  4.5E-5  0.80  0 /
+
+PVDO
+-- p    Bo     muo (at reservoir temperature, 30 C)
+    1   1.030  600
+   25   1.028  600
+  100   1.024  600 /
+
+-- surface densities: oil, water, gas (the gas phase is steam; reported as cold water)
+DENSITY
+   985  1000  1* /
+
+ROCK
+   25   5.0E-5 /
+
+-- oil viscosity versus temperature (C, cP); the PVT viscosity applies at RTEMP
+OILVISCT
+   20   1500
+   30    600
+   50    160
+   75     45
+  100     18
+  150      5.5
+  200      2.6
+  250      1.5
+  300      1.0 /
+
+WATVISCT
+   20   1.00
+   30   0.80
+   60   0.47
+  100   0.28
+  150   0.18
+  200   0.14
+  250   0.11
+  300   0.09 /
+
+-- oil specific heat (kJ/kg/K); water and steam come from the steam tables
+SPECHEAT
+   20   1.9  4.2  2.0
+  300   2.6  4.2  2.0 /
+
+SWOF
+   0.20  0.000  1.000  0
+   0.30  0.010  0.700  0
+   0.40  0.040  0.450  0
+   0.50  0.090  0.250  0
+   0.60  0.160  0.110  0
+   0.70  0.250  0.030  0
+   0.75  0.310  0.000  0
+   1.00  1.000  0.000  0 /
+
+-- steam-oil relative permeability
+SGOF
+   0.00  0.000  1.000  0
+   0.05  0.000  0.800  0
+   0.20  0.050  0.400  0
+   0.40  0.180  0.120  0
+   0.60  0.420  0.010  0
+   0.70  0.600  0.000  0
+   0.80  0.800  0.000  0 /
+
+SOLUTION
+
+-- datum, pressure, WOC, Pcow, GOC (above the top: no steam initially), Pcgo
+EQUIL
+   250  25  400  0  100  0 /
+
+RTEMP
+   30 /
+
+SUMMARY
+FOPR
+FOPT
+FWPR
+FWIR
+FWIT
+FPR
+FTEMP
+WBHP
+/
+
+SCHEDULE
+
+WELSPECS
+   'INJ'  'G'  1  1  250 'WATER' /
+   'PROD' 'G' 11 11  250 'OIL' /
+/
+
+COMPDAT
+   'INJ'  2* 1 4 'OPEN' 2* 0.18 /
+   'PROD' 2* 1 4 'OPEN' 2* 0.18 /
+/
+
+-- steam rate as cold-water equivalent (sm3/day), maximum BHP 45 bar
+WCONINJE
+   'INJ'  'WATER' 'OPEN' 'RATE' 50 1* 45 /
+/
+
+-- steam quality 0.7, saturated at the bottom-hole pressure
+WINJTEMP
+   'INJ' 0.7 /
+/
+
+WCONPROD
+   'PROD' 'OPEN' 'LRAT' 3* 100 1* 5 /
+/
+
+TSTEP
+   1 4 5 10 10 30 30 6*30 12*61 /
+
+END
