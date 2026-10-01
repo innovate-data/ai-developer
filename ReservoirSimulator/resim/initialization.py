@@ -45,6 +45,24 @@ def _invert_pc(table_s, table_pc, pc, below_contact, s_hi, s_lo, increasing):
     return np.clip(np.interp(pc, table_pc[::-1], table_s[::-1]), table_s[0], table_s[-1])
 
 
+def _sw_gas_water(sf, cells, pc_gw, iters=60):
+    """Water saturation with Pcow(Sw) + Pcgo(1 - Sw) = pc_gw (gas-water equilibrium), by bisection;
+    the left side decreases with Sw."""
+    E = sf.D.E
+    lo, hi = E["SWL"][cells].copy(), E["SWU"][cells].copy()
+    f = lambda sw: sf.pcow(sw, cells)[0] + sf.pcgo(1.0 - sw, cells)[0] - pc_gw
+    flo, fhi = f(lo), f(hi)
+    for _ in range(iters):
+        mid = 0.5 * (lo + hi)
+        fm = f(mid)
+        up = fm > 0
+        lo = np.where(up, mid, lo)
+        hi = np.where(up, hi, mid)
+    sw = 0.5 * (lo + hi)
+    sw = np.where(flo <= 0, E["SWL"][cells], sw)
+    return np.where(fhi >= 0, E["SWU"][cells], sw)
+
+
 def initialize_blackoil(model):
     na = model.n_active
     ph = model.phases
@@ -149,6 +167,12 @@ def initialize_blackoil(model):
                 pc_req = po_c - pw_c
                 s_w = np.where(sf.pc_flat_w[cells], np.where(depth > woc, E["SWU"][cells], E["SWL"][cells]),
                                sf.sw_from_pcow(pc_req, cells))
+                if ph["gas"] and not sf.pc_flat_w[cells].all():
+                    # in the gas zone water is in equilibrium with gas (as in ECLIPSE): Sw solves
+                    # Pcow(Sw) + Pcgo(1 - Sw) = pg - pw
+                    gz = depth <= goc
+                    if gz.any():
+                        s_w[gz] = _sw_gas_water(sf, cells[gz], pg_c[gz] - pw_c[gz])
                 swi = getattr(model, "swatinit", None)
                 if swi is not None:
                     # SWATINIT: the cell's Pcow curve is scaled so that the equilibrium capillary

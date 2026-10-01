@@ -191,6 +191,25 @@ class WetGas:
             rows = rows[order]
             nodes.append((pg, float(vals[1]), rows))
         nodes.sort(key=lambda t: t[0])
+        # Nodes without undersaturated (Rv < Rv_sat) data take the branch of the next node that has
+        # one (the previous one above the last), shifted to the node: the same Rv offsets below
+        # saturation, Bg and mu_g in the same ratios to the saturated values (as OPM Flow extends
+        # PVTG tables, which reproduces ECLIPSE). Otherwise dry gas would get the wet gas's Bg.
+        full = [m for m, n in enumerate(nodes) if n[2].shape[0] > 1]
+        if full:
+            for m, (pg, rvs, rows) in enumerate(nodes):
+                if rows.shape[0] > 1 or rvs <= 0:
+                    continue
+                above = [k for k in full if k > m]
+                k = above[0] if above else full[-1]
+                mrows = nodes[k][2]
+                msat = mrows[np.argmax(mrows[:, 0])]
+                if msat[0] <= 0:
+                    continue
+                sat = rows[np.argmax(rows[:, 0])]
+                new = np.column_stack([sat[0] - (msat[0] - mrows[:, 0]), mrows[:, 1] * (sat[1] / msat[1]),
+                                       mrows[:, 2] * (sat[2] / msat[2])])
+                nodes[m] = (pg, rvs, new[np.argsort(new[:, 0])])
         self.p_n = np.array([n[0] for n in nodes])
         self.rvs_n = np.array([n[1] for n in nodes])
         self.branches = [(r[:, 0], 1.0 / r[:, 1], 1.0 / (r[:, 1] * r[:, 2])) for _, _, r in nodes]

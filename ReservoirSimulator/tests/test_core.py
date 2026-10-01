@@ -1010,3 +1010,18 @@ def test_spe9_matches_eclipse():
         assert S[k][-1] == pytest.approx(v, rel=0.015), k
     assert S["BPR:1,1,1"][-1] == pytest.approx(3146.134, abs=10.0)
     assert S["WBHP:PRODU2"][-1] == pytest.approx(2230.96, abs=15.0)
+
+
+def test_spe3_gas_cycling_matches_eclipse():
+    """SPE3 case 1 (gas condensate cycling and blowdown, VAPOIL): well BHPs, cumulative oil and
+    water rate against the ECLIPSE results published with the deck."""
+    r = run_simulation(os.path.join(EX, "SPE3", "SPE3CASE1.DATA"))
+    S = r.summary
+    assert not [w for w in r.log if "WARNING" in w]
+    t = S["TIME"]
+    assert S["FOPT"][-1] == pytest.approx(2.52645e6, rel=2e-3)
+    assert S["WBHP:PROD"][-1] == pytest.approx(838.758, abs=5.0)
+    assert S["WBHP:INJ"][-1] == pytest.approx(901.781, abs=5.0)
+    assert S["WWPR:PROD"][-1] == pytest.approx(35.04, rel=0.03)
+    assert S["BRS:7,7,4"][-1] == pytest.approx(0.406812, abs=2e-3)
+    assert t[-1] == pytest.approx(5475.0, abs=1.0)
