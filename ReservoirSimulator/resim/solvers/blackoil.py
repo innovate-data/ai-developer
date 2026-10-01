@@ -429,7 +429,7 @@ class BlackOilSolver:
             order = ["o"] + (["w"] if self.has_w else []) + (["g"] if self.has_g else [])
             R = A.vstack([eqs[ph] for ph in order] + ([weq] if nw else []))
             try:
-                dx = solve_linear(R.jac, -R.val, self.opt.linear_solver)
+                dx = solve_linear(R.jac, -R.val, self.opt.linear_solver, self.n, len(order))
             except Exception as exc:  # singular matrix etc.
                 self.log(f"    linear solver failure: {exc}")
                 break
@@ -517,10 +517,11 @@ class BlackOilSolver:
             sel = self.perf.well == wi
             if self.controls.get(name) != "BHP" and w.is_open and sel.any():
                 pc = st["p"][self.perf.cell[sel]] - head[sel]
+                eps = 1e-9 * abs(b) + 1e-6
                 if w.kind == "PROD":
-                    b = min(b, pc.max() - 1e3)
+                    b = min(b, pc.max() - eps)
                 else:
-                    b = max(b, pc.min() + 1e3)
+                    b = max(b, pc.min() + eps)
             self.bhp[name] = max(b, 1e3)
 
     # ------------------------------------------------------------------ reporting

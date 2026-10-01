@@ -1,0 +1,384 @@
+"""Core tests: parser, AD, EOS, grids, analytical and material-balance checks."""
+import os
+import sys
+
+import numpy as np
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+EX = os.path.join(ROOT, "examples")
+
+from resim import ad as A  # noqa: E402
+from resim.deck.parser import parse_deck, parse_deck_string, tokenize  # noqa: E402
+from resim.grid import Grid, cartesian_corners, hex_volume  # noqa: E402
+from resim.model import load_model  # noqa: E402
+from resim.props.eos import CubicEOS  # noqa: E402
+from resim.results import Results  # noqa: E402
+from resim.simulator import SimOptions, run_simulation  # noqa: E402
+
+PSI = 6894.757293168
+
+
+# ----------------------------------------------------------------------------- parser
+def test_tokenizer_comments_and_slash():
+    toks = tokenize("DIMENS -- comment\n 10 10 3 / trailing comment\n'A B' 3*0.5 2* /")
+    texts = [t.text for t in toks]
+    assert texts == ["DIMENS", "10", "10", "3", "/", "A B", "3*0.5", "2*", "/"]
+    assert toks[5].quoted
+
+
+def test_parse_repeat_counts_and_records():
+    deck = parse_deck_string("""
+RUNSPEC
+DIMENS
+ 2 2 1 /
+GRID
+PORO
+ 2*0.2 2*0.3 /
+SCHEDULE
+WELSPECS
+ 'P1' 'G' 1 1 1* 'OIL' /
+ P2 G 2 2 1000 OIL /
+/
+TSTEP
+ 3*10 /
+""")
+    assert np.allclose(deck.get("PORO").data, [0.2, 0.2, 0.3, 0.3])
+    recs = deck.get("WELSPECS").data
+    assert len(recs) == 2 and recs[0][4] is None and recs[1][0] == "P2"
+    assert np.allclose(deck.get("TSTEP").data, [10, 10, 10])
+
+
+def test_parse_spe1():
+    deck = parse_deck(os.path.join(EX, "SPE1_BLACKOIL.DATA"))
+    assert deck.get("DIMENS").data[0][:3] == ["10", "10", "3"]
+    pvto = deck.get("PVTO").data[0]
+    assert len(pvto) == 9 and len(pvto[-1]) == 7   # Rs + 2 rows of (p, Bo, mu)
+    assert deck.get("TITLE").data[0][0] == "SPE1"
+    assert not deck.warnings
+
+
+def test_include_box_equals(tmp_path):
+    inc = tmp_path / "perm.inc"
+    inc.write_text("PERMX\n 8*100 /\n")
+    main = tmp_path / "CASE.DATA"
+    main.write_text("""RUNSPEC
+DIMENS
+ 2 2 2 /
+OIL
+WATER
+METRIC
+GRID
+DX
+ 8*10 /
+DY
+ 8*10 /
+DZ
+ 8*2 /
+TOPS
+ 4*1000 /
+INCLUDE
+ 'perm.inc' /
+PORO
+ 8*0.25 /
+BOX
+ 1 1 1 2 2 2 /
+PERMX
+ 2*500 /
+ENDBOX
+EQUALS
+ PORO 0.1 2 2 1 2 1 1 /
+/
+MULTIPLY
+ PERMX 2 /
+/
+COPY
+ PERMX PERMY /
+/
+PROPS
+PVTW
+ 100 1 4E-5 0.5 /
+PVCDO
+ 100 1.1 1E-4 2 /
+SWOF
+ 0.2 0 1 0
+ 1 1 0 0 /
+DENSITY
+ 800 1000 1 /
+SOLUTION
+EQUIL
+ 1000 100 2000 /
+SCHEDULE
+TSTEP
+ 1 /
+""")
+    m = load_model(str(main))
+    kx = m.perm[0] / 9.869233e-16
+    assert np.allclose(kx, [200, 200, 200, 200, 1000, 200, 1000, 200])
+    assert np.allclose(m.perm[1], m.perm[0])
+    poro = m.pore_volume / m.grid.volume[m.active_cells]
+    assert np.isclose(poro[1], 0.1) and np.isclose(poro[0], 0.25)
+    # top of layer 2 derived from layer 1
+    assert np.isclose(m.depth[4], 1003.0)
+
+
+# ----------------------------------------------------------------------------- AD
+def test_ad_derivatives():
+    x, y = A.initialize([np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0])])
+
+    def f(a, b):
+        return a * b + a ** 2 / b - 3.0 / a + (a - b).exp() if isinstance(a, A.AD) else \
+            a * b + a ** 2 / b - 3.0 / a + np.exp(a - b)
+
+    z = f(x, y)
+    v = np.r_[x.val, y.val]
+    num = np.zeros((3, 6))
+    for k in range(6):
+        h = 1e-6
+        v2 = v.copy()
+        v2[k] += h
+        num[:, k] = (f(v2[:3], v2[3:]) - f(v[:3], v[3:])) / h
+    assert np.allclose(z.jac.toarray(), num, atol=1e-4)
+    w = A.where(np.array([True, False, True]), x, y)
+    assert np.allclose(w.val, [1, 5, 3])
+
+
+# ----------------------------------------------------------------------------- EOS
+def _spe5_eos():
+    R = 5.0 / 9.0
+    tc = np.array([343.0, 665.7, 913.4, 1111.8, 1270.0, 1380.0]) * R
+    pc = np.array([667.8, 616.3, 436.9, 304.0, 200.0, 162.0]) * PSI
+    acf = np.array([0.013, 0.1524, 0.3007, 0.4885, 0.65, 0.85])
+    mw = np.array([16.04, 44.1, 86.18, 142.29, 206.0, 282.0]) / 1000
+    bic = np.zeros((6, 6))
+    for i, j, k in [(0, 4, 0.05), (0, 5, 0.05), (1, 4, 0.005), (1, 5, 0.005)]:
+        bic[i, j] = bic[j, i] = k
+    return CubicEOS(tc, pc, acf, mw, bic), (160 + 459.67) * R
+
+
+def test_eos_spe5_bubble_point():
+    """SPE5 reservoir oil has a published bubble point of ~2302 psia at 160 F."""
+    eos, T = _spe5_eos()
+    z = np.tile([0.5, 0.03, 0.07, 0.2, 0.15, 0.05], (2, 1))
+    fr = eos.flash(z, np.array([2320.0, 2285.0]) * PSI, T)
+    assert not fr.two_phase[0] and fr.two_phase[1]
+
+
+def test_flash_fugacity_equality():
+    eos, T = _spe5_eos()
+    z = np.array([[0.5, 0.03, 0.07, 0.2, 0.15, 0.05]])
+    p = np.array([1500.0 * PSI])
+    fr = eos.flash(z, p, T)
+    assert fr.two_phase[0] and 0 < fr.V[0] < 1
+    lpl, _ = eos.lnphi(fr.x, p, T, "L")
+    lpv, _ = eos.lnphi(fr.y, p, T, "V")
+    fl = np.log(fr.x) + lpl
+    fv = np.log(fr.y) + lpv
+    assert np.allclose(fl, fv, atol=1e-7)
+    assert np.allclose(z, (1 - fr.V[0]) * fr.x + fr.V[0] * fr.y, atol=1e-10)
+
+
+# ----------------------------------------------------------------------------- grid
+def test_grid_volumes_and_transmissibility():
+    nx, ny, nz = 3, 2, 2
+    c = cartesian_corners(nx, ny, nz, 10.0, 20.0, 5.0, np.full(nx * ny, 1000.0))
+    g = Grid(nx, ny, nz, c)
+    assert np.allclose(g.volume, 1000.0)
+    assert np.allclose(g.depth[: nx * ny], 1002.5) and np.allclose(g.depth[nx * ny:], 1007.5)
+    # half transmissibility in x: k * A / (dx/2) = k * 100 / 5
+    assert np.allclose(g.half_trans("I+", np.ones(g.n_cells)), 20.0)
+    # a skewed hexahedron keeps its volume (parallelepiped)
+    sk = c.copy()
+    sk[:, 4:, 0] += 3.0
+    assert np.allclose(hex_volume(sk), 1000.0)
+
+
+# ----------------------------------------------------------------------------- simulations
+BL_DECK = """
+RUNSPEC
+DIMENS
+ 100 1 1 /
+OIL
+WATER
+METRIC
+GRID
+DX
+ 100*1 /
+DY
+ 100*1 /
+DZ
+ 100*1 /
+TOPS
+ 100*1000 /
+PORO
+ 100*0.2 /
+PERMX
+ 100*1000 /
+PROPS
+PVTW
+ 100 1.0 1E-8 1.0 0 /
+PVCDO
+ 100 1.0 1E-8 1.0 0 /
+DENSITY
+ 1000 1000 1 /
+ROCK
+ 100 0 /
+SWOF
+0.0  0.0     1.0    0
+0.1  0.01    0.81   0
+0.2  0.04    0.64   0
+0.3  0.09    0.49   0
+0.4  0.16    0.36   0
+0.5  0.25    0.25   0
+0.6  0.36    0.16   0
+0.7  0.49    0.09   0
+0.8  0.64    0.04   0
+0.9  0.81    0.01   0
+1.0  1.0     0.0    0 /
+SOLUTION
+PRESSURE
+ 100*100 /
+SWAT
+ 100*0.0 /
+SCHEDULE
+WELSPECS
+ 'I' 'G' 1 1 1* 'WATER' /
+ 'P' 'G' 100 1 1* 'OIL' /
+/
+COMPDAT
+ 'I' 1 1 1 1 'OPEN' 1* 1.0E3 /
+ 'P' 100 1 1 1 'OPEN' 1* 1.0E3 /
+/
+WCONINJE
+ 'I' 'WATER' 'OPEN' 'RATE' 0.4 1* 1000 /
+/
+WCONPROD
+ 'P' 'OPEN' 'BHP' 5* 100 /
+/
+TSTEP
+ 20*1 /
+END
+"""
+
+
+def _bl_analytic(x, t_pv):
+    """Buckley-Leverett solution for Corey n=2, equal viscosities, Swc=Sor=0."""
+    sw = np.linspace(1e-4, 1.0, 20000)
+    fw = sw ** 2 / (sw ** 2 + (1 - sw) ** 2)
+    dfw = np.gradient(fw, sw)
+    # shock: tangent from (0,0)
+    tang = fw / sw
+    i_s = np.argmin(np.abs(dfw - tang)[sw > 0.3]) + np.nonzero(sw > 0.3)[0][0]
+    s_shock = sw[i_s]
+    xs = dfw * t_pv
+    prof = np.zeros_like(x)
+    upper = sw >= s_shock
+    for k, xx in enumerate(x):
+        if xx <= xs[i_s]:
+            # largest saturation whose characteristic reached xx
+            cand = sw[upper][xs[upper] >= xx]
+            prof[k] = cand.max() if cand.size else 1.0
+    return prof
+
+
+def test_buckley_leverett_against_analytic(tmp_path):
+    deck = tmp_path / "BL.DATA"
+    deck.write_text(BL_DECK)
+    res = run_simulation(str(deck), SimOptions(max_dt_days=0.25, initial_dt_days=0.05))
+    sw = res.cell_data["SWAT"][-1]
+    t_pv = 0.4 * 20 / (100 * 0.2)             # injected pore volumes
+    x = (np.arange(100) + 0.5) / 100.0
+    ref = _bl_analytic(x, t_pv)
+    err = np.mean(np.abs(sw - ref))
+    front_num = x[np.nonzero(sw > 0.3)[0].max()]
+    front_ref = x[np.nonzero(ref > 0.3)[0].max()]
+    assert err < 0.04, err
+    assert abs(front_num - front_ref) < 0.05
+
+
+def _mb(res, phase):
+    s = res.summary
+    if phase == "oil":
+        return (s["FOIP"][0] - s["FOIP"][-1] - s["FOPT"][-1]) / max(s["FOPT"][-1], 1)
+    if phase == "gas":
+        return (s["FGIP"][0] + s["FGIT"][-1] - s["FGPT"][-1] - s["FGIP"][-1]) / max(s["FGIT"][-1], 1)
+    return (s["FWIP"][0] + s["FWIT"][-1] - s["FWPT"][-1] - s["FWIP"][-1]) / max(s["FWIT"][-1] + s["FWPT"][-1], 1)
+
+
+def test_spe1_material_balance_and_controls():
+    m = load_model(os.path.join(EX, "SPE1_BLACKOIL.DATA"))
+    m.schedule = m.schedule[:8]
+    res = run_simulation(m)
+    s = res.summary
+    assert np.allclose(s["FOPR"][1:], 20000.0, rtol=1e-4)
+    assert np.allclose(s["FGIR"][1:], 100000.0, rtol=1e-4)
+    assert abs(_mb(res, "oil")) < 1e-5 and abs(_mb(res, "gas")) < 1e-5
+    assert 4790 < s["FPR"][0] < 4810 and s["FPR"][-1] > s["FPR"][0]
+
+
+def test_waterflood_example_runs():
+    m = load_model(os.path.join(EX, "WATERFLOOD_DEADOIL.DATA"))
+    m.schedule = m.schedule[:6]
+    res = run_simulation(m)
+    assert abs(_mb(res, "oil")) < 1e-5 and abs(_mb(res, "water")) < 1e-5
+    assert res.summary["FWIR"][-1] == pytest.approx(600.0, rel=1e-3)
+
+
+def test_compositional_short_run():
+    m = load_model(os.path.join(EX, "SPE5_COMPOSITIONAL.DATA"))
+    m.schedule = m.schedule[:1]
+    res = run_simulation(m)
+    s = res.summary
+    assert np.allclose(s["FOPR"][1:], 12000.0, rtol=1e-3)
+    assert s["FPR"][-1] < s["FPR"][0]
+    z = sum(res.cell_data[k][-1] for k in res.cell_data if k.startswith("ZMF_"))
+    assert np.allclose(z[res.active], 1.0, atol=1e-8)
+
+
+def test_results_roundtrip(tmp_path):
+    m = load_model(os.path.join(EX, "SPE1_BLACKOIL.DATA"))
+    m.schedule = m.schedule[:2]
+    res = run_simulation(m)
+    path = tmp_path / "r.npz"
+    res.save(path)
+    r2 = Results.load(path)
+    assert r2.nx == 10 and r2.meta["units"] == "FIELD"
+    assert np.allclose(r2.cell_data["PRESSURE"], res.cell_data["PRESSURE"])
+    assert set(r2.summary) == set(res.summary)
+    csv = tmp_path / "s.csv"
+    r2.summary_to_csv(csv)
+    assert csv.read_text().startswith("TIME,")
+
+
+def test_iterative_solver_matches_direct():
+    m = load_model(os.path.join(EX, "SPE1_BLACKOIL.DATA"))
+    m.schedule = m.schedule[:4]
+    r_d = run_simulation(m, SimOptions(linear_solver="direct"))
+    m = load_model(os.path.join(EX, "SPE1_BLACKOIL.DATA"))
+    m.schedule = m.schedule[:4]
+    r_i = run_simulation(m, SimOptions(linear_solver="iterative"))
+    assert np.allclose(r_d.cell_data["PRESSURE"][-1], r_i.cell_data["PRESSURE"][-1], rtol=1e-5)
+    assert np.allclose(r_d.cell_data["SGAS"][-1], r_i.cell_data["SGAS"][-1], atol=1e-5)
+
+
+def test_eclipse_output_readable(tmp_path):
+    resdata = pytest.importorskip("resdata")  # noqa: F841
+    from resdata.grid import Grid as RGrid
+    from resdata.resfile import ResdataFile
+    from resdata.summary import Summary
+    from resim.eclipse_io import write_eclipse
+    m = load_model(os.path.join(EX, "CORNERPOINT_DOME.DATA"))
+    m.schedule = m.schedule[:2]
+    res = run_simulation(m)
+    base = str(tmp_path / "DOME")
+    write_eclipse(res, base)
+    g = RGrid(base + ".EGRID")
+    assert (g.get_nx(), g.get_ny(), g.get_nz()) == (20, 20, 5)
+    vol = np.array([g.cell_volume(global_index=i) for i in range(0, g.get_global_size(), 97)])
+    ref = m.grid.volume[::97] / 0.3048 ** 3
+    assert np.allclose(vol, ref, rtol=1e-4)
+    s = Summary(base)
+    assert np.allclose(s.numpy_vector("FOPR")[1:], res.summary["FOPR"][1:], rtol=1e-5)
+    rst = ResdataFile(base + ".UNRST")
+    assert rst.num_named_kw("PRESSURE") == res.n_reports

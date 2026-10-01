@@ -40,6 +40,10 @@ def _cmd_run(args):
     res.save(npz)
     res.summary_to_csv(csv)
     print(f"Results written to {npz}\nSummary written to {csv}")
+    if not args.no_eclipse:
+        from .eclipse_io import write_eclipse
+        files = write_eclipse(res, os.path.join(out_dir, case))
+        print("ECLIPSE format output: " + ", ".join(os.path.basename(f) for f in files))
     return 0
 
 
@@ -67,9 +71,11 @@ def main(argv=None):
     r.add_argument("--out", help="output directory (default: next to the deck)")
     r.add_argument("--max-dt", type=float, default=30.0, help="maximum time step [days]")
     r.add_argument("--initial-dt", type=float, default=1.0, help="initial time step [days]")
-    r.add_argument("--solver", choices=["direct", "iterative"], default="direct")
+    r.add_argument("--solver", choices=["auto", "direct", "iterative"], default="auto")
     r.add_argument("--tol", type=float, default=1e-3, help="Newton CNV tolerance")
     r.add_argument("-v", "--verbose", action="store_true", help="print every time step")
+    r.add_argument("--no-eclipse", action="store_true",
+                   help="do not write ECLIPSE binary output (EGRID/INIT/UNRST/SMSPEC/UNSMRY)")
     r.set_defaults(func=_cmd_run)
     c = sub.add_parser("check", help="parse a deck and report what will be simulated")
     c.add_argument("deck")

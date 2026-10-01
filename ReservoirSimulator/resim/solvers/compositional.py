@@ -15,8 +15,6 @@ throughput (CFL) criterion and by the maximum change of overall composition.
 """
 from __future__ import annotations
 
-import os
-
 import numpy as np
 import scipy.sparse as sp
 
@@ -347,8 +345,6 @@ class CompositionalSolver:
                 fl = q[:, None] * cmol
                 np.add.at(dN, a, -fl)
                 np.add.at(dN, b, fl)
-        if os.environ.get("RESIM_DEBUG"):
-            self._dbg = {"face": [(ph, Tl, G, cmol, up_a) for ph, Tl, G, cmol, up_a in face_data], "p1": p1}
         wrates = {}
         if npf:
             pwb = bhp1[perf.well] + head
@@ -383,19 +379,6 @@ class CompositionalSolver:
         if neg.any() or cfl > 2.0:
             if neg.any():
                 i, j = np.argwhere(neg)[0]
-                if os.environ.get("RESIM_DEBUG"):
-                    for ph, Tl, G, cm, upa in self._dbg["face"]:
-                        if cm is None:
-                            continue
-                        q = -Tl * (p1[b] - p1[a] + G)
-                        for f in np.nonzero((a == i) | (b == i))[0]:
-                            self.log(f"   face {f} {ph} a={a[f]} b={b[f]} q={q[f]:.3e} up_a={upa[f]} cm={cm[f, j]:.3e} "
-                                     f"Tl={Tl[f]:.3e}")
-                    if npf:
-                        self.log(f"   wells qc cell: {qc[c == i, j] if npf else None} dd={dd[c == i]}")
-                    fr = ps["fr"]
-                    self.log(f"DEBUG cell {i}: N0={N0[i]} dN*dt={dt * dN[i]} V={fr.V[i]} two={fr.two_phase[i]} "
-                             f"so={ps['so'][i]} sg={ps['sg'][i]} x={ps['x'][i]} y={ps['y'][i]} z={ps['z'][i]}")
                 self.log(f"    rejected: negative moles of {self.eos.names[j]} in cell {i} "
                          f"({N1[i, j] / Nt0[i]:.2e} of cell total), CFL={cfl:.2f}")
             else:

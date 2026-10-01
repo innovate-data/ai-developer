@@ -24,8 +24,8 @@ from .widgets import SciSpinBox
 
 # Defaults of resim.simulator.SimOptions (used when the simulator is not importable yet)
 OPTION_DEFAULTS = {"max_dt_days": 30.0, "min_dt_days": 1e-4, "initial_dt_days": 1.0, "newton_tol": 1e-3,
-                   "max_newton": 15, "linear_solver": "direct"}
-LINEAR_SOLVERS = ["direct", "iterative"]
+                   "max_newton": 15, "linear_solver": "auto"}
+LINEAR_SOLVERS = ["auto", "direct", "iterative"]
 
 
 def results_paths(deck_path: str):
@@ -347,6 +347,14 @@ class RunPanel(QWidget):
         except Exception as exc:  # noqa: BLE001
             self.append_log(f"Could not save results: {exc}")
             npz = ""
+        try:
+            from ..eclipse_io import write_eclipse
+            base = npz[: -len(".resim.npz")] if npz.endswith(".resim.npz") else os.path.splitext(csv)[0]
+            files = write_eclipse(results, base)
+            self.append_log("ECLIPSE format output (ResInsight compatible): "
+                            + ", ".join(os.path.basename(f) for f in files))
+        except Exception as exc:  # noqa: BLE001
+            self.append_log(f"Could not write ECLIPSE output: {exc}")
         self.progress_msg.setText("Finished")
         self.statusMessage.emit(f"Simulation finished in {self.elapsed.text()[9:]}")
         self.resultsReady.emit(results, npz)

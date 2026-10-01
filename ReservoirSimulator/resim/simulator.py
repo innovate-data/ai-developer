@@ -23,7 +23,7 @@ class SimOptions:
     initial_dt_days: float = 1.0
     newton_tol: float = 1e-3        # CNV tolerance (saturation units)
     max_newton: int = 15
-    linear_solver: str = "direct"   # "direct" or "iterative"
+    linear_solver: str = "auto"     # "auto", "direct" or "iterative" (CPR-AMG preconditioned GMRES)
     ds_max: float = 0.2             # max saturation change per Newton iteration
     ds_target: float = 0.2          # target saturation change per time step
     dp_target_bar: float = 50.0     # target pressure change per time step
