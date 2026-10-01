@@ -132,9 +132,12 @@ def build_deck(form_json):
     for key in ("nx", "ny", "nz"):
         if key in f:
             setattr(spec, key, int(f[key]))
-    for key in ("top", "datum", "datum_pressure", "woc", "goc", "total_time", "report_step"):
-        if key in f:
+    for key in ("top", "datum", "datum_pressure", "woc", "goc", "total_time", "report_step",
+                "rtemp", "inj_temp", "salinity"):
+        if key in f and f[key] not in ("", None):
             setattr(spec, key, float(f[key]))
+    if "thermal" in f:
+        spec.thermal = bool(f["thermal"])
     if f.get("start"):
         spec.start = dt.date.fromisoformat(f["start"])
     if "wells" in f:
