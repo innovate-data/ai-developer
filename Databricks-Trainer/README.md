@@ -42,6 +42,19 @@ js/app.js                   router, views, progress, DuckDB engine, answer check
 - **SQL exercise**: `kind: "sql"`, plus `starter`, `solution` and optionally `ordered: true`. Column names are ignored, but column order and values must match. Numbers are compared to 4 decimal places.
 - **Pattern exercise**: `kind: "pattern"`, `lang` (`"sql"` or `"python"`), and `checks: [{ re, msg, absent? }]`. Comments are stripped before checking. SQL checks are case-insensitive.
 
+## Publishing as a single page (e.g. a claude.ai Artifact)
+
+Some hosts only allow a page to fetch its own files. `tools/build_artifact.py` inlines the CSS and JS into one page and switches the SQL engine to load from a `duckdb/` folder next to it:
+
+```bash
+python3 tools/build_artifact.py out/
+mkdir -p out/duckdb && cd out/duckdb
+npm pack @duckdb/duckdb-wasm@1.29.0 && tar xzf duckdb-duckdb-wasm-1.29.0.tgz
+cp package/dist/duckdb-browser-eh.worker.js .
+gzip -9 -c package/dist/duckdb-eh.wasm > duckdb-eh.gz.wasm   # gzipped to ~7 MB; the app decompresses it
+rm -rf package *.tgz
+```
+
 ## Notes
 
 - The SQL exercises use SQL that works in both DuckDB and Databricks (ANSI SQL plus `QUALIFY`, `count_if`, `date_trunc`). Spark-only features are covered by the pattern exercises.

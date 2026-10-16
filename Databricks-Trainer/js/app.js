@@ -66,13 +66,9 @@
     setEngine("loading", "SQL engine loading…");
     enginePromise = (async () => {
       const duckdb = await import(DUCKDB_URL);
-      const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
-      const workerUrl = URL.createObjectURL(
-        new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }));
-      const worker = new Worker(workerUrl);
-      const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-      await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-      URL.revokeObjectURL(workerUrl);
+      const db = window.TRAINER_DUCKDB_LOCAL
+        ? await instantiateLocal(duckdb, window.TRAINER_DUCKDB_LOCAL)
+        : await instantiateCdn(duckdb);
       const conn = await db.connect();
       await loadDataset(conn);
       setEngine("ready", "SQL engine ready");
@@ -83,6 +79,36 @@
       throw err;
     });
     return enginePromise;
+  }
+
+  async function instantiateCdn(duckdb) {
+    const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+    const workerUrl = URL.createObjectURL(
+      new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }));
+    const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    URL.revokeObjectURL(workerUrl);
+    return db;
+  }
+
+  // Hosts that only allow fetching same-origin files (e.g. a sandboxed embed) ship the
+  // worker and a gzipped .wasm next to the page; both are turned into blob: URLs here.
+  async function instantiateLocal(duckdb, base) {
+    const get = async (path) => {
+      const res = await fetch(base + path);
+      if (!res.ok) throw new Error(`Couldn't load ${path} (HTTP ${res.status})`);
+      return new Uint8Array(await res.arrayBuffer());
+    };
+    const [workerJs, wasmGz] = await Promise.all([get("duckdb-browser-eh.worker.js"), get("duckdb-eh.gz.wasm")]);
+    // The server may already have decoded the gzip; only decompress if the gzip magic bytes are there.
+    const wasm = wasmGz[0] === 0x1f && wasmGz[1] === 0x8b
+      ? await new Response(new Blob([wasmGz]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()
+      : wasmGz;
+    const workerUrl = URL.createObjectURL(new Blob([workerJs], { type: "text/javascript" }));
+    const wasmUrl = URL.createObjectURL(new Blob([wasm], { type: "application/wasm" }));
+    const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
+    await db.instantiate(wasmUrl);
+    return db;
   }
 
   async function loadDataset(conn) {
@@ -525,10 +551,16 @@
       <a class="nav-top${route.name === "quiz-all" ? " active" : ""}" href="#/quiz/all">Mixed quiz</a>
       <a class="nav-top${route.name === "sandbox" ? " active" : ""}" href="#/sandbox">SQL sandbox</a>
       <button class="nav-reset" id="reset-progress">Reset progress</button>`;
-    document.getElementById("reset-progress").addEventListener("click", () => {
-      if (confirm("Clear all lesson, quiz and exercise progress in this browser?")) {
-        progress = { lessons: {}, quiz: {}, exercises: {}, drafts: {} }; save(); render(true);
+    // Two-step confirm in the page itself (no confirm() dialog, which embedded viewers suppress).
+    const resetBtn = document.getElementById("reset-progress");
+    resetBtn.addEventListener("click", () => {
+      if (!resetBtn.classList.contains("armed")) {
+        resetBtn.classList.add("armed");
+        resetBtn.textContent = "Click again to clear all progress";
+        setTimeout(() => { resetBtn.classList.remove("armed"); resetBtn.textContent = "Reset progress"; }, 4000);
+        return;
       }
+      progress = { lessons: {}, quiz: {}, exercises: {}, drafts: {} }; save(); render(true);
     });
   }
 
