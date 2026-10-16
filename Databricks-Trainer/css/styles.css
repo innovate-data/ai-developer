@@ -5,7 +5,7 @@
   --text: #1d1f23;
   --muted: #62666d;
   --border: #e2e0db;
-  --accent: #e2462f;       /* Databricks-ish red-orange */
+  --accent: #bf3622;       /* red-orange, 4.5:1 or better on every light surface */
   --accent-ink: #ffffff;
   --accent-soft: #fdebe7;
   --good: #1f7a4d;
@@ -76,8 +76,9 @@ h2 { font-size: 1.25rem; margin: 2rem 0 .75rem; }
 h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
 code { font-family: var(--mono); font-size: .88em; background: var(--surface-2); padding: .1em .35em; border-radius: 4px; }
 pre { background: var(--code-bg); color: var(--code-text); padding: 14px 16px; border-radius: var(--radius); overflow-x: auto; font-size: .86rem; line-height: 1.5; }
+:not(pre) > code { overflow-wrap: anywhere; }
 pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
-kbd { font-family: var(--mono); font-size: .72em; border: 1px solid currentColor; border-radius: 3px; padding: 0 .3em; opacity: .7; }
+kbd { font-family: var(--mono); font-size: .72em; border: 1px solid currentColor; border-radius: 3px; padding: 0 .3em; }
 .muted { color: var(--muted); }
 .small { font-size: .85rem; }
 .lead { font-size: 1.1rem; color: var(--muted); max-width: 70ch; }
@@ -91,10 +92,10 @@ kbd { font-family: var(--mono); font-size: .72em; border: 1px solid currentColor
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 700; color: var(--text); text-decoration: none; white-space: nowrap; }
+.brand { font-weight: 700; color: var(--text); text-decoration: none; white-space: nowrap; flex-shrink: 0; }
 .logo { color: var(--accent); }
 .menu-toggle { display: none; background: none; border: 0; font-size: 1.3rem; color: var(--text); cursor: pointer; }
-.engine { margin-left: auto; font-size: .78rem; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.engine { margin-left: auto; font-size: .78rem; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
 .engine.loading { color: var(--text); }
 .engine.ready { background: var(--good-soft); color: var(--good); }
 .engine.error { background: var(--bad-soft); color: var(--bad); }
@@ -177,9 +178,10 @@ kbd { font-family: var(--mono); font-size: .72em; border: 1px solid currentColor
 
 /* ---------- lessons */
 .lesson { max-width: 75ch; }
+.lesson h2 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
 .lesson ul { padding-left: 1.3em; }
 .lesson li { margin: .3em 0; }
-table.ref { border-collapse: collapse; width: 100%; font-size: .9rem; margin: 12px 0; background: var(--surface); }
+table.ref { display: block; overflow-x: auto; max-width: 100%; border-collapse: collapse; width: 100%; font-size: .9rem; margin: 12px 0; background: var(--surface); }
 table.ref th, table.ref td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
 table.ref th { background: var(--surface-2); }
 .lesson-nav { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--border); }
@@ -188,7 +190,9 @@ table.ref th { background: var(--surface-2); }
 .quiz { max-width: 760px; }
 .quiz-meta { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
 .question { font-size: 1.08rem; font-weight: 600; margin: 18px 0 14px; }
-.options { display: grid; gap: 8px; }
+.options { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+.option, .question, .prompt, .review, .hints li, .design-review li, .feedback, .card.brief { overflow-wrap: anywhere; }
+.option { min-width: 0; max-width: 100%; }
 .option {
   display: flex; gap: 12px; align-items: flex-start; text-align: left;
   padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px;
@@ -201,7 +205,7 @@ table.ref th { background: var(--surface-2); }
 .option.correct .letter { background: var(--good); color: var(--surface); }
 .option.wrong { border-color: var(--bad); background: var(--bad-soft); }
 .option.wrong .letter { background: var(--bad); color: var(--surface); }
-.feedback { margin: 16px 0; padding: 12px 16px; border-radius: 8px; }
+.feedback { margin: 16px 0; padding: 12px 16px; border-radius: 8px; overflow-wrap: anywhere; }
 .feedback.good { background: var(--good-soft); border: 1px solid var(--good); }
 .feedback.bad { background: var(--bad-soft); border: 1px solid var(--bad); }
 .feedback.warn { background: var(--warn-soft); border: 1px solid var(--warn); }
@@ -241,7 +245,7 @@ table.results th, table.results td { padding: 6px 12px; border-bottom: 1px solid
 table.results th { background: var(--surface-2); position: sticky; top: 0; }
 table.results td.null { color: var(--muted); font-style: italic; }
 pre.error { background: var(--bad-soft); color: var(--bad); white-space: pre-wrap; }
-.output { display: grid; gap: 4px; min-width: 0; }
+.output { display: grid; gap: 4px; min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .output pre { margin: 8px 0 0; }
 pre.stdout { white-space: pre; overflow-x: auto; }
 .btn.try { margin: -6px 0 14px; font-size: .82rem; padding: 6px 12px; }

@@ -71,6 +71,7 @@
     if (s.sql === "error" || s.python === "error") { state = "error"; text = "Engine unavailable"; }
     $engine.className = "engine " + state;
     $engine.textContent = text;
+    $engine.title = text; // the badge truncates on narrow screens
   });
 
   function engineError(e) {
@@ -287,7 +288,7 @@
       <article class="lesson">
         <h1>${esc(l.title)}</h1>
         <p class="muted">${l.minutes} min read${done ? ' · <span class="tick">✓ Completed</span>' : ""}</p>
-        ${l.body}
+        ${l.body.replace(/<h3>/g, "<h2>").replace(/<\/h3>/g, "</h2>")}
       </article>
       <div class="lesson-nav">
         ${prev && prev.domain === l.domain ? `<a class="btn" href="#/lesson/${prev.id}">← ${esc(prev.title)}</a>` : "<span></span>"}
@@ -775,7 +776,9 @@
       <p class="lead">A notebook-style session with <code>spark</code> ready to use. Variables persist between runs until you reset the session.</p>
       ${datasetPanel()}
       <details class="dataset"><summary>What works here</summary>
-        <p class="small">DataFrame transformations and actions, <code>pyspark.sql.functions</code>, <code>Window</code>, <code>Row</code>, <code>pyspark.sql.types</code>, <code>spark.sql</code>, temp views and <code>saveAsTable</code>, plus <code>display()</code>. Queries run on DuckDB through a PySpark-compatible layer, so results match Spark for these APIs, but <code>explain()</code> shows DuckDB's plan. File reads and writes, Delta's Python API, streaming, RDDs and Python UDFs need a real cluster and raise a clear error.</p>
+        <p class="small">DataFrame transformations and actions, <code>pyspark.sql.functions</code>, <code>Window</code>, <code>Row</code>, <code>pyspark.sql.types</code>, temp views, <code>saveAsTable</code> and <code>display()</code>. Results, column names and types were checked against real Spark 3.5.</p>
+        <p class="small"><code>spark.sql()</code>, <code>F.expr()</code>, <code>selectExpr()</code> and string filters take Spark SQL: backticks, <code>datediff</code>, <code>date_add</code>, <code>size</code>, <code>explode</code>, <code>collect_list</code>, higher-order functions, <code>LEFT ANTI JOIN</code>, <code>LATERAL VIEW</code>, <code>:named</code> parameters, 0-based array indexing and Java date patterns. They are translated to run on DuckDB. <code>SHOW TABLES</code> and <code>DESCRIBE</code> work too.</p>
+        <p class="small">Not available (they need a real cluster): file reads and writes, the Delta Python API and <code>OPTIMIZE</code>/<code>VACUUM</code>/<code>MERGE</code>, streaming, RDDs, Python UDFs and JSON functions. They raise a clear error. <code>explain()</code> shows DuckDB's plan. A cell that runs longer than 30 seconds is stopped.</p>
       </details>
       <textarea id="editor" class="editor tall" spellcheck="false" aria-label="Python editor"></textarea>
       <div class="toolbar">

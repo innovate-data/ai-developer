@@ -50,19 +50,25 @@ tools/build_artifact.py     single-page build for sandboxed hosts
 
 ## How PySpark runs in the browser
 
-Python runs in [Pyodide](https://pyodide.org). `py/pyspark_shim.py` installs `pyspark`, `pyspark.sql.functions`, `pyspark.sql.window` and `pyspark.sql.types` modules whose DataFrames compile to SQL and run on the same DuckDB-WASM database as the SQL exercises. It aims to match Spark's results and names for the commonly used API (joins, aggregations, pivots, window functions, arrays and higher-order functions, dates, `fillna`/`dropna`, `show()`, `printSchema()`, temp views, `saveAsTable`). Features that need a cluster (file I/O, `DeltaTable`, streaming, RDDs, Python UDFs) raise a clear `NotAvailableInTrainer` error.
+Python runs in [Pyodide](https://pyodide.org). `py/pyspark_shim.py` installs `pyspark`, `pyspark.sql.functions`, `pyspark.sql.window` and `pyspark.sql.types` modules whose DataFrames compile to SQL and run on the same DuckDB-WASM database as the SQL exercises.
 
-Run the tests with `pip install duckdb==1.1.1 pytest && pytest tests/` (needs Node.js).
+- **DataFrame API**: joins, aggregations, pivots, window functions, arrays and higher-order functions, dates, `fillna`/`dropna`, `show()`, `printSchema()`, temp views, `saveAsTable`. Casts follow Spark (truncating, timestamp to epoch seconds), NULL ordering matches Spark, and result types are the ones Spark returns (`int` for `year()`, `bigint` for `ceil()`, ...).
+- **Spark SQL**: `spark.sql()`, `F.expr()`, `selectExpr()` and string filters pass through a token-based rewriter that maps Spark SQL to DuckDB: functions (`datediff`, `date_add`, `size`, `explode`, `collect_list`, `to_date(s, fmt)`, higher-order functions, ...), backtick identifiers, `LEFT ANTI/SEMI JOIN`, `LATERAL VIEW explode`, `:named` parameters, 0-based array subscripts, `RLIKE`, `DIV`, `array<T>` types and three-part table names (`main.sales.orders` maps to the sample table `orders`). `SHOW TABLES`, `DESCRIBE`, `USE` and `SET` are handled.
+- **Not available** (they need a cluster) and raising a clear `NotAvailableInTrainer` error: file I/O, `DeltaTable`, `OPTIMIZE`/`VACUUM`/`MERGE`/`COPY INTO`, `GRANT`/`REVOKE`, declarative pipelines, streaming, RDDs, Python UDFs, JSON functions.
+- **Safety**: a Python cell is stopped after 30 seconds (`CELL_TIMEOUT`). SQL queries can't be interrupted, so a very large query (for example `range(10000000000)`) will freeze the tab until it finishes.
+- **Known cosmetic differences**: auto-generated names of unaliased window and lambda columns, `void` types for NULL literals, SQL `PIVOT` counting 0 instead of NULL, `explain()` output, and a last-digit float difference in `describe()`. The full list is in `tests/diff_known.py`.
 
-## Adding content
+### Tests
 
-- **Question**: add an object to `TRAINER.questions` with `domain`, `q`, `options`, `answer` (index of the correct option) and `explain`. Text wrapped in backticks is shown as inline code.
-- **Lesson**: add an object to `TRAINER.lessons`. `body` is trusted HTML.
-- **PySpark exercise**: `kind: "python"`, plus `starter` and `solution` that assign a DataFrame to `result`, optionally `ordered: true` and `requires: [{ re, msg }]`. Column names must match (case-insensitively).
-- **Case study**: `kind: "scenario"` with `brief` (HTML) and `steps: [{ q, options: [{ text, score: 0|1|2, feedback }] }]`. Options are shuffled, and 70% of the points counts as solved.
-- **Calculation**: `kind: "calc"` with `prompt` (HTML), `answers: [{ label, unit, value, tol }]`, `hints` and an `explanation` (HTML).
-- **SQL exercise**: `kind: "sql"`, plus `starter`, `solution` and optionally `ordered: true`. Column names are ignored, but column order and values must match. Numbers are compared to 4 decimal places.
-- **Pattern exercise**: `kind: "pattern"`, `lang` (`"sql"` or `"python"`), and `checks: [{ re, msg, absent? }]`. Comments are stripped before checking. SQL checks are case-insensitive.
+```bash
+pip install duckdb==1.1.1 pytest            # needs Node.js
+pytest tests/                                # shim + every PySpark exercise
+
+pip install pyspark==3.5.3                   # also needs Java 11, 17 or 21
+pytest tests/test_matches_real_pyspark.py    # ~350 snippets compared with real Spark 3.5
+```
+
+The second suite runs each snippet on real PySpark and on the shim and compares column names, types, rows and `show()` text. It is skipped when PySpark or Java isn't installed.
 
 ## Publishing as a single page (e.g. a claude.ai Artifact)
 

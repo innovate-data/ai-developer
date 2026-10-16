@@ -17,6 +17,7 @@ import itertools
 import json
 import re
 import sys
+import time
 import traceback
 import types as _pytypes
 
@@ -474,7 +475,787 @@ class Row(tuple):
         return "<Row(" + ", ".join(repr(v) for v in self) + ")>"
 
 
+# --------------------------------------------------------------------------- Spark SQL -> DuckDB SQL
+#
+# spark.sql(), F.expr(), selectExpr() and string filters take Spark SQL, but the query runs on DuckDB.
+# This token-based rewriter maps the common Spark idioms (functions, backticks, LEFT ANTI JOIN,
+# LATERAL VIEW, three-part table names, :named parameters) so they behave the way they do on Databricks.
+
+_SQL_TOKEN = re.compile(r"""
+    (?P<str>'(?:\\.|[^'\\])*')
+  | (?P<btq>`(?:[^`]|``)*`)
+  | (?P<dq>"(?:[^"]|"")*")
+  | (?P<cmt>--[^\n]*|/\*.*?\*/)
+  | (?P<num>\d+\.?\d*(?:[eE][+-]?\d+)?)
+  | (?P<id>[A-Za-z_][A-Za-z_0-9]*)
+  | (?P<ws>\s+)
+  | (?P<op><=>|<=|>=|<>|!=|==|::|->|\|\||.)
+""", re.X | re.S)
+
+_SQL_ESC = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "0": "\0"}
+
+
+def _sx_tokens(sql):
+    return [(m.lastgroup, m.group()) for m in _SQL_TOKEN.finditer(sql)]
+
+
+def _sx_str(tok):
+    """A Spark string literal ('..' or "..", with backslash escapes) as a DuckDB string literal."""
+    return "'" + _sx_unescape(tok).replace("'", "''") + "'"
+
+
+def _sx_unescape(tok):
+    body, out, i = tok[1:-1], [], 0
+    while i < len(body):
+        c = body[i]
+        if c == "\\" and i + 1 < len(body):
+            n = body[i + 1]
+            if n in "%_":
+                out.append("\\" + n)
+            else:
+                out.append(_SQL_ESC.get(n, n))
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def _sx_next(toks, i, hi):
+    while i < hi and toks[i][0] in ("ws", "cmt"):
+        i += 1
+    return i
+
+
+def _sx_match(toks, i, hi, op="(", cl=")"):
+    depth = 0
+    for k in range(i, hi):
+        if toks[k][0] == "op":
+            if toks[k][1] == op:
+                depth += 1
+            elif toks[k][1] == cl:
+                depth -= 1
+                if depth == 0:
+                    return k
+    raise AnalysisException("[PARSE_SYNTAX_ERROR] Syntax error: unbalanced brackets in SQL.")
+
+
+def _sx_prev(toks, i, lo):
+    i -= 1
+    while i >= lo and toks[i][0] in ("ws", "cmt"):
+        i -= 1
+    return i
+
+
+def _sx_prepass(toks):
+    """Rewrites `x RLIKE 'p'` / `x NOT REGEXP 'p'` into regexp_matches(x, 'p')."""
+    k = 0
+    while k < len(toks):
+        kd, t = toks[k]
+        nxt = _sx_next(toks, k + 1, len(toks))
+        is_call = nxt < len(toks) and toks[nxt] == ("op", "(")
+        if kd == "id" and t.lower() in ("rlike", "regexp") and not is_call:
+            e = _sx_prev(toks, k, 0)
+            negated = e >= 0 and toks[e][0] == "id" and toks[e][1].lower() == "not"
+            first = e
+            if negated:
+                e = _sx_prev(toks, e, 0)
+            if e < 0:
+                k += 1
+                continue
+            if toks[e] == ("op", ")"):
+                depth, m = 0, e
+                while m >= 0:
+                    if toks[m] == ("op", ")"):
+                        depth += 1
+                    elif toks[m] == ("op", "("):
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    m -= 1
+                start = m
+                pm = _sx_prev(toks, m, 0)
+                if pm >= 0 and toks[pm][0] == "id" and toks[pm][1].lower() not in _SX_KEYWORDS:
+                    start = pm
+            elif toks[e][0] in ("id", "btq", "dq", "str", "num"):
+                start = e
+                while True:
+                    d = _sx_prev(toks, start, 0)
+                    if d >= 0 and toks[d] == ("op", "."):
+                        q = _sx_prev(toks, d, 0)
+                        if q >= 0 and toks[q][0] in ("id", "btq", "dq"):
+                            start = q
+                            continue
+                    break
+            else:
+                k += 1
+                continue
+            r = nxt
+            if r >= len(toks):
+                k += 1
+                continue
+            if toks[r][0] in ("str", "dq", "num"):
+                r_end = r
+            elif toks[r][0] in ("id", "btq"):
+                r_end = r
+                n2 = _sx_next(toks, r + 1, len(toks))
+                if n2 < len(toks) and toks[n2] == ("op", "("):
+                    r_end = _sx_match(toks, n2, len(toks))
+            else:
+                k += 1
+                continue
+            new = ([("id", "NOT"), ("ws", " ")] if negated else []) + [("id", "regexp_matches"), ("op", "(")] \
+                + toks[start:e + 1] + [("op", ","), ("ws", " ")] + toks[r:r_end + 1] + [("op", ")")]
+            cut = first if negated else start
+            toks[min(cut, start):r_end + 1] = new
+            k = min(cut, start) + len(new)
+            continue
+        k += 1
+    return toks
+
+
+def _sx_split(toks, lo, hi):
+    if _sx_next(toks, lo, hi) >= hi:
+        return []
+    out, depth, start = [], 0, lo
+    for k in range(lo, hi):
+        if toks[k][0] == "op":
+            t = toks[k][1]
+            if t in ("(", "[", "{"):
+                depth += 1
+            elif t in (")", "]", "}"):
+                depth -= 1
+            elif t == "," and depth == 0:
+                out.append((start, k))
+                start = k + 1
+    out.append((start, hi))
+    return out
+
+
+def _sx_unquote(kind, text):
+    if kind == "btq":
+        return text[1:-1].replace("``", "`")
+    if kind == "dq":
+        return text[1:-1].replace('""', '"')
+    return text
+
+
+_SX_KEYWORDS = {"from", "join", "in", "as", "on", "and", "or", "not", "where", "having", "select", "union", "all",
+                "intersect", "except", "values", "over", "by", "with", "any", "some", "between", "case", "when",
+                "then", "else", "using", "partition", "order", "group", "limit", "offset", "distinct", "table", "into"}
+_SX_TABLE_KW = {"from", "join", "into", "table", "view", "update", "truncate", "exists"}
+_SX_FUNCS = {}
+
+
+def _sx_chain(toks, k, hi):
+    """Parts of a dotted name starting at token k, and the index after it."""
+    parts, end = [], k
+    while k < hi and toks[k][0] in ("id", "btq", "dq"):
+        parts.append(_sx_unquote(*toks[k]))
+        end = k + 1
+        n = _sx_next(toks, k + 1, hi)
+        if n < hi and toks[n] == ("op", "."):
+            m = _sx_next(toks, n + 1, hi)
+            if m < hi and toks[m][0] in ("id", "btq", "dq"):
+                k = m
+                continue
+        break
+    return parts, end
+
+
+def _sx_is_subscript(toks, i, lo):
+    p = _sx_prev(toks, i, lo)
+    if p < lo:
+        return False
+    kd, t = toks[p]
+    return (kd in ("btq", "dq") or (kd == "id" and t.lower() not in _SX_KEYWORDS and t.lower() not in ("array",))
+            or (kd == "op" and t in (")", "]")))
+
+
+def _sx_emit(toks, lo, hi, params, in_func=False):
+    out, i = [], lo
+    while i < hi:
+        kd, t = toks[i]
+        if kd in ("str", "dq"):
+            raw, j = _sx_unescape(t), i + 1
+            while True:  # Spark joins adjacent string literals: 'it''s' is its
+                n = _sx_next(toks, j, hi)
+                if n < hi and toks[n][0] in ("str", "dq"):
+                    raw += _sx_unescape(toks[n][1])
+                    j = n + 1
+                else:
+                    break
+            out.append("'" + raw.replace("'", "''") + "'")
+            i = j
+        elif kd == "btq":
+            out.append(_qi(_sx_unquote(kd, t)))
+            i += 1
+        elif kd == "op":
+            if t == "<=>":
+                out.append(" IS NOT DISTINCT FROM ")
+            elif t == ":" and i + 1 < hi and toks[i + 1][0] == "id" and toks[i + 1][1] in params:
+                out.append(_lit_sql(params[toks[i + 1][1]]))
+                i += 1
+            elif t == "[" and _sx_is_subscript(toks, i, lo):
+                close = _sx_match(toks, i, hi, "[", "]")
+                inner = _sx_emit(toks, i + 1, close, params, True).strip()
+                # Spark arrays are indexed from 0, DuckDB lists from 1. String keys (maps) stay as they are.
+                out.append("[" + (inner if inner.startswith("'") else f"({inner}) + 1") + "]")
+                i = close
+            else:
+                out.append(t)
+            i += 1
+        elif kd == "id":
+            i = _sx_ident(toks, i, hi, params, out, in_func)
+        else:
+            out.append(t)
+            i += 1
+    return "".join(out)
+
+
+def _sx_ident(toks, i, hi, params, out, in_func):
+    t = toks[i][1]
+    low = t.lower()
+    j = _sx_next(toks, i + 1, hi)
+    if j < hi and toks[j] == ("op", "("):
+        close = _sx_match(toks, j, hi)
+        if low in ("row_number", "rank", "dense_rank", "ntile"):
+            o = _sx_next(toks, close + 1, hi)
+            p = _sx_next(toks, o + 1, hi)
+            if o < hi and toks[o][1].lower() == "over" and p < hi and toks[p] == ("op", "("):
+                oc = _sx_match(toks, p, hi)
+                call = t + "(" + _sx_emit(toks, j + 1, close, params, True) + ")"
+                out.append(f"CAST({call} OVER ({_sx_emit(toks, p + 1, oc, params, True)}) AS INTEGER)")
+                return oc + 1  # Spark's ranking functions return int
+        fn = _SX_FUNCS.get(low)
+        if fn is not None:
+            args = [_sx_emit(toks, a, b, params, True).strip() for a, b in _sx_split(toks, j + 1, close)]
+            res = fn(args)
+            if res is not None:
+                out.append(res)
+                return close + 1
+        ws = "".join(x[1] for x in toks[i + 1:j])
+        out.append(t + ws + "(" + _sx_emit(toks, j + 1, close, params, in_func or low not in _SX_KEYWORDS) + ")")
+        return close + 1
+    if low in ("array", "map", "struct") and j < hi and toks[j] == ("op", "<"):
+        depth, k = 0, j
+        while k < hi:
+            if toks[k] == ("op", "<"):
+                depth += 1
+            elif toks[k] == ("op", ">"):
+                depth -= 1
+                if depth == 0:
+                    break
+            k += 1
+        if k < hi:
+            text = "".join(x[1] for x in toks[i:k + 1])
+            try:
+                out.append(_parse_spark_type(text)._duck())
+                return k + 1
+            except Exception:  # noqa: BLE001 - fall through and let DuckDB report it
+                pass
+    if low == "div" and out and "".join(out).strip():
+        out.append("//")
+        return i + 1
+    if low == "left" and j < hi and toks[j][0] == "id" and toks[j][1].lower() in ("anti", "semi"):
+        return i + 1  # DuckDB spells it ANTI JOIN / SEMI JOIN
+    if low == "using" and j < hi and toks[j][0] == "id" and toks[j][1].lower() in (
+            "delta", "parquet", "csv", "json", "orc", "text", "avro"):
+        return j + 1  # CREATE TABLE ... USING delta
+    if low == "lateral" and j < hi and toks[j][1].lower() == "view":
+        k = _sx_next(toks, j + 1, hi)
+        if k < hi and toks[k][1].lower() == "outer":
+            raise NotAvailableInTrainer("LATERAL VIEW OUTER isn't supported here. Use explode_outer() in a select.")
+        if k < hi and toks[k][1].lower() == "explode":
+            p = _sx_next(toks, k + 1, hi)
+            if p < hi and toks[p] == ("op", "("):
+                close = _sx_match(toks, p, hi)
+                arg = _sx_emit(toks, p + 1, close, params, True)
+                a = _sx_next(toks, close + 1, hi)
+                if a < hi and toks[a][0] == "id":
+                    n = _sx_next(toks, a + 1, hi)
+                    if n < hi and toks[n][1].lower() == "as":
+                        c = _sx_next(toks, n + 1, hi)
+                        if c < hi and toks[c][0] in ("id", "btq"):
+                            out.append(f" CROSS JOIN UNNEST({arg}) AS {_qi(toks[a][1])}({_qi(_sx_unquote(*toks[c]))})")
+                            return c + 1
+    if low in _SX_TABLE_KW and not in_func:
+        parts, end = _sx_chain(toks, j, hi)
+        if len(parts) >= 2:
+            out.append(t + " " + _qi(parts[-1]))  # catalog.schema.table -> the sample table with that name
+            return end
+    out.append(t)
+    return i + 1
+
+
+def _spark_sql(sql, params=None):
+    toks = _sx_prepass(_sx_tokens(sql))
+    return _sx_emit(toks, 0, len(toks), params or {})
+
+
+def _sx_alias(s):
+    """Splits a trailing top-level `AS alias` off an expression. Returns (expression, alias or None)."""
+    toks, depth, last, pos, offs = _sx_tokens(s), 0, None, 0, []
+    for k, (kd, t) in enumerate(toks):
+        offs.append(pos)
+        pos += len(t)
+        if kd == "op":
+            if t in ("(", "[", "{"):
+                depth += 1
+            elif t in (")", "]", "}"):
+                depth -= 1
+        elif kd == "id" and t.lower() == "as" and depth == 0:
+            last = k
+    if last is None:
+        return s, None
+    rest = [x for x in toks[last + 1:] if x[0] not in ("ws", "cmt")]
+    if len(rest) == 1 and rest[0][0] in ("id", "btq", "dq", "str"):
+        name = rest[0][1]
+        name = name[1:-1] if rest[0][0] in ("btq", "dq", "str") else name
+        return s[:offs[last]], name
+    return s, None
+
+
+_SX_NOT_ALIAS = {"null", "true", "false", "end", "asc", "desc", "first", "last", "over", "filter", "distinct",
+                 "and", "or", "not", "is", "in", "like", "between", "then", "else", "when", "case", "interval",
+                 "escape", "as", "div", "rlike", "ilike", "regexp"}
+
+
+def _sx_implicit_alias(text):
+    """(expression, alias) for `expr alias` without AS, else (text, None)."""
+    toks = [(k, x) for k, x in enumerate(_sx_tokens(text)) if x[0] not in ("ws", "cmt")]
+    if len(toks) < 2:
+        return text, None
+    (lk, (lkind, ltext)), (pk, (pkind, ptext)) = toks[-1], toks[-2]
+    if lkind not in ("id", "btq") or (lkind == "id" and ltext.lower() in _SX_NOT_ALIAS):
+        return text, None
+    not_ending = _SX_NOT_ALIAS - {"null", "true", "false", "end"}
+    ends_expr = (pkind in ("num", "str", "btq", "dq") or (pkind == "op" and ptext in (")", "]"))
+                 or (pkind == "id" and ptext.lower() not in not_ending))
+    if not ends_expr:
+        return text, None
+    if pkind == "op" and ptext == "." or (pkind == "id" and ptext.lower() in ("nulls",)):
+        return text, None
+    pos = sum(len(x[1]) for x in _sx_tokens(text)[:lk])
+    return text[:pos], _sx_unquote(lkind, ltext)
+
+
+def _sx_item_name(text):
+    """Spark-style column name for an unaliased select item: plain columns by name, calls as name(args)."""
+    t = " ".join(text.split())
+    toks = [x for x in _sx_tokens(t) if x[0] not in ("ws", "cmt")]
+    if toks and all(x[0] in ("id", "btq", "dq") or x == ("op", ".") for x in toks) and len(toks) % 2 == 1:
+        return _sx_unquote(*toks[-1])
+    m = re.match(r"^(\w+)\s*\((.*)\)$", t, re.S)
+    if m and _sx_match(_sx_tokens(t), 1 if len(_sx_tokens(t)) > 1 and _sx_tokens(t)[1][0] != "ws" else 2, 10 ** 6) == len(_sx_tokens(t)) - 1:
+        args = ", ".join(" ".join(a.split()) for a in re.split(r",\s*(?![^()]*\))", m.group(2))) if m.group(2).strip() else ""
+        args = re.sub(r"'((?:[^']|'')*)'", lambda q: q.group(1).replace("''", "'"), args)  # Spark prints literals unquoted
+        if args.strip() == "*":
+            args = "1"
+        return f"{m.group(1).lower()}({args})"
+    ops = [x for x in toks if x[0] == "op" and x[1] in ("+", "-", "*", "/", "%")]
+    depth0 = all(x[1] not in ("(", ")") for x in toks if x[0] == "op")
+    if ops and depth0 and all(x[0] in ("id", "num", "btq", "op") for x in toks):
+        spaced = " ".join(_sx_unquote(*x) if x[0] == "btq" else x[1] for x in toks)
+        return "(" + spaced + ")"  # Spark parenthesises arithmetic in generated names
+    return t
+
+
+def _sx_select_names(sql):
+    """Names for the select list of a single top-level SELECT, or None when they can't be worked out."""
+    toks = _sx_tokens(sql)
+    depth, selects = 0, []
+    for k, (kd, t) in enumerate(toks):
+        if kd == "op" and t in ("(", "["):
+            depth += 1
+        elif kd == "op" and t in (")", "]"):
+            depth -= 1
+        elif kd == "id" and depth == 0 and t.lower() in ("select", "union", "intersect", "except", "values"):
+            selects.append((k, t.lower()))
+    if len(selects) != 1 or selects[0][1] != "select":
+        return None
+    start = selects[0][0] + 1
+    while start < len(toks) and (toks[start][0] == "ws" or toks[start][1].lower() == "distinct"):
+        start += 1
+    end, depth = len(toks), 0
+    for k in range(start, len(toks)):
+        kd, t = toks[k]
+        if kd == "op" and t in ("(", "["):
+            depth += 1
+        elif kd == "op" and t in (")", "]"):
+            depth -= 1
+        elif kd == "id" and depth == 0 and t.lower() in ("from", "where", "group", "order", "having", "limit", "window", "qualify"):
+            end = k
+            break
+    names = []
+    for a, b in _sx_split(toks, start, end):
+        text = "".join(x[1] for x in toks[a:b]).strip()
+        if not text or text == "*" or text.endswith(".*"):
+            return None
+        body, alias = _sx_alias(text)
+        if not alias:
+            body, alias = _sx_implicit_alias(text)
+        names.append(alias if alias else _sx_item_name(body))
+    return names
+
+
+def _spark_expr(s):
+    """A Spark SQL expression as (duckdb sql, alias or None)."""
+    body, alias = _sx_alias(s)
+    if not alias:
+        body, alias = _sx_implicit_alias(body)
+    return _spark_sql(body), alias
+
+
+# -- function table: each entry takes the already-rewritten argument strings and returns SQL (or None to leave the call alone)
+def _sx(*names):
+    def deco(f):
+        for n in names:
+            _SX_FUNCS[n] = f
+        return f
+    return deco
+
+
+def _uniq(a):
+    nulls = f"list_position(list_transform({a}, __y -> __y IS NULL), true)"
+    return (f"list_filter({a}, (__x, __i) -> (__x IS NOT NULL AND list_position({a}, __x) = __i) "
+            f"OR (__x IS NULL AND {nulls} = __i))")
+
+
+def _lam_parts(lam):
+    p, _, body = lam.partition("->")
+    return p.strip(), body.strip()
+
+
+def _fmt_arg(a):
+    m = re.fullmatch(r"'((?:[^']|'')*)'", a)
+    if not m:
+        return a
+    return "'" + _java_fmt(m.group(1).replace("''", "'")).replace("'", "''") + "'"
+
+
+_SX_INT_FUNCS = {"year": "year", "month": "month", "day": "day", "dayofmonth": "day", "dayofyear": "dayofyear",
+                 "hour": "hour", "minute": "minute", "second": "second", "weekofyear": "weekofyear",
+                 "quarter": "quarter", "length": "length", "char_length": "length", "character_length": "length",
+                 "instr": "instr"}
+
+
+def _int_fn(duck):
+    return lambda a: f"CAST({duck}({', '.join(a)}) AS INTEGER)"
+
+
+for _n, _d in _SX_INT_FUNCS.items():
+    _SX_FUNCS[_n] = _int_fn(_d)
+
+_SX_SIMPLE = {"mean": "avg", "array_contains": "list_contains", "array_max": "list_max", "array_min": "list_min",
+              "max_by": "arg_max", "min_by": "arg_min", "rand": "random", "array_size": "len", "sha1": "sha1",
+              "std": "stddev_samp", "regexp_like": "regexp_matches", "regexp": "regexp_matches"}
+for _n, _d in _SX_SIMPLE.items():
+    _SX_FUNCS[_n] = (lambda d: lambda a: f"{d}({', '.join(a)})")(_d)
+
+
+@_sx("bround")
+def _sx_bround(a): return f"round_even({a[0]}, {a[1] if len(a) > 1 else 0})"
+
+
+@_sx("extract", "date_part")
+def _sx_extract(a): return f"CAST(extract({a[0]}) AS INTEGER)" if len(a) == 1 and " from " in a[0].lower() else None
+
+
+@_sx("dayofweek")
+def _sx_dayofweek(a): return f"CAST(dayofweek({a[0]}) + 1 AS INTEGER)"
+
+
+for _n in ("ceil", "ceiling", "floor"):
+    _SX_FUNCS[_n] = (lambda n: lambda a: f"CAST({'ceil' if n != 'floor' else 'floor'}({a[0]}) AS BIGINT)" if len(a) == 1 else None)(_n)
+
+
+@_sx("signum")
+def _sx_signum(a): return f"CAST(sign({a[0]}) AS DOUBLE)"
+
+
+@_sx("datediff")
+def _sx_datediff(a):
+    if len(a) != 2:
+        return None
+    return f"CAST(date_diff('day', TRY_CAST({a[1]} AS DATE), TRY_CAST({a[0]} AS DATE)) AS INTEGER)"
+
+
+@_sx("date_add", "dateadd")
+def _sx_date_add(a): return f"CAST(TRY_CAST({a[0]} AS DATE) + CAST({a[1]} AS INTEGER) AS DATE)" if len(a) == 2 else None
+
+
+@_sx("date_sub")
+def _sx_date_sub(a): return f"CAST(TRY_CAST({a[0]} AS DATE) - CAST({a[1]} AS INTEGER) AS DATE)" if len(a) == 2 else None
+
+
+@_sx("add_months")
+def _sx_add_months(a): return f"CAST(TRY_CAST({a[0]} AS DATE) + to_months(CAST({a[1]} AS INTEGER)) AS DATE)"
+
+
+@_sx("current_date", "curdate")
+def _sx_current_date(a): return "current_date" if not a else None
+
+
+@_sx("current_timestamp", "now", "localtimestamp")
+def _sx_current_ts(a): return "CAST(current_timestamp AS TIMESTAMP)" if not a else None
+
+
+@_sx("to_date")
+def _sx_to_date(a):
+    if len(a) == 1:
+        return f"TRY_CAST({a[0]} AS DATE)"
+    return f"CAST(try_strptime(CAST({a[0]} AS VARCHAR), {_fmt_arg(a[1])}) AS DATE)"
+
+
+@_sx("to_timestamp")
+def _sx_to_timestamp(a):
+    if len(a) == 1:
+        return f"TRY_CAST({a[0]} AS TIMESTAMP)"
+    return f"CAST(try_strptime(CAST({a[0]} AS VARCHAR), {_fmt_arg(a[1])}) AS TIMESTAMP)"
+
+
+@_sx("date_format")
+def _sx_date_format(a): return f"strftime(TRY_CAST({a[0]} AS TIMESTAMP), {_fmt_arg(a[1])})" if len(a) == 2 else None
+
+
+@_sx("trunc")
+def _sx_trunc(a):
+    m = re.fullmatch(r"'(\w+)'", a[1]) if len(a) == 2 else None
+    part = _TRUNC.get(m.group(1).lower()) if m else None
+    return f"CAST(date_trunc('{part}', TRY_CAST({a[0]} AS DATE)) AS DATE)" if part else None
+
+
+@_sx("date_trunc")
+def _sx_date_trunc(a):
+    m = re.fullmatch(r"'(\w+)'", a[0]) if len(a) == 2 else None
+    part = _TRUNC.get(m.group(1).lower()) if m else None
+    return f"CAST(date_trunc('{part}', TRY_CAST({a[1]} AS TIMESTAMP)) AS TIMESTAMP)" if part else None
+
+
+@_sx("unix_timestamp", "to_unix_timestamp")
+def _sx_unix_timestamp(a):
+    if not a:
+        return "CAST(epoch(current_timestamp) AS BIGINT)"
+    src = (f"try_strptime(CAST({a[0]} AS VARCHAR), {_fmt_arg(a[1])})" if len(a) > 1
+           else f"TRY_CAST(CAST({a[0]} AS VARCHAR) AS TIMESTAMP)")
+    return f"CAST(floor(epoch({src})) AS BIGINT)"
+
+
+@_sx("from_unixtime")
+def _sx_from_unixtime(a):
+    fmt = _fmt_arg(a[1]) if len(a) > 1 else "'%Y-%m-%d %H:%M:%S'"
+    return f"strftime(make_timestamp(CAST(CAST({a[0]} AS DOUBLE) * 1000000 AS BIGINT)), {fmt})"
+
+
+@_sx("months_between")
+def _sx_months_between(a):
+    x, y = f"TRY_CAST({a[0]} AS TIMESTAMP)", f"TRY_CAST({a[1]} AS TIMESTAMP)"
+    rnd = len(a) < 3 or a[2].strip().lower() != "false"
+    months = f"((year({x}) - year({y})) * 12 + (month({x}) - month({y})))"
+    secs = lambda t: f"((day({t}) - 1) * 86400 + hour({t}) * 3600 + minute({t}) * 60 + second({t}))"
+    frac = f"({months} + ({secs(x)} - {secs(y)}) / (31.0 * 86400))"
+    if rnd:
+        frac = f"round({frac}, 8)"
+    return (f"CASE WHEN {x} IS NULL OR {y} IS NULL THEN NULL "
+            f"WHEN day({x}) = day({y}) OR (day({x}) = day(last_day({x})) AND day({y}) = day(last_day({y}))) "
+            f"THEN CAST({months} AS DOUBLE) ELSE {frac} END")
+
+
+@_sx("size", "cardinality")
+def _sx_size(a): return f"CAST(coalesce(len({a[0]}), -1) AS INTEGER)" if len(a) == 1 else None
+
+
+@_sx("array_distinct")
+def _sx_array_distinct(a): return _uniq(a[0])
+
+
+def _null_if_any_null(a, body):
+    return f"CASE WHEN {a[0]} IS NULL OR {a[1]} IS NULL THEN NULL ELSE {body} END"
+
+
+@_sx("array_union")
+def _sx_array_union(a): return _null_if_any_null(a, _uniq(f"list_concat({a[0]}, {a[1]})"))
+
+
+@_sx("array_intersect")
+def _sx_array_intersect(a): return _null_if_any_null(a, f"list_filter({_uniq(a[0])}, __z -> list_contains({a[1]}, __z))")
+
+
+@_sx("array_except")
+def _sx_array_except(a): return _null_if_any_null(a, f"list_filter({_uniq(a[0])}, __z -> NOT list_contains({a[1]}, __z))")
+
+
+@_sx("array_position")
+def _sx_array_position(a):
+    return (f"CASE WHEN {a[0]} IS NULL OR {a[1]} IS NULL THEN NULL "
+            f"ELSE CAST(coalesce(list_position({a[0]}, {a[1]}), 0) AS BIGINT) END")
+
+
+@_sx("array_join")
+def _sx_array_join(a):
+    inner = a[0] if len(a) < 3 else f"list_transform({a[0]}, __e -> coalesce(CAST(__e AS VARCHAR), {a[2]}))"
+    return f"CASE WHEN {a[0]} IS NULL THEN NULL ELSE coalesce(array_to_string({inner}, {a[1]}), '') END"
+
+
+@_sx("sort_array")
+def _sx_sort_array(a):
+    desc = len(a) > 1 and a[1].strip().lower() == "false"
+    return f"list_sort({a[0]}, 'DESC', 'NULLS LAST')" if desc else f"list_sort({a[0]}, 'ASC', 'NULLS FIRST')"
+
+
+@_sx("array_sort")
+def _sx_array_sort(a): return f"list_sort({a[0]}, 'ASC', 'NULLS LAST')" if len(a) == 1 else None
+
+
+@_sx("array")
+def _sx_array(a): return "[" + ", ".join(a) + "]"
+
+
+@_sx("element_at")
+def _sx_element_at(a): return f"{a[0]}[{a[1]}]" if len(a) == 2 else None
+
+
+@_sx("explode")
+def _sx_explode(a): return f"unnest({a[0]})" if len(a) == 1 else None
+
+
+@_sx("explode_outer")
+def _sx_explode_outer(a): return f"unnest(CASE WHEN {a[0]} IS NULL OR len({a[0]}) = 0 THEN [NULL] ELSE {a[0]} END)"
+
+
+@_sx("collect_list")
+def _sx_collect_list(a): return f"coalesce(list({a[0]}) FILTER (WHERE {a[0]} IS NOT NULL), [])"
+
+
+@_sx("collect_set")
+def _sx_collect_set(a): return f"coalesce(list(DISTINCT {a[0]}) FILTER (WHERE {a[0]} IS NOT NULL), [])"
+
+
+@_sx("approx_count_distinct")
+def _sx_approx_cd(a): return f"count(DISTINCT {a[0]})"
+
+
+@_sx("nvl", "ifnull")
+def _sx_nvl(a): return f"coalesce({a[0]}, {a[1]})" if len(a) == 2 else None
+
+
+@_sx("nvl2")
+def _sx_nvl2(a): return f"CASE WHEN {a[0]} IS NOT NULL THEN {a[1]} ELSE {a[2]} END"
+
+
+@_sx("isnull")
+def _sx_isnull(a): return f"({a[0]} IS NULL)" if len(a) == 1 else None
+
+
+@_sx("isnotnull")
+def _sx_isnotnull(a): return f"({a[0]} IS NOT NULL)" if len(a) == 1 else None
+
+
+@_sx("concat")
+def _sx_concat(a): return "(" + " || ".join(a) + ")" if a else None  # NULL in, NULL out, like Spark
+
+
+@_sx("regexp_replace")
+def _sx_regexp_replace(a):
+    if len(a) != 3:
+        return None
+    rep = re.sub(r"\$(\d)", lambda m: "\\" + m.group(1), a[2])  # Java $1 -> RE2 \1
+    return f"regexp_replace({a[0]}, {a[1]}, {rep}, 'g')"
+
+
+@_sx("regexp_extract")
+def _sx_regexp_extract(a): return f"regexp_extract({a[0]}, {a[1]}, 1)" if len(a) == 2 else None
+
+
+@_sx("split")
+def _sx_split_fn(a): return f"string_split_regex({a[0]}, {a[1]})" if len(a) >= 2 else None
+
+
+@_sx("locate")
+def _sx_locate(a): return f"CAST(instr({a[1]}, {a[0]}) AS INTEGER)" if len(a) == 2 else None
+
+
+@_sx("log")
+def _sx_log(a):
+    if len(a) == 1:
+        return f"ln({a[0]})"
+    return f"(ln({a[1]}) / ln({a[0]}))" if len(a) == 2 else None
+
+
+@_sx("sha2")
+def _sx_sha2(a): return f"sha256({a[0]})" if len(a) == 2 and a[1].strip() in ("256", "0") else None
+
+
+@_sx("initcap")
+def _sx_initcap(a):
+    return f"array_to_string(list_transform(string_split(lower({a[0]}), ' '), __w -> upper(__w[1]) || __w[2:]), ' ')"
+
+
+@_sx("transform")
+def _sx_transform(a): return f"list_transform({a[0]}, {a[1]})" if len(a) == 2 and "->" in a[1] else None
+
+
+@_sx("filter")
+def _sx_filter(a): return f"list_filter({a[0]}, {a[1]})" if len(a) == 2 and "->" in a[1] else None
+
+
+@_sx("exists")
+def _sx_exists(a): return f"(len(list_filter({a[0]}, {a[1]})) > 0)" if len(a) == 2 and "->" in a[1] else None
+
+
+@_sx("forall")
+def _sx_forall(a):
+    if len(a) != 2 or "->" not in a[1]:
+        return None
+    p, body = _lam_parts(a[1])
+    return f"(len(list_filter({a[0]}, {p} -> NOT ({body}))) = 0)"
+
+
+@_sx("aggregate", "reduce")
+def _sx_aggregate(a):
+    if len(a) < 3 or "->" not in a[2]:
+        return None
+    core = f"CASE WHEN {a[0]} IS NULL THEN NULL ELSE list_reduce(list_prepend({a[1]}, {a[0]}), {a[2]}) END"
+    return core if len(a) == 3 else f"list_transform([{core}], {a[3]})[1]"
+
+
 # --------------------------------------------------------------------------- Column
+
+_PLAIN = re.compile(r'^(?:"(?:[^"]|"")*"|\x00[^\x01]*\x01[^\x02]*\x02)$')
+
+
+def _is_plain(sql):
+    return bool(_PLAIN.match(sql))
+
+
+def _spark_type_name(dt):
+    if isinstance(dt, str):
+        dt = _parse_spark_type(dt)
+    elif isinstance(dt, type):
+        dt = dt()
+    return dt.simpleString().upper()
+
+
+_CAST_INTS = ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")
+_INT_TYPES = "'TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'HUGEINT'"
+
+
+def _cast_sql(x, t):
+    """CAST with Spark semantics: truncating numeric -> integer, timestamp <-> epoch seconds, NULL on bad input."""
+    T = t.upper()
+    if T in _CAST_INTS:
+        return (f"CAST(CASE WHEN {x} IS NULL THEN NULL "
+                f"WHEN typeof({x}) LIKE 'TIMESTAMP%' THEN floor(epoch(TRY_CAST(CAST({x} AS VARCHAR) AS TIMESTAMP))) "
+                f"WHEN typeof({x}) = 'BOOLEAN' THEN CASE WHEN CAST({x} AS VARCHAR) = 'true' THEN 1 ELSE 0 END "
+                f"WHEN typeof({x}) IN ({_INT_TYPES}) THEN TRY_CAST(CAST({x} AS VARCHAR) AS BIGINT) "
+                f"ELSE trunc(TRY_CAST(trim(CAST({x} AS VARCHAR)) AS DOUBLE)) END AS {T})")
+    if T == "TIMESTAMP":
+        return (f"CASE WHEN typeof({x}) IN ('TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'DOUBLE', 'FLOAT') "
+                f"THEN CAST(make_timestamp(CAST(TRY_CAST(CAST({x} AS VARCHAR) AS DOUBLE) * 1000000 AS BIGINT)) AS TIMESTAMP) "
+                f"ELSE TRY_CAST(CAST({x} AS VARCHAR) AS TIMESTAMP) END")
+    return f"TRY_CAST({x} AS {t})"
+
 
 class Column:
     """An expression over the rows of a DataFrame."""
@@ -482,11 +1263,13 @@ class Column:
     def __init__(self, sql, name=None, agg=None, order=None):
         self._sql = sql
         self._name = sql if name is None else name
+        self._top = None     # name when selected unaliased at the top level (differs from _name for casts)
         self._agg = agg      # (template(arg_sql) -> sql, arg_sql) for aggregate functions
         self._order = order  # "ASC NULLS FIRST" etc. when used for sorting
 
     def _with(self, **kw):
         c = Column(self._sql, self._name, self._agg, self._order)
+        c._top = self._top
         for k, v in kw.items():
             setattr(c, "_" + k, v)
         return c
@@ -542,12 +1325,15 @@ class Column:
 
     # -- naming and types
     def alias(self, *alias, **kwargs):
-        return self._with(name=str(alias[0]))
+        return self._with(name=str(alias[0]), top=None)
 
     name = alias
 
     def cast(self, dataType):
-        return Column(f"TRY_CAST({self._sql} AS {_duck_type(dataType)})", self._name)
+        c = Column(_cast_sql(self._sql, _duck_type(dataType)), f"CAST({self._name} AS {_spark_type_name(dataType)})")
+        if _is_plain(self._sql):
+            c._top = self._name  # Spark keeps the column's own name for a top-level cast
+        return c
 
     astype = cast
 
@@ -620,7 +1406,10 @@ class Column:
         if not isinstance(window, WindowSpec):
             raise PySparkTypeError("over() expects a WindowSpec, for example Window.partitionBy(...).orderBy(...)")
         spec = window._spec()
-        return Column(f"{self._sql} OVER ({spec})", f"{self._name} OVER ({window._label()})")
+        sql = f"{self._sql} OVER ({spec})"
+        if re.match(r"(row_number|rank|dense_rank|ntile)\(", self._sql):
+            sql = f"CAST({sql} AS INTEGER)"  # Spark's ranking functions return int
+        return Column(sql, f"{self._name} OVER ({window._label()})")
 
     def when(self, condition, value):
         raise PySparkTypeError("when() can only be applied on a Column previously generated by when() function")
@@ -796,7 +1585,8 @@ _F.update(col=col, column=column, lit=lit)
 
 @_fn("expr")
 def expr(s):
-    return Column(f"({s})", s)
+    sql, alias = _spark_expr(s)
+    return Column(f"({sql})", alias or s)
 
 
 @_fn("when")
@@ -880,7 +1670,7 @@ def count_distinct(c, *cols):
 
 
 @_fn("approx_count_distinct", "approxCountDistinct")
-def approx_count_distinct(c, rsd=None): return _agg("approx_count_distinct", c, lambda a: f"approx_count_distinct({a})")
+def approx_count_distinct(c, rsd=None): return _agg("approx_count_distinct", c, lambda a: f"count(DISTINCT {a})")
 
 
 @_fn("sum_distinct", "sumDistinct")
@@ -920,7 +1710,7 @@ def stddev_pop(c): return _agg("stddev_pop", c, lambda a: f"stddev_pop({a})")
 
 
 @_fn("variance", "var_samp")
-def variance(c): return _agg("variance", c, lambda a: f"var_samp({a})")
+def variance(c): return _agg("var_samp", c, lambda a: f"var_samp({a})")
 
 
 @_fn("var_pop")
@@ -992,30 +1782,45 @@ def lead(c, offset=1, default=None):
     return Column(f"lead({c._sql}, {int(offset)}{d})", f"lead({c._name}, {offset}, {_lit_name(default)})")
 
 
-# -- simple scalar functions: spark name -> duckdb name
-for _spark, _duck in {
-    "upper": "upper", "lower": "lower", "trim": "trim", "ltrim": "ltrim", "rtrim": "rtrim",
-    "length": "length", "reverse": "reverse", "abs": "abs", "sqrt": "sqrt", "exp": "exp",
-    "floor": "floor", "ceil": "ceil", "ceiling": "ceil", "signum": "sign", "log10": "log10",
-    "log2": "log2", "year": "year", "month": "month", "dayofmonth": "day", "day": "day",
-    "dayofyear": "dayofyear", "hour": "hour", "minute": "minute", "second": "second",
-    "weekofyear": "weekofyear", "quarter": "quarter", "md5": "md5", "isnan": "isnan",
-    "array_distinct": "list_distinct", "flatten": "flatten", "array_max": "list_max",
-    "array_min": "list_min", "last_day": "last_day", "ascii": "ascii", "sin": "sin", "cos": "cos",
+# -- simple scalar functions: spark name -> (duckdb name, result type Spark returns that DuckDB doesn't)
+for _spark, (_duck, _t) in {
+    "upper": ("upper", None), "lower": ("lower", None), "trim": ("trim", None), "ltrim": ("ltrim", None),
+    "rtrim": ("rtrim", None), "length": ("length", "INTEGER"), "reverse": ("reverse", None), "abs": ("abs", None),
+    "sqrt": ("sqrt", None), "exp": ("exp", None), "floor": ("floor", "BIGINT"), "ceil": ("ceil", "BIGINT"),
+    "ceiling": ("ceil", "BIGINT"), "signum": ("sign", "DOUBLE"), "log10": ("log10", None), "log2": ("log2", None),
+    "year": ("year", "INTEGER"), "month": ("month", "INTEGER"), "dayofmonth": ("day", "INTEGER"),
+    "day": ("day", "INTEGER"), "dayofyear": ("dayofyear", "INTEGER"), "hour": ("hour", "INTEGER"),
+    "minute": ("minute", "INTEGER"), "second": ("second", "INTEGER"), "weekofyear": ("weekofyear", "INTEGER"),
+    "quarter": ("quarter", "INTEGER"), "md5": ("md5", None), "isnan": ("isnan", None),
+    "flatten": ("flatten", None), "array_max": ("list_max", None), "array_min": ("list_min", None),
+    "last_day": ("last_day", None), "ascii": ("ascii", None), "sin": ("sin", None), "cos": ("cos", None),
 }.items():
-    _F[_spark] = (lambda d, s: lambda c: _call(d, s, _c(c)))(_duck, _spark)
+    def _mk(d, s_, t):
+        def f(c):
+            c = _c(c)
+            sql = f"{d}({c._sql})"
+            return Column(f"CAST({sql} AS {t})" if t else sql, f"{s_}({c._name})")
+        return f
+    _F[_spark] = _mk(_duck, _spark, _t)
+
+
+def _sx_col(name, label, *args, wrap=lambda s: s):
+    """A Column from the shared SQL function table (args are Columns or Python values)."""
+    cols = [_to_col_lit(a) if not isinstance(a, str) else _c(a) for a in args]
+    sql = _SX_FUNCS[name]([c._sql for c in cols])
+    return Column(sql, f"{label}({', '.join(c._name for c in cols)})")
 
 
 @_fn("dayofweek")
 def dayofweek(c):
     c = _c(c)
-    return Column(f"(dayofweek({c._sql}) + 1)", f"dayofweek({c._name})")
+    return Column(f"CAST(dayofweek({c._sql}) + 1 AS INTEGER)", f"dayofweek({c._name})")
 
 
 @_fn("size", "array_size", "cardinality")
 def size(c):
     c = _c(c)
-    return Column(f"coalesce(len({c._sql}), -1)", f"size({c._name})")
+    return Column(f"CAST(coalesce(len({c._sql}), -1) AS INTEGER)", f"size({c._name})")
 
 
 @_fn("round")
@@ -1073,7 +1878,7 @@ def substring(c, pos, len):
 @_fn("instr")
 def instr(c, substr):
     c = _c(c)
-    return Column(f"instr({c._sql}, {_lit_sql(substr)})", f"instr({c._name}, {substr})")
+    return Column(f"CAST(instr({c._sql}, {_lit_sql(substr)}) AS INTEGER)", f"instr({c._name}, {substr})")
 
 
 @_fn("lpad")
@@ -1221,7 +2026,7 @@ def add_months(c, months):
 @_fn("datediff", "date_diff")
 def datediff(end, start):
     e, s = _c(end), _c(start)
-    return Column(f"date_diff('day', TRY_CAST({s._sql} AS DATE), TRY_CAST({e._sql} AS DATE))",
+    return Column(f"CAST(date_diff('day', TRY_CAST({s._sql} AS DATE), TRY_CAST({e._sql} AS DATE)) AS INTEGER)",
                   f"datediff({e._name}, {s._name})")
 
 
@@ -1284,9 +2089,8 @@ def element_at(c, extraction):
 @_fn("array_join")
 def array_join(c, delimiter, null_replacement=None):
     c = _c(c)
-    inner = c._sql if null_replacement is None else \
-        f"list_transform({c._sql}, x -> coalesce(CAST(x AS VARCHAR), {_lit_sql(null_replacement)}))"
-    return Column(f"array_to_string({inner}, {_lit_sql(delimiter)})", f"array_join({c._name}, {delimiter})")
+    args = [c._sql, _lit_sql(delimiter)] + ([_lit_sql(null_replacement)] if null_replacement is not None else [])
+    return Column(_SX_FUNCS["array_join"](args), f"array_join({c._name}, {delimiter})")
 
 
 @_fn("array_sort")
@@ -1311,19 +2115,29 @@ def f_slice(c, start, length):
 @_fn("array_position")
 def array_position(c, value):
     c = _c(c)
-    return Column(f"coalesce(list_position({c._sql}, {_lit_sql(value)}), 0)", f"array_position({c._name}, {value})")
+    return Column(_SX_FUNCS["array_position"]([c._sql, _lit_sql(value)]), f"array_position({c._name}, {value})")
 
 
 @_fn("array_union")
 def array_union(c1, c2):
     a, b = _c(c1), _c(c2)
-    return Column(f"list_distinct(list_concat({a._sql}, {b._sql}))", f"array_union({a._name}, {b._name})")
+    return Column(_SX_FUNCS["array_union"]([a._sql, b._sql]), f"array_union({a._name}, {b._name})")
 
 
 @_fn("array_intersect")
 def array_intersect(c1, c2):
     a, b = _c(c1), _c(c2)
-    return Column(f"list_intersect({a._sql}, {b._sql})", f"array_intersect({a._name}, {b._name})")
+    return Column(_SX_FUNCS["array_intersect"]([a._sql, b._sql]), f"array_intersect({a._name}, {b._name})")
+
+
+@_fn("array_distinct")
+def array_distinct(c):
+    return _sx_col("array_distinct", "array_distinct", _c(c))
+
+
+@_fn("array_except")
+def array_except(c1, c2):
+    return _sx_col("array_except", "array_except", _c(c1), _c(c2))
 
 
 @_fn("explode")
@@ -1383,7 +2197,8 @@ def forall(c, f):
 @_fn("aggregate", "reduce")
 def aggregate(c, initialValue, merge, finish=None):
     c, z = _c(c), _to_col_lit(initialValue)
-    sql = f"list_reduce(list_prepend({z._sql}, {c._sql}), {_lambda(merge, 2)})"
+    sql = (f"CASE WHEN {c._sql} IS NULL THEN NULL "
+           f"ELSE list_reduce(list_prepend({z._sql}, {c._sql}), {_lambda(merge, 2)}) END")
     if finish is not None:
         out = _to_col_lit(finish(Column(f"({sql})")))
         sql = out._sql
@@ -1428,8 +2243,30 @@ def udf(f=None, returnType=None, *args, **kwargs):
     return _udf_unavailable
 
 
+@_fn("months_between")
+def months_between(date1, date2, roundOff=True):
+    a, b = _c(date1), _c(date2)
+    args = [a._sql, b._sql] + ([] if roundOff else ["false"])
+    return Column(_SX_FUNCS["months_between"](args), f"months_between({a._name}, {b._name}, {str(bool(roundOff)).lower()})")
+
+
+@_fn("unix_timestamp")
+def unix_timestamp(timestamp=None, format=None):
+    if timestamp is None:
+        return Column(_SX_FUNCS["unix_timestamp"]([]), "unix_timestamp(current_timestamp(), yyyy-MM-dd HH:mm:ss)")
+    c = _c(timestamp)
+    args = [c._sql] + ([_lit_sql(format)] if format else [])
+    return Column(_SX_FUNCS["unix_timestamp"](args), f"unix_timestamp({c._name}, {format or 'yyyy-MM-dd HH:mm:ss'})")
+
+
+@_fn("from_unixtime")
+def from_unixtime(timestamp, format="yyyy-MM-dd HH:mm:ss"):
+    c = _c(timestamp)
+    return Column(_SX_FUNCS["from_unixtime"]([c._sql, _lit_sql(format)]), f"from_unixtime({c._name}, {format})")
+
+
 for _n in ("from_json", "to_json", "get_json_object", "json_tuple", "schema_of_json", "window", "session_window",
-           "input_file_block_start", "from_unixtime", "unix_timestamp", "months_between"):
+           "input_file_block_start"):
     _F[_n] = (lambda n: lambda *a, **k: (_ for _ in ()).throw(
         NotAvailableInTrainer(f"F.{n}() isn't available in this browser trainer.")))(_n)
 
@@ -1446,7 +2283,7 @@ def _new_id():
 def _sel_item(c):
     if c._sql == "*" or c._sql.endswith(".*") or c._sql == _qi(c._name):
         return c._sql
-    return f"{c._sql} AS {_qi(c._name)}"
+    return f"{c._sql} AS {_qi(c._top if c._top is not None else c._name)}"
 
 
 def _as_col(c):
@@ -1596,11 +2433,18 @@ class DataFrame:
         return base._copy(proj=[_sel_item(c) for c in cs], id_=_new_id())
 
     def selectExpr(self, *exprs):
+        items = []
+        for e in _flatten(exprs):
+            if e.strip() == "*" or e.strip().endswith(".*"):
+                items.append(e.strip())
+                continue
+            sql, alias = _spark_expr(e)
+            items.append(f"{sql} AS {_qi(alias or e.strip())}")
         base = self if self._projectable() else self._wrap()
-        return base._copy(proj=list(_flatten(exprs)), id_=_new_id())
+        return base._copy(proj=items, id_=_new_id())
 
     def filter(self, condition):
-        sql = f"({condition})" if isinstance(condition, str) else _cond(condition)._sql
+        sql = f"({_spark_sql(condition)})" if isinstance(condition, str) else _cond(condition)._sql
         base = self if self._projectable() else self._wrap()
         return base._copy(where=base._where + (sql,))
 
@@ -2275,21 +3119,67 @@ class SparkSession:
         a = _new_id()
         return DataFrame(self, f"{_table_ident(tableName)} AS {_qi(a)}", {a}, a)
 
+    def _empty_result(self):
+        return self.createDataFrame([], "result STRING")
+
+    def _sql_special(self, q):
+        """Statements Databricks answers differently from DuckDB, or that need a cluster."""
+        head = re.match(r"(?is)^\s*(\w+)(?:\s+(\w+))?", q)
+        w1, w2 = (head.group(1).lower(), (head.group(2) or "").lower()) if head else ("", "")
+        if w1 == "show" and w2 == "tables":
+            res = _run("SELECT table_name, table_type, 'BASE TABLE' = table_type AS is_base "
+                       "FROM information_schema.tables ORDER BY table_name")
+            rows = [("default" if r[2] else "", r[0], not r[2]) for r in res["rows"]]
+            return self.createDataFrame(rows, "namespace STRING, tableName STRING, isTemporary BOOLEAN")
+        if w1 == "show" and w2 in ("databases", "schemas"):
+            return self.createDataFrame([("default",)], "namespace STRING")
+        if w1 == "show" and w2 == "catalogs":
+            return self.createDataFrame([("main",)], "catalog STRING")
+        if w1 in ("describe", "desc") and w2 not in ("history", "detail", "extended", "formatted"):
+            m = re.match(r"(?is)^\s*desc(?:ribe)?\s+(?:table\s+)?(?:extended\s+|formatted\s+)?([\w.`]+)\s*$", q)
+            if m:
+                df = self.table(m.group(1))
+                rows = [(n, _from_duck_type(t).simpleString(), None) for n, t in df._schema_pairs()]
+                return self.createDataFrame(rows, "col_name STRING, data_type STRING, comment STRING")
+        if w1 in ("describe", "desc") and w2 in ("history", "detail"):
+            raise NotAvailableInTrainer("DESCRIBE HISTORY and DESCRIBE DETAIL need Delta tables on a Databricks cluster.")
+        if w1 in ("optimize", "vacuum", "restore", "merge") or (w1 == "copy" and w2 == "into"):
+            raise NotAvailableInTrainer(f"{w1.upper()} needs Delta Lake on a Databricks cluster. "
+                                        "Practise it in the syntax exercises instead.")
+        if w1 in ("grant", "revoke", "deny"):
+            raise NotAvailableInTrainer("Unity Catalog privileges need a Databricks workspace. "
+                                        "Practise GRANT and REVOKE in the Governance syntax exercises.")
+        if w1 in ("use", "set", "refresh", "analyze", "cache", "uncache"):
+            return self._empty_result()
+        if w1 == "create" and re.match(r"(?is)^\s*create\s+(or\s+replace\s+)?(schema|database|catalog)\b", q):
+            return self._empty_result()
+        if w1 == "drop" and w2 in ("schema", "database", "catalog"):
+            return self._empty_result()
+        if re.match(r"(?is)^\s*create\s+(or\s+(refresh|replace)\s+)?(streaming\s+table|materialized\s+view|live\s+table)", q):
+            raise NotAvailableInTrainer("Lakeflow Declarative Pipelines run as pipelines on Databricks, not in a notebook. "
+                                        "See the Production lessons and syntax exercises.")
+        return None
+
     def sql(self, sqlQuery, args=None, **kwargs):
-        q = sqlQuery.strip().rstrip(";")
-        if args:
-            def sub(m):
-                k = m.group(1)
-                return _lit_sql(args[k]) if k in args else m.group(0)
-            q = re.sub(r":(\w+)", sub, q)
+        q = sqlQuery.strip().rstrip(";").strip()
+        special = self._sql_special(q)
+        if special is not None:
+            return special
+        params = args if isinstance(args, dict) else {}
+        names = _sx_select_names(q)
+        q = _spark_sql(q, params)
         if re.match(r"(?is)^\s*(\(|select\b|with\b|from\b|values\b|table\b)", q):
             a = _new_id()
-            return DataFrame(self, f"({q}) AS {_qi(a)}", {a}, a)
+            df = DataFrame(self, f"({q}) AS {_qi(a)}", {a}, a)
+            if names and len(names) == len(df.columns) and [n.lower() for n in names] != [c.lower() for c in df.columns]:
+                a2 = _new_id()
+                cols = ", ".join(_qi(n) for n in names)
+                df = DataFrame(self, f"({q}) AS {_qi(a2)}({cols})", {a2}, a2)
+            return df
         res = _run(q)
-        if res["columns"] and res["rows"]:
+        if res["columns"] and res["rows"] and not re.match(r"(?is)^\s*(insert|create|drop|alter|delete|update|truncate)\b", q):
             return self.createDataFrame([tuple(r) for r in res["rows"]], res["columns"])
-        a = _new_id()
-        return DataFrame(self, f"(SELECT NULL AS result WHERE false) AS {_qi(a)}", {a}, a)
+        return self._empty_result()
 
     def range(self, start, end=None, step=1, numPartitions=None):
         if end is None:
@@ -2437,10 +3327,33 @@ def new_namespace():
     return {"__name__": "__main__", "spark": spark, "display": display}
 
 
-def run_cell(code, ns):
+CELL_TIMEOUT = 30  # seconds a cell may run before it is stopped
+
+
+class CellTimeout(BaseException):
+    """Raised inside user code that runs too long. A BaseException, so `except Exception` can't swallow it."""
+
+
+def run_cell(code, ns, timeout=None):
     """Run user code. Returns None on success, or a short traceback string limited to the user's code."""
+    limit = CELL_TIMEOUT if timeout is None else timeout
+    deadline = time.monotonic() + limit
+
+    def local(frame, event, arg):
+        if time.monotonic() > deadline:
+            raise CellTimeout(f"The cell was stopped after {limit} seconds. Check for an infinite loop, "
+                              "or limit the data (for example .limit(1000)) before processing it.")
+        return local
+
+    def tracer(frame, event, arg):
+        return local if frame.f_code.co_filename == "<cell>" else None
+
     try:
-        exec(compile(code, "<cell>", "exec"), ns)
+        sys.settrace(tracer)
+        try:
+            exec(compile(code, "<cell>", "exec"), ns)
+        finally:
+            sys.settrace(None)
         return None
     except SyntaxError as e:
         line = (e.text or "").rstrip()

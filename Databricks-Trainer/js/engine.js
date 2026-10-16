@@ -22,6 +22,10 @@
   // ------------------------------------------------------------------ Arrow → plain values
   function kindOf(type) {
     const t = String(type);
+    // Nested types first: their text also contains the names of their child types (Struct<{a: Utf8}>).
+    if (/^List|^FixedSizeList|^LargeList/.test(t)) return "list";
+    if (/^Struct/.test(t)) return "struct";
+    if (/^Map/.test(t)) return "other";
     if (/^Date/.test(t)) return "date";
     if (/^Timestamp/.test(t)) return "timestamp";
     if (/^Decimal/.test(t)) return type.scale === 0 ? "int" : "float";
@@ -29,8 +33,6 @@
     if (/^u?int/i.test(t)) return "int";
     if (/^Bool/.test(t)) return "bool";
     if (/Utf8/.test(t)) return "string";
-    if (/List/.test(t)) return "list";
-    if (/^Struct/.test(t)) return "struct";
     return "other";
   }
 
@@ -46,8 +48,11 @@
     switch (kindOf(type)) {
       case "date": return new Date(v instanceof Date ? v.getTime() : Number(v)).toISOString().slice(0, 10);
       case "timestamp": return isoTimestamp(v instanceof Date ? v.getTime() : Number(v));
-      case "int":
-        return /^Decimal/.test(String(type)) ? Number(String(v)) : Number(v);
+      case "int": {
+        if (/^Decimal/.test(String(type))) return Number(String(v));
+        const n = Number(v);
+        return Number.isSafeInteger(n) ? n : BigInt(v); // keep 64-bit ids exact; serialized as digits below
+      }
       case "float":
         return /^Decimal/.test(String(type)) ? Number(String(v)) / Math.pow(10, type.scale) : Number(v);
       case "list": {
@@ -66,6 +71,16 @@
     }
   }
 
+  // JSON text for plain values, writing BigInt as exact integer digits (JSON.stringify can't).
+  function jsonText(v) {
+    if (v === null || v === undefined) return "null";
+    if (typeof v === "bigint") return v.toString();
+    if (typeof v === "number") return Number.isFinite(v) ? String(v) : (Number.isNaN(v) ? '"NaN"' : v > 0 ? '"Infinity"' : '"-Infinity"');
+    if (typeof v === "string" || typeof v === "boolean") return JSON.stringify(v);
+    if (Array.isArray(v)) return "[" + v.map(jsonText).join(",") + "]";
+    return "{" + Object.keys(v).map((k) => JSON.stringify(k) + ":" + jsonText(v[k])).join(",") + "}";
+  }
+
   function tableToJson(table) {
     const fields = table.schema.fields;
     const vectors = fields.map((_, i) => table.getChildAt(i));
@@ -78,7 +93,8 @@
   function displayCell(v) {
     if (v === null || v === undefined) return null;
     if (typeof v === "number") return String(Math.round(v * 10000) / 10000);
-    if (typeof v === "object") return JSON.stringify(v);
+    if (typeof v === "bigint") return v.toString();
+    if (typeof v === "object") return jsonText(v);
     return String(v);
   }
 
@@ -140,9 +156,39 @@
     for (const stmt of T.datasetSql) conn.query(stmt);
   }
 
+  // Splits SQL text into statements on ";", ignoring semicolons inside quotes and comments.
+  function splitSql(sql) {
+    const out = [];
+    let cur = "", i = 0;
+    while (i < sql.length) {
+      const c = sql[i], two = sql.substr(i, 2);
+      if (c === "'" || c === '"') {
+        let j = i + 1;
+        while (j < sql.length && !(sql[j] === c && sql[j + 1] !== c)) j += sql[j] === c ? 2 : 1;
+        cur += sql.slice(i, j + 1); i = j + 1;
+      } else if (two === "--") {
+        let j = sql.indexOf("\n", i); if (j < 0) j = sql.length;
+        cur += sql.slice(i, j); i = j;
+      } else if (two === "/*") {
+        let j = sql.indexOf("*/", i + 2); j = j < 0 ? sql.length : j + 2;
+        cur += sql.slice(i, j); i = j;
+      } else if (c === ";") {
+        out.push(cur); cur = ""; i++;
+      } else { cur += c; i++; }
+    }
+    out.push(cur);
+    // drop pieces that hold only whitespace and comments
+    return out.filter((st) => st.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim() !== "");
+  }
+
+  // Runs every statement and returns the result of the last one.
   async function runSql(sql) {
     const conn = await duck();
-    const res = tableToJson(conn.query(sql));
+    const stmts = splitSql(sql);
+    if (!stmts.length) return { columns: [], rows: [] };
+    let last;
+    for (const st of stmts) last = conn.query(st);
+    const res = tableToJson(last);
     return { columns: res.columns, rows: res.rows.map((r) => r.map(displayCell)) };
   }
 
@@ -185,7 +231,7 @@
       py.runPython("import sys; sys.path.insert(0, '/home/pyodide/trainer'); sys.dont_write_bytecode = True");
       const shim = py.pyimport("pyspark_shim");
       shim.setup(
-        (sql) => JSON.stringify(tableToJson(conn.query(sql))),
+        (sql) => jsonText(tableToJson(conn.query(sql))),
         (json) => { if (sink) sink.table(JSON.parse(json)); });
       setStatus("python", "ready");
       return { py, shim };
@@ -225,7 +271,7 @@
   }
 
   T.engine = {
-    duck, runSql, python, runPython, pythonResult, newNamespace,
+    duck, runSql, splitSql, python, runPython, pythonResult, newNamespace,
     resetData: async () => resetData(await duck()),
     status: () => Object.assign({}, status),
     onStatus: (fn) => { listeners.push(fn); fn(status); }

@@ -31,23 +31,19 @@ process.stdout.write(JSON.stringify({ exercises: TRAINER.exercises, sql: TRAINER
 con = duckdb.connect()
 
 
-def _kind(t):
-    t = str(t).upper()
-    if t.endswith("]"):
-        return "list"
-    if t.startswith("STRUCT"):
-        return "struct"
-    if t.startswith("DECIMAL"):
-        return "int" if t.endswith(",0)") else "float"
-    if t in ("INTEGER", "BIGINT", "HUGEINT", "SMALLINT", "TINYINT", "UBIGINT", "UINTEGER", "NUMBER"):
-        return "int"
-    if t in ("DOUBLE", "FLOAT"):
-        return "float"
-    if t == "DATE":
-        return "date"
-    if t.startswith("TIMESTAMP") or t == "DATETIME":
-        return "timestamp"
-    return {"BOOLEAN": "bool", "VARCHAR": "string", "STRING": "string"}.get(t, "other")
+def _kind_of(values, code):
+    for v in values:
+        if v is None: continue
+        if isinstance(v, bool): return "bool"
+        if isinstance(v, int): return "int"
+        if isinstance(v, float): return "float"
+        if isinstance(v, decimal.Decimal): return "int" if v == int(v) and v.as_tuple().exponent == 0 else "float"
+        if isinstance(v, str): return "string"
+        if isinstance(v, datetime.datetime): return "timestamp"
+        if isinstance(v, datetime.date): return "date"
+        if isinstance(v, list): return "list"
+        if isinstance(v, dict): return "struct"
+    return {"Date": "date", "DATETIME": "timestamp", "STRING": "string", "bool": "bool", "list": "list", "dict": "struct"}.get(str(code), "other")
 
 
 def _conv(v):
@@ -68,8 +64,10 @@ def query_json(sql):
     r = con.execute(sql)
     if not r.description:
         return json.dumps({"columns": [], "kinds": [], "rows": []})
-    return json.dumps({"columns": [d[0] for d in r.description], "kinds": [_kind(d[1]) for d in r.description],
-                       "rows": [[_conv(v) for v in row] for row in r.fetchall()]})
+    raw = r.fetchall()
+    kinds = [_kind_of([row[i] for row in raw], r.description[i][1]) for i in range(len(r.description))]
+    return json.dumps({"columns": [d[0] for d in r.description], "kinds": kinds,
+                       "rows": [[_conv(v) for v in row] for row in raw]})
 
 
 shim.setup(query_json)
