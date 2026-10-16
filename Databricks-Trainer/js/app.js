@@ -1,8 +1,10 @@
-// Databricks Data Engineer Associate trainer: routing, views, progress and the SQL engine.
+// Databricks trainer: routing, views, progress and answer checking.
+// The SQL and Python engines live in engine.js (TRAINER.engine).
 (function () {
   "use strict";
 
   const T = window.TRAINER;
+  const E = T.engine;
   const $app = document.getElementById("app");
   const $engine = document.getElementById("engine-status");
 
@@ -13,6 +15,8 @@
   // (a backtick right after "." is Spark path syntax such as json.`/path/`, so it's left as is)
   const fmt = (s) => esc(s).replace(/(^|[^.\w])`([^`]+)`/g, "$1<code>$2</code>");
   const domainById = (id) => T.domains.find((d) => d.id === id);
+  const examDomains = T.domains.filter((d) => !d.track);
+  const pyDomains = T.domains.filter((d) => d.track === "pyspark");
   const shuffle = (arr) => {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -44,125 +48,56 @@
       quizBest: progress.quiz[domainId] // percentage or undefined
     };
   }
-  function overallPct() {
-    const total = T.lessons.length + T.exercises.length + T.domains.length;
-    const done = Object.keys(progress.lessons).length +
-      Object.keys(progress.exercises).length +
-      T.domains.filter((d) => (progress.quiz[d.id] || 0) >= 70).length;
+  function trackPct(domains) {
+    const ids = new Set(domains.map((d) => d.id));
+    const lessons = T.lessons.filter((l) => ids.has(l.domain));
+    const exercises = T.exercises.filter((x) => ids.has(x.domain));
+    const total = lessons.length + exercises.length + domains.length;
+    const done = lessons.filter((l) => progress.lessons[l.id]).length +
+      exercises.filter((x) => progress.exercises[x.id]).length +
+      domains.filter((d) => (progress.quiz[d.id] || 0) >= 70).length;
     return Math.round((done / total) * 100);
   }
 
-  // ------------------------------------------------------------------ SQL engine (DuckDB-WASM)
-  const DUCKDB_URL = "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
-  let enginePromise = null;
-
-  function setEngine(state, text) {
+  // ------------------------------------------------------------------ engine status
+  E.onStatus((s) => {
+    let state = "idle", text = "Engines load when needed";
+    if (s.sql === "loading") { state = "loading"; text = "SQL engine loading…"; }
+    if (s.sql === "ready") { state = "ready"; text = "SQL engine ready"; }
+    if (s.python === "loading") { state = "loading"; text = "Python loading…"; }
+    if (s.python === "ready") { state = "ready"; text = "SQL + PySpark ready"; }
+    if (s.sql === "error" || s.python === "error") { state = "error"; text = "Engine unavailable"; }
     $engine.className = "engine " + state;
     $engine.textContent = text;
+  });
+
+  function engineError(e) {
+    return `<div class="feedback bad"><strong>The in-browser engine couldn't load.</strong> It is downloaded from cdn.jsdelivr.net, so you need an internet connection. If you opened the file directly, serve the folder instead (for example <code>python3 -m http.server</code>).<br><span class="muted small">${esc(e.message || e)}</span></div>`;
   }
 
-  function getEngine() {
-    if (enginePromise) return enginePromise;
-    setEngine("loading", "SQL engine loading…");
-    enginePromise = (async () => {
-      const duckdb = await import(DUCKDB_URL);
-      const db = window.TRAINER_DUCKDB_LOCAL
-        ? await instantiateLocal(duckdb, window.TRAINER_DUCKDB_LOCAL)
-        : await instantiateCdn(duckdb);
-      const conn = await db.connect();
-      await loadDataset(conn);
-      setEngine("ready", "SQL engine ready");
-      return conn;
-    })().catch((err) => {
-      enginePromise = null;
-      setEngine("error", "SQL engine unavailable");
-      throw err;
-    });
-    return enginePromise;
-  }
-
-  async function instantiateCdn(duckdb) {
-    const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
-    const workerUrl = URL.createObjectURL(
-      new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }));
-    const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
-    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    URL.revokeObjectURL(workerUrl);
-    return db;
-  }
-
-  // Hosts that only allow fetching same-origin files (e.g. a sandboxed embed) ship the
-  // worker and a gzipped .wasm next to the page; both are turned into blob: URLs here.
-  async function instantiateLocal(duckdb, base) {
-    const get = async (path) => {
-      const res = await fetch(base + path);
-      if (!res.ok) throw new Error(`Couldn't load ${path} (HTTP ${res.status})`);
-      return new Uint8Array(await res.arrayBuffer());
-    };
-    const [workerJs, wasmGz] = await Promise.all([get("duckdb-browser-eh.worker.js"), get("duckdb-eh.gz.wasm")]);
-    // The server may already have decoded the gzip; only decompress if the gzip magic bytes are there.
-    const wasm = wasmGz[0] === 0x1f && wasmGz[1] === 0x8b
-      ? await new Response(new Blob([wasmGz]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()
-      : wasmGz;
-    const workerUrl = URL.createObjectURL(new Blob([workerJs], { type: "text/javascript" }));
-    const wasmUrl = URL.createObjectURL(new Blob([wasm], { type: "application/wasm" }));
-    const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
-    await db.instantiate(wasmUrl);
-    return db;
-  }
-
-  async function loadDataset(conn) {
-    for (const stmt of T.datasetSql) await conn.query(stmt);
-  }
-
-  function formatCell(v, typeName) {
-    if (v === null || v === undefined) return null;
-    if (typeof v === "bigint") v = Number(v);
-    if (/^Date/.test(typeName)) {
-      const d = v instanceof Date ? v : new Date(Number(v));
-      return d.toISOString().slice(0, 10);
-    }
-    if (/^Timestamp/.test(typeName)) {
-      const d = v instanceof Date ? v : new Date(Number(v));
-      return d.toISOString().slice(0, 19).replace("T", " ");
-    }
-    if (typeof v === "number") return String(Math.round(v * 10000) / 10000);
-    if (typeof v === "object") {
-      try { return JSON.stringify(v.toJSON ? v.toJSON() : v); } catch (e) { return String(v); }
-    }
-    return String(v);
-  }
-
-  // Runs one or more statements and returns {columns, rows} for the last one.
-  async function runSql(sql) {
-    const conn = await getEngine();
-    const table = await conn.query(sql);
-    const fields = table.schema.fields;
-    const columns = fields.map((f) => f.name);
-    const rows = [];
-    for (let r = 0; r < table.numRows; r++) {
-      rows.push(fields.map((f, c) => formatCell(table.getChildAt(c).get(r), String(f.type))));
-    }
-    return { columns, rows };
-  }
-
-  function resultTable(res, limit = 200) {
+  function resultTable(res, limit = 200, label = "") {
     if (!res.columns.length) return `<p class="muted">Statement ran. No result set.</p>`;
     const head = res.columns.map((c) => `<th>${esc(c)}</th>`).join("");
     const body = res.rows.slice(0, limit).map((row) =>
       "<tr>" + row.map((v) => v === null ? `<td class="null">NULL</td>` : `<td>${esc(v)}</td>`).join("") + "</tr>"
     ).join("");
-    const more = res.rows.length > limit ? `<p class="muted">Showing ${limit} of ${res.rows.length} rows.</p>` : "";
+    const more = res.rows.length > limit ? ` · showing the first ${limit}` : "";
     return `<div class="table-wrap"><table class="results"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
-      <p class="muted">${res.rows.length} row${res.rows.length === 1 ? "" : "s"}</p>${more}`;
+      <p class="muted small">${label}${res.rows.length} row${res.rows.length === 1 ? "" : "s"}${more}</p>`;
   }
 
-  function compareResults(mine, expected, ordered) {
+  function compareResults(mine, expected, ordered, checkNames) {
     if (mine.columns.length !== expected.columns.length) {
-      return { ok: false, msg: `Your query returns ${mine.columns.length} column(s), but ${expected.columns.length} are expected (${expected.columns.join(", ")}).` };
+      return { ok: false, msg: `Your result has ${mine.columns.length} column(s), but ${expected.columns.length} are expected (${expected.columns.join(", ")}).` };
+    }
+    if (checkNames) {
+      const lower = (cols) => cols.map((c) => c.toLowerCase()).join(", ");
+      if (lower(mine.columns) !== lower(expected.columns)) {
+        return { ok: false, msg: `Your columns are (${mine.columns.join(", ")}), but the expected columns are (${expected.columns.join(", ")}). Use .alias() or .withColumnRenamed() to name them.` };
+      }
     }
     if (mine.rows.length !== expected.rows.length) {
-      return { ok: false, msg: `Your query returns ${mine.rows.length} row(s), but ${expected.rows.length} are expected.` };
+      return { ok: false, msg: `Your result has ${mine.rows.length} row(s), but ${expected.rows.length} are expected.` };
     }
     const key = (row) => JSON.stringify(row);
     const a = mine.rows.map(key), b = expected.rows.map(key);
@@ -171,7 +106,7 @@
       if (a[i] !== b[i]) {
         const sameSet = ordered && a.slice().sort().join("|") === b.slice().sort().join("|");
         return { ok: false, msg: sameSet
-          ? "The rows are right, but the order isn't. Check your ORDER BY."
+          ? "The rows are right, but the order isn't. Check your sorting."
           : "The values don't match the expected result. Check your filters, joins and aggregates. Column order matters too." };
       }
     }
@@ -192,14 +127,45 @@
     return { ok: failures.length === 0, failures };
   }
 
+  // Collects Python output (printed text and display() tables) into a container, in order.
+  function outputSink(el) {
+    let pre = null;
+    return {
+      text(s) {
+        if (!pre) { pre = document.createElement("pre"); pre.className = "stdout"; el.appendChild(pre); }
+        pre.textContent += s;
+      },
+      table(res) {
+        pre = null;
+        const div = document.createElement("div");
+        div.innerHTML = resultTable(res, 1000, "display() · ");
+        el.appendChild(div);
+      },
+      error(msg) {
+        pre = null;
+        const p = document.createElement("pre");
+        p.className = "error";
+        p.textContent = msg;
+        el.appendChild(p);
+      },
+      html(h) {
+        pre = null;
+        const div = document.createElement("div");
+        div.innerHTML = h;
+        el.appendChild(div);
+      }
+    };
+  }
+
   // ------------------------------------------------------------------ editor helpers
   function wireEditor(textarea, onRun) {
     textarea.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
         e.preventDefault();
         const { selectionStart: s, selectionEnd: end, value } = textarea;
-        textarea.value = value.slice(0, s) + "  " + value.slice(end);
-        textarea.selectionStart = textarea.selectionEnd = s + 2;
+        const n = Number(textarea.dataset.indent || 2);
+        textarea.value = value.slice(0, s) + " ".repeat(n) + value.slice(end);
+        textarea.selectionStart = textarea.selectionEnd = s + n;
         textarea.dispatchEvent(new Event("input"));
       } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -209,13 +175,12 @@
   }
 
   // ------------------------------------------------------------------ views
-  function viewHome() {
-    const pct = overallPct();
-    const cards = T.domains.map((d, i) => {
+  function domainCards(domains, label) {
+    return domains.map((d, i) => {
       const s = domainStats(d.id);
       const quiz = s.quizBest === undefined ? "Not taken" : s.quizBest + "%";
       return `<a class="card domain-card" href="#/domain/${d.id}">
-        <div class="domain-num">Domain ${i + 1}</div>
+        <div class="domain-num">${label} ${i + 1}</div>
         <h3>${esc(d.title)}</h3>
         <p>${esc(d.summary)}</p>
         <ul class="stats">
@@ -225,27 +190,38 @@
         </ul>
       </a>`;
     }).join("");
+  }
 
-    const next = T.lessons.find((l) => !progress.lessons[l.id]);
+  function viewHome() {
+    const examPct = trackPct(examDomains), pyPct = trackPct(pyDomains);
+    const examIds = new Set(examDomains.map((d) => d.id));
+    const next = T.lessons.find((l) => examIds.has(l.domain) && !progress.lessons[l.id]);
+    const nextPy = T.lessons.find((l) => !examIds.has(l.domain) && !progress.lessons[l.id]);
     const cta = next
-      ? `<a class="btn primary" href="#/lesson/${next.id}">${Object.keys(progress.lessons).length ? "Continue" : "Start"}: ${esc(next.title)}</a>`
-      : `<a class="btn primary" href="#/quiz/all">Take the mixed practice quiz</a>`;
+      ? `<a class="btn primary" href="#/lesson/${next.id}">${examPct ? "Continue" : "Start"}: ${esc(next.title)}</a>`
+      : `<a class="btn primary" href="#/quiz/all">Take the mixed exam quiz</a>`;
 
     return `<section class="hero">
-        <h1>Databricks Data Engineer Associate trainer</h1>
-        <p class="lead">Study each exam domain with short lessons, check yourself with quizzes, and practise SQL on real tables that run in your browser.</p>
-        <div class="progress-row">
-          <div class="bar"><div style="width:${pct}%"></div></div>
-          <span>${pct}% complete</span>
-        </div>
+        <h1>Databricks Data Engineer trainer</h1>
+        <p class="lead">Prepare for the Data Engineer Associate exam and learn PySpark with short lessons, quizzes, and SQL and PySpark that run in your browser.</p>
         <div class="actions">${cta}
           <a class="btn" href="#/exercises">Hands-on exercises</a>
+          <a class="btn" href="#/pyspark">PySpark sandbox</a>
           <a class="btn" href="#/sandbox">SQL sandbox</a>
         </div>
       </section>
-      <h2>Exam domains</h2>
-      <div class="grid">${cards}</div>
-      <p class="muted small">Progress is saved in this browser only. A domain counts as complete once you score 70% or more on its quiz. Content is based on the public exam guide topics; check the <a href="https://www.databricks.com/learn/certification/data-engineer-associate" target="_blank" rel="noopener">official exam page</a> for the current outline.</p>`;
+      <div class="track-head">
+        <h2>Exam domains</h2>
+        <div class="progress-row"><div class="bar"><div style="width:${examPct}%"></div></div><span>${examPct}%</span></div>
+      </div>
+      <div class="grid">${domainCards(examDomains, "Domain")}</div>
+      <div class="track-head">
+        <h2>PySpark track</h2>
+        <div class="progress-row"><div class="bar"><div style="width:${pyPct}%"></div></div><span>${pyPct}%</span></div>
+      </div>
+      <p class="muted">Write real PySpark (<code>spark.table</code>, <code>pyspark.sql.functions</code>, <code>Window</code>) and run it in the browser. ${nextPy ? `Next up: <a href="#/lesson/${nextPy.id}">${esc(nextPy.title)}</a>.` : ""}</p>
+      <div class="grid two">${domainCards(pyDomains, "Module")}</div>
+      <p class="muted small">Progress is saved in this browser only. A domain or module counts as complete once you score 70% or more on its quiz. Exam content follows the public exam guide topics; check the <a href="https://www.databricks.com/learn/certification/data-engineer-associate" target="_blank" rel="noopener">official exam page</a> for the current outline.</p>`;
   }
 
   function viewDomain(id) {
@@ -257,7 +233,7 @@
     ).join("");
     const exercises = T.exercises.filter((x) => x.domain === id).map(exerciseRow).join("");
     const nq = T.questions.filter((q) => q.domain === id).length;
-    return `<nav class="crumbs"><a href="#/">Home</a> / ${esc(d.title)}</nav>
+    return `<nav class="crumbs"><a href="#/">Home</a> / ${d.track ? "PySpark / " : ""}${esc(d.title)}</nav>
       <h1>${esc(d.title)}</h1>
       <p class="lead">${esc(d.summary)}</p>
       <h2>Lessons</h2><ul class="list">${lessons}</ul>
@@ -282,6 +258,19 @@
         progress.lessons[id] = true; save();
         location.hash = sameDomainNext ? `#/lesson/${next.id}` : `#/quiz/${l.domain}`;
       });
+      // "Try it" buttons copy a runnable example into the PySpark sandbox.
+      document.querySelectorAll(".lesson pre[data-try]").forEach((pre) => {
+        const btn = document.createElement("button");
+        btn.className = "btn try";
+        btn.type = "button";
+        btn.textContent = "Try it in the sandbox";
+        btn.addEventListener("click", () => {
+          progress.drafts.__pysandbox = pre.textContent;
+          save();
+          location.hash = "#/pyspark";
+        });
+        pre.insertAdjacentElement("afterend", btn);
+      });
     });
     return `<nav class="crumbs"><a href="#/">Home</a> / <a href="#/domain/${d.id}">${esc(d.title)}</a></nav>
       <article class="lesson">
@@ -290,24 +279,35 @@
         ${l.body}
       </article>
       <div class="lesson-nav">
-        ${prev ? `<a class="btn" href="#/lesson/${prev.id}">← ${esc(prev.title)}</a>` : "<span></span>"}
+        ${prev && prev.domain === l.domain ? `<a class="btn" href="#/lesson/${prev.id}">← ${esc(prev.title)}</a>` : "<span></span>"}
         <button id="mark-done" class="btn primary">${sameDomainNext ? "Mark complete & next →" : "Mark complete & take the quiz →"}</button>
       </div>`;
   }
 
   // ---------------- quiz
+  const MIXED = {
+    all: { title: "Mixed exam quiz", domains: examDomains },
+    "py-all": { title: "Mixed PySpark quiz", domains: pyDomains }
+  };
+
   function viewQuiz(scope) {
-    const isAll = scope === "all";
-    const d = isAll ? null : domainById(scope);
-    if (!isAll && !d) return viewNotFound();
-    const pool = isAll ? shuffle(T.questions).slice(0, 20) : shuffle(T.questions.filter((q) => q.domain === scope));
+    const mixed = MIXED[scope];
+    const d = mixed ? null : domainById(scope);
+    if (!mixed && !d) return viewNotFound();
+    let pool;
+    if (mixed) {
+      const ids = new Set(mixed.domains.map((x) => x.id));
+      pool = shuffle(T.questions.filter((q) => ids.has(q.domain))).slice(0, 20);
+    } else {
+      pool = shuffle(T.questions.filter((q) => q.domain === scope));
+    }
     // Shuffle answer options, keeping track of the correct one.
     const qs = pool.map((q) => {
       const order = shuffle(q.options.map((_, i) => i));
       return Object.assign({}, q, { options: order.map((i) => q.options[i]), answer: order.indexOf(q.answer) });
     });
     const state = { i: 0, answers: [] };
-    const title = isAll ? "Mixed practice quiz" : d.title + " quiz";
+    const title = mixed ? mixed.title : d.title + " quiz";
 
     function renderQuestion() {
       const q = qs[state.i];
@@ -327,7 +327,7 @@
         : "";
       const body = document.getElementById("quiz-body");
       body.innerHTML = `<div class="quiz-meta"><span>Question ${state.i + 1} of ${qs.length}</span>
-          ${isAll ? `<span class="tag">${esc(domainById(q.domain).short)}</span>` : ""}</div>
+          ${mixed ? `<span class="tag">${esc(domainById(q.domain).short)}</span>` : ""}</div>
         <div class="bar thin"><div style="width:${(state.i / qs.length) * 100}%"></div></div>
         <p class="question">${fmt(q.q)}</p>
         ${q.code ? `<pre><code>${esc(q.code)}</code></pre>` : ""}
@@ -343,7 +343,7 @@
     function renderResults() {
       const correct = qs.filter((q, i) => state.answers[i] === q.answer).length;
       const pct = Math.round((correct / qs.length) * 100);
-      if (!isAll) {
+      if (!mixed) {
         progress.quiz[scope] = Math.max(progress.quiz[scope] || 0, pct);
         save();
       }
@@ -364,43 +364,58 @@
       document.getElementById("quiz-body").innerHTML = `
         <div class="score ${pct >= 70 ? "good" : "bad"}"><div class="big">${pct}%</div>
           <div>${correct} of ${qs.length} correct · ${pct >= 70 ? "Passing level. Nice work." : "Below the 70% target. Review the lessons and try again."}</div></div>
-        ${isAll ? `<h3>By domain</h3><ul class="breakdown">${byDomain}</ul>` : ""}
+        ${mixed ? `<h3>By topic</h3><ul class="breakdown">${byDomain}</ul>` : ""}
         <div class="actions"><a class="btn primary" href="#/quiz/${scope}" id="retry">Try again</a>
-          <a class="btn" href="${isAll ? "#/" : "#/domain/" + scope}">${isAll ? "Home" : "Back to domain"}</a></div>
+          <a class="btn" href="${mixed ? "#/" : "#/domain/" + scope}">${mixed ? "Home" : "Back to " + (d.track ? "module" : "domain")}</a></div>
         ${missed.length ? `<h3>Review your mistakes</h3>${review}` : ""}`;
       document.getElementById("retry").addEventListener("click", (e) => { e.preventDefault(); render(true); });
     }
 
     setTimeout(renderQuestion);
-    return `<nav class="crumbs"><a href="#/">Home</a> / ${isAll ? "Practice" : `<a href="#/domain/${d.id}">${esc(d.title)}</a>`}</nav>
+    return `<nav class="crumbs"><a href="#/">Home</a> / ${mixed ? "Practice" : `<a href="#/domain/${d.id}">${esc(d.title)}</a>`}</nav>
       <h1>${esc(title)}</h1><div class="card quiz" id="quiz-body"></div>`;
   }
 
   // ---------------- exercises
   function exerciseRow(x) {
     const status = progress.exercises[x.id] ? '<span class="tick">✓</span>' : '<span class="dot"></span>';
-    const kind = x.kind === "sql" ? '<span class="tag run">Runs SQL</span>' : `<span class="tag">${x.lang === "python" ? "PySpark" : "Spark SQL"} pattern</span>`;
+    const kind = x.kind === "sql" ? '<span class="tag run">Runs SQL</span>'
+      : x.kind === "python" ? '<span class="tag run">Runs PySpark</span>'
+      : `<span class="tag">${x.lang === "python" ? "PySpark" : "Spark SQL"} syntax</span>`;
     return `<li><a href="#/exercise/${x.id}">${status}${esc(x.title)}</a><span class="row-tags">${kind}<span class="tag level-${x.level.toLowerCase()}">${x.level}</span></span></li>`;
   }
 
   function viewExercises() {
-    const sql = T.exercises.filter((x) => x.kind === "sql").map(exerciseRow).join("");
-    const pat = T.exercises.filter((x) => x.kind === "pattern").map(exerciseRow).join("");
-    const done = Object.keys(progress.exercises).length;
+    const rows = (pred) => T.exercises.filter(pred).map(exerciseRow).join("");
+    const isPy = (x) => x.domain.startsWith("py-");
+    const done = Object.keys(progress.exercises).filter((k) => T.exercises.some((x) => x.id === k)).length;
     return `<nav class="crumbs"><a href="#/">Home</a> / Exercises</nav>
       <h1>Hands-on exercises</h1>
       <p class="lead">${done} of ${T.exercises.length} solved.</p>
       <h2>SQL: runs in your browser</h2>
-      <p class="muted">Your query runs on DuckDB-WASM against a small retail dataset. Your results are compared with the expected output. The SQL is portable between DuckDB and Databricks (ANSI SQL plus QUALIFY, count_if and date_trunc).</p>
-      <ul class="list">${sql}</ul>
+      <p class="muted">Your query runs on DuckDB-WASM against a small retail dataset, and the results are compared with the expected output. The SQL works in both DuckDB and Databricks (ANSI SQL plus QUALIFY, count_if and date_trunc).</p>
+      <ul class="list">${rows((x) => x.kind === "sql")}</ul>
+      <h2>PySpark: runs in your browser</h2>
+      <p class="muted">Write PySpark DataFrame code and assign your answer to <code>result</code>. It runs in Python in your browser on the same tables, through a PySpark-compatible API.</p>
+      <ul class="list">${rows((x) => x.kind === "python")}</ul>
       <h2>Spark & Databricks syntax</h2>
-      <p class="muted">Auto Loader, MERGE, pipelines and Unity Catalog can't run in a browser, so these exercises check your code against the required syntax.</p>
-      <ul class="list">${pat}</ul>`;
+      <p class="muted">Auto Loader, MERGE, pipelines, Unity Catalog, file I/O and the Delta Python API need a real cluster, so these exercises check your code against the required syntax.</p>
+      <ul class="list">${rows((x) => x.kind === "pattern" && !isPy(x))}${rows((x) => x.kind === "pattern" && isPy(x))}</ul>`;
   }
 
   function datasetPanel() {
     return `<details class="dataset"><summary>Sample tables</summary><ul>${T.datasetDocs.map((t) =>
       `<li><code>${t.table}</code> (${esc(t.cols)}). <span class="muted">${esc(t.note)}</span></li>`).join("")}</ul></details>`;
+  }
+
+  async function runPythonInto(out, code, namespace) {
+    out.innerHTML = "";
+    const sink = outputSink(out);
+    if (E.status().python !== "ready") sink.html(`<p class="muted">Loading Python and PySpark. The first time downloads about 20 MB…</p>`);
+    const res = await E.runPython(code, sink, namespace);
+    if (out.firstChild && out.firstChild.textContent.startsWith("Loading Python")) out.removeChild(out.firstChild);
+    if (res.error) sink.error(res.error);
+    return { res, sink };
   }
 
   function viewExercise(id) {
@@ -415,6 +430,7 @@
       const ed = document.getElementById("editor");
       const out = document.getElementById("output");
       const verdict = document.getElementById("verdict");
+      if (ex.kind === "python" || ex.lang === "python") ed.dataset.indent = "4";
       ed.value = progress.drafts[id] || ex.starter;
       ed.addEventListener("input", () => { progress.drafts[id] = ed.value; save(); });
 
@@ -427,21 +443,20 @@
       if (ex.kind === "sql") {
         const run = async () => {
           out.innerHTML = `<p class="muted">Running…</p>`;
-          try { out.innerHTML = resultTable(await runSql(ed.value)); }
+          try { out.innerHTML = resultTable(await E.runSql(ed.value)); }
           catch (e) { out.innerHTML = `<pre class="error">${esc(e.message || e)}</pre>`; }
         };
         const check = async () => {
           verdict.innerHTML = `<p class="muted">Checking…</p>`;
           let mine;
           try {
-            await loadDataset(await getEngine()); // start from clean sample data
-            mine = await runSql(ed.value); out.innerHTML = resultTable(mine);
+            await E.resetData(); // start from clean sample data
+            mine = await E.runSql(ed.value); out.innerHTML = resultTable(mine);
           }
           catch (e) { out.innerHTML = `<pre class="error">${esc(e.message || e)}</pre>`; return fail("Your query has an error. See the message below the editor."); }
           try {
-            const conn = await getEngine();
-            await loadDataset(conn); // undo any changes the learner's SQL made
-            const expected = await runSql(ex.solution);
+            await E.resetData(); // undo any changes the learner's SQL made
+            const expected = await E.runSql(ex.solution);
             const r = compareResults(mine, expected, ex.ordered);
             r.ok ? pass() : fail(esc(r.msg));
           } catch (e) { fail("Couldn't check the result: " + esc(e.message || e)); }
@@ -449,7 +464,48 @@
         wireEditor(ed, run);
         document.getElementById("run").addEventListener("click", run);
         document.getElementById("check").addEventListener("click", check);
-        getEngine().catch((e) => { out.innerHTML = engineError(e); });
+        E.duck().catch((e) => { out.innerHTML = engineError(e); });
+      } else if (ex.kind === "python") {
+        const showResult = async (ns, sink) => {
+          const mine = await E.pythonResult(ns);
+          if (!mine.error) sink.html(resultTable({ columns: mine.columns, rows: mine.display }, 200, "<code>result</code> · "));
+          return mine;
+        };
+        const run = async () => {
+          verdict.innerHTML = "";
+          try {
+            await E.resetData();
+            const { res, sink } = await runPythonInto(out, ed.value);
+            if (!res.error) await showResult(res.namespace, sink);
+            res.namespace.destroy();
+          } catch (e) { out.innerHTML = engineError(e); }
+        };
+        const check = async () => {
+          verdict.innerHTML = `<p class="muted">Checking…</p>`;
+          try {
+            await E.resetData();
+            const { res, sink } = await runPythonInto(out, ed.value);
+            if (res.error) { res.namespace.destroy(); return fail("Your code raised an error. See the message below the editor."); }
+            const mine = await showResult(res.namespace, sink);
+            res.namespace.destroy();
+            if (mine.error) return fail(fmt(mine.error));
+            await E.resetData();
+            const sol = await E.runPython(ex.solution, null);
+            if (sol.error) throw new Error(sol.error);
+            const expected = await E.pythonResult(sol.namespace);
+            sol.namespace.destroy();
+            const r = compareResults({ columns: mine.columns, rows: mine.rows }, { columns: expected.columns, rows: expected.rows }, ex.ordered, true);
+            if (!r.ok) return fail(esc(r.msg));
+            const src = stripComments(ed.value, "python");
+            const missing = (ex.requires || []).filter((q) => !new RegExp(q.re, "i").test(src));
+            if (missing.length) return fail("<strong>The result is right, but:</strong> " + missing.map((q) => fmt(q.msg)).join(" "));
+            pass();
+          } catch (e) { fail("Couldn't check your code."); out.innerHTML = engineError(e); }
+        };
+        wireEditor(ed, check);
+        document.getElementById("run").addEventListener("click", run);
+        document.getElementById("check").addEventListener("click", check);
+        E.python().catch((e) => { out.innerHTML = engineError(e); });
       } else {
         const check = () => {
           const r = checkPattern(ex, ed.value);
@@ -473,29 +529,28 @@
       });
     });
 
-    const isSql = ex.kind === "sql";
+    const runs = ex.kind === "sql" || ex.kind === "python";
+    const note = ex.kind === "sql" ? datasetPanel()
+      : ex.kind === "python" ? `${datasetPanel()}<p class="muted small"><code>spark</code> is ready to use. <strong>Run</strong> shows your output, and <strong>Check answer</strong> compares your <code>result</code> DataFrame with the expected one.</p>`
+      : `<p class="muted small">This exercise checks your syntax only. In a real workspace you would run it in a notebook or pipeline.</p>`;
     return `<nav class="crumbs"><a href="#/">Home</a> / <a href="#/exercises">Exercises</a> / ${esc(d.short)}</nav>
       <h1>${esc(ex.title)} ${progress.exercises[id] ? '<span class="tick small">✓ Solved</span>' : ""}</h1>
       <div class="card">
         <p class="prompt">${ex.prompt}</p>
-        ${isSql ? datasetPanel() : `<p class="muted small">This exercise checks your syntax only. In a real workspace you would run it in a notebook or pipeline.</p>`}
+        ${note}
       </div>
-      <textarea id="editor" class="editor" spellcheck="false" aria-label="Code editor"></textarea>
+      <textarea id="editor" class="editor${ex.kind === "python" ? " tall" : ""}" spellcheck="false" aria-label="Code editor"></textarea>
       <div class="toolbar">
-        ${isSql ? `<button id="run" class="btn">Run <kbd>Ctrl</kbd>+<kbd>Enter</kbd></button>` : ""}
-        <button id="check" class="btn primary">Check answer${isSql ? "" : " <kbd>Ctrl</kbd>+<kbd>Enter</kbd>"}</button>
+        ${runs ? `<button id="run" class="btn">Run${ex.kind === "sql" ? " <kbd>Ctrl</kbd>+<kbd>Enter</kbd>" : ""}</button>` : ""}
+        <button id="check" class="btn primary">Check answer${ex.kind === "sql" ? "" : " <kbd>Ctrl</kbd>+<kbd>Enter</kbd>"}</button>
         <button id="hint" class="btn">Hint</button>
         <button id="solution" class="btn ghost">Show solution</button>
         <button id="reset" class="btn ghost">Reset</button>
       </div>
       <ul id="hints" class="hints"></ul>
       <div id="verdict"></div>
-      <div id="output"></div>
+      <div id="output" class="output"></div>
       <div id="solution-box"></div>`;
-  }
-
-  function engineError(e) {
-    return `<div class="feedback bad"><strong>The in-browser SQL engine couldn't load.</strong> It is downloaded from cdn.jsdelivr.net, so you need an internet connection. If you opened the file directly, serve the folder instead (for example <code>python3 -m http.server</code>).<br><span class="muted small">${esc(e.message || e)}</span></div>`;
   }
 
   function viewSandbox() {
@@ -506,16 +561,16 @@
       ed.addEventListener("input", () => { progress.drafts.__sandbox = ed.value; save(); });
       const run = async () => {
         out.innerHTML = `<p class="muted">Running…</p>`;
-        try { out.innerHTML = resultTable(await runSql(ed.value)); }
-        catch (e) { out.innerHTML = e && e.message && /import|fetch|Worker/i.test(e.message) ? engineError(e) : `<pre class="error">${esc(e.message || e)}</pre>`; }
+        try { out.innerHTML = resultTable(await E.runSql(ed.value)); }
+        catch (e) { out.innerHTML = e && e.message && /import|fetch|Worker|load/i.test(e.message) ? engineError(e) : `<pre class="error">${esc(e.message || e)}</pre>`; }
       };
       wireEditor(ed, run);
       document.getElementById("run").addEventListener("click", run);
       document.getElementById("reset-data").addEventListener("click", async () => {
-        try { await loadDataset(await getEngine()); out.innerHTML = `<p class="muted">Sample tables reloaded.</p>`; }
+        try { await E.resetData(); out.innerHTML = `<p class="muted">Sample tables reloaded.</p>`; }
         catch (e) { out.innerHTML = engineError(e); }
       });
-      getEngine().catch((e) => { out.innerHTML = engineError(e); });
+      E.duck().catch((e) => { out.innerHTML = engineError(e); });
     });
     return `<nav class="crumbs"><a href="#/">Home</a> / SQL sandbox</nav>
       <h1>SQL sandbox</h1>
@@ -529,13 +584,55 @@
       <div id="output"></div>`;
   }
 
+  // The PySpark sandbox keeps one Python namespace, like a notebook session.
+  let pySession = null;
+
+  function viewPySandbox() {
+    setTimeout(() => {
+      const ed = document.getElementById("editor");
+      const out = document.getElementById("output");
+      ed.dataset.indent = "4";
+      ed.value = progress.drafts.__pysandbox || "from pyspark.sql import functions as F\n\norders = spark.table(\"orders\")\norders.printSchema()\n\ndisplay(orders.groupBy(\"status\").count().orderBy(F.desc(\"count\")))";
+      ed.addEventListener("input", () => { progress.drafts.__pysandbox = ed.value; save(); });
+      const run = async () => {
+        try {
+          if (!pySession) pySession = await E.newNamespace();
+          await runPythonInto(out, ed.value, pySession);
+        } catch (e) { out.innerHTML = engineError(e); }
+      };
+      wireEditor(ed, run);
+      document.getElementById("run").addEventListener("click", run);
+      document.getElementById("reset-session").addEventListener("click", async () => {
+        try {
+          if (pySession) { pySession.destroy(); pySession = null; }
+          await E.resetData();
+          out.innerHTML = `<p class="muted">Session cleared and sample tables reloaded.</p>`;
+        } catch (e) { out.innerHTML = engineError(e); }
+      });
+      E.python().catch((e) => { out.innerHTML = engineError(e); });
+    });
+    return `<nav class="crumbs"><a href="#/">Home</a> / PySpark sandbox</nav>
+      <h1>PySpark sandbox</h1>
+      <p class="lead">A notebook-style session with <code>spark</code> ready to use. Variables persist between runs until you reset the session.</p>
+      ${datasetPanel()}
+      <details class="dataset"><summary>What works here</summary>
+        <p class="small">DataFrame transformations and actions, <code>pyspark.sql.functions</code>, <code>Window</code>, <code>Row</code>, <code>pyspark.sql.types</code>, <code>spark.sql</code>, temp views and <code>saveAsTable</code>, plus <code>display()</code>. Queries run on DuckDB through a PySpark-compatible layer, so results match Spark for these APIs, but <code>explain()</code> shows DuckDB's plan. File reads and writes, Delta's Python API, streaming, RDDs and Python UDFs need a real cluster and raise a clear error.</p>
+      </details>
+      <textarea id="editor" class="editor tall" spellcheck="false" aria-label="Python editor"></textarea>
+      <div class="toolbar">
+        <button id="run" class="btn primary">Run <kbd>Ctrl</kbd>+<kbd>Enter</kbd></button>
+        <button id="reset-session" class="btn ghost">Reset session</button>
+      </div>
+      <div id="output" class="output"></div>`;
+  }
+
   function viewNotFound() {
     return `<h1>Page not found</h1><p><a href="#/">Back to home</a></p>`;
   }
 
   // ------------------------------------------------------------------ nav + router
   function renderNav(route) {
-    const links = T.domains.map((d, i) => {
+    const group = (domains) => domains.map((d, i) => {
       const s = domainStats(d.id);
       const active = route.domain === d.id ? " active" : "";
       const lessons = T.lessons.filter((l) => l.domain === d.id).map((l) =>
@@ -543,13 +640,17 @@
       return `<div class="nav-group"><a class="nav-domain${active}" href="#/domain/${d.id}"><span class="num">${i + 1}</span>${esc(d.short)}
           <span class="mini">${s.lessonsDone}/${s.lessons}</span></a>${route.domain === d.id ? lessons : ""}</div>`;
     }).join("");
+    const top = (name, href, label) => `<a class="nav-top${route.name === name ? " active" : ""}" href="${href}">${label}</a>`;
     document.getElementById("nav").innerHTML = `
-      <a class="nav-top${route.name === "home" ? " active" : ""}" href="#/">Overview</a>
-      <div class="nav-label">Domains</div>${links}
+      ${top("home", "#/", "Overview")}
+      <div class="nav-label">Exam domains</div>${group(examDomains)}
+      ${top("quiz-all", "#/quiz/all", "Mixed exam quiz")}
+      <div class="nav-label">PySpark track</div>${group(pyDomains)}
+      ${top("quiz-py-all", "#/quiz/py-all", "Mixed PySpark quiz")}
       <div class="nav-label">Practice</div>
-      <a class="nav-top${route.name === "exercises" ? " active" : ""}" href="#/exercises">Exercises</a>
-      <a class="nav-top${route.name === "quiz-all" ? " active" : ""}" href="#/quiz/all">Mixed quiz</a>
-      <a class="nav-top${route.name === "sandbox" ? " active" : ""}" href="#/sandbox">SQL sandbox</a>
+      ${top("exercises", "#/exercises", "Exercises")}
+      ${top("pyspark", "#/pyspark", "PySpark sandbox")}
+      ${top("sandbox", "#/sandbox", "SQL sandbox")}
       <button class="nav-reset" id="reset-progress">Reset progress</button>`;
     // Two-step confirm in the page itself (no confirm() dialog, which embedded viewers suppress).
     const resetBtn = document.getElementById("reset-progress");
@@ -572,13 +673,14 @@
         const l = T.lessons.find((x) => x.id === b);
         return { name: "lesson", lesson: b, domain: l && l.domain, view: () => viewLesson(b) };
       }
-      case "quiz": return { name: b === "all" ? "quiz-all" : "quiz", domain: b, view: () => viewQuiz(b) };
+      case "quiz": return { name: MIXED[b] ? "quiz-" + b : "quiz", domain: b, view: () => viewQuiz(b) };
       case "exercises": return { name: "exercises", view: viewExercises };
       case "exercise": {
         const x = T.exercises.find((e) => e.id === b);
         return { name: "exercises", domain: x && x.domain, view: () => viewExercise(b) };
       }
       case "sandbox": return { name: "sandbox", view: viewSandbox };
+      case "pyspark": return { name: "pyspark", view: viewPySandbox };
       default: return { name: "home", view: viewHome };
     }
   }

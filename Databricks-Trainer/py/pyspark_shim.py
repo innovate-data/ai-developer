@@ -1,0 +1,2498 @@
+"""A small PySpark-compatible DataFrame API for the in-browser trainer.
+
+DataFrame operations are compiled to SQL and run on DuckDB (DuckDB-WASM in the
+browser). It covers the commonly used part of pyspark.sql: DataFrame
+transformations and actions, Column expressions, pyspark.sql.functions, Window,
+Row and pyspark.sql.types. Things that need a real cluster (file I/O, Delta,
+streaming, RDDs, Python UDFs) raise a clear error instead.
+
+The host provides one function, `query_json(sql) -> str`, returning
+{"columns": [...], "kinds": [...], "rows": [[...], ...]} where kinds are
+"int", "float", "string", "bool", "date", "timestamp", "list", "struct" or "other",
+dates/timestamps are ISO strings and decimals are plain numbers.
+"""
+
+import datetime
+import itertools
+import json
+import re
+import sys
+import traceback
+import types as _pytypes
+
+_host = {"query": None, "display": None}
+
+_LONG_MIN = -(1 << 63)
+_LONG_MAX = (1 << 63) - 1
+_BT = chr(96)  # backtick
+
+
+# --------------------------------------------------------------------------- errors
+
+class AnalysisException(Exception):
+    """Raised when a query can't be analyzed (unknown column, type mismatch, ...)."""
+
+
+class PySparkTypeError(TypeError):
+    pass
+
+
+class PySparkValueError(ValueError):
+    pass
+
+
+class NotAvailableInTrainer(Exception):
+    """Raised for Spark features that need a real cluster."""
+
+
+_FILES_MSG = ("Reading and writing files needs a Databricks cluster. In this trainer the sample "
+              "tables are already loaded: try spark.table(\"orders\"), or build data with "
+              "spark.createDataFrame(...).")
+
+
+def _clean_error(msg):
+    msg = str(msg)
+    m = re.search(r'Referenced column "(.+?)" not found in FROM clause!(?:\s*Candidate bindings: (.*))?', msg)
+    if m:
+        hint = ""
+        if m.group(2):
+            names = re.findall(r'"([^"]+)"', m.group(2).splitlines()[0])
+            names = [n.split(".")[-1] for n in names]
+            if names:
+                hint = " Did you mean one of the following? [" + ", ".join(f"`{n}`" for n in names) + "]."
+        return (f"[UNRESOLVED_COLUMN.WITH_SUGGESTION] A column or function parameter with name `{m.group(1)}` "
+                f"cannot be resolved.{hint}")
+    m = re.search(r'Table with name (\S+) does not exist', msg)
+    if m:
+        return (f"[TABLE_OR_VIEW_NOT_FOUND] The table or view `{m.group(1)}` cannot be found. "
+                "The sample tables are customers, products, orders, order_items, bronze_events and carts.")
+    m = re.search(r"((?:Binder|Parser|Catalog|Conversion|Invalid Input|Not implemented|Constraint|"
+                  r"Out of Range|Invalid|Dependency|Syntax) Error: .*)", msg, re.S)
+    if m:
+        msg = m.group(1)
+    return msg.strip().splitlines()[0]
+
+
+def _run(sql):
+    try:
+        return json.loads(_host["query"](sql))
+    except AnalysisException:
+        raise
+    except Exception as e:  # JsException or duckdb.Error
+        raise AnalysisException(_clean_error(e)) from None
+
+
+# --------------------------------------------------------------------------- SQL helpers
+
+def _qi(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _clean_name(n):
+    n = str(n)
+    if len(n) > 1 and n[0] == _BT and n[-1] == _BT:
+        return n[1:-1]
+    return n
+
+
+def _table_ident(name):
+    # Unity Catalog style names (main.sales.orders) map to the sample tables by their last part.
+    return _qi(_clean_name(str(name).split(".")[-1]))
+
+
+_REF = re.compile("\x00([^\x01]*)\x01([^\x02]*)\x02")
+
+
+def _ref(alias, name):
+    return f"\x00{alias}\x01{name}\x02"
+
+
+def _resolve(sql, scope):
+    return _REF.sub(lambda m: (_qi(m.group(1)) + "." + _qi(m.group(2)))
+                    if m.group(1) in scope else _qi(m.group(2)), sql)
+
+
+def _lit_sql(v, data=False):
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, int):
+        return f"CAST({v} AS BIGINT)" if data else str(v)
+    if isinstance(v, float):
+        if v != v:
+            return "CAST('NaN' AS DOUBLE)"
+        if v in (float("inf"), float("-inf")):
+            return f"CAST('{'-' if v < 0 else ''}Infinity' AS DOUBLE)"
+        return f"CAST({v!r} AS DOUBLE)"
+    if isinstance(v, str):
+        return "'" + v.replace("'", "''") + "'"
+    if isinstance(v, datetime.datetime):
+        return f"TIMESTAMP '{v.isoformat(sep=' ')}'"
+    if isinstance(v, datetime.date):
+        return f"DATE '{v.isoformat()}'"
+    if isinstance(v, Row) and v._fields:
+        return "{" + ", ".join(f"'{k}': {_lit_sql(x, data)}" for k, x in zip(v._fields, v)) + "}"
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"'{k}': {_lit_sql(x, data)}" for k, x in v.items()) + "}"
+    if isinstance(v, (list, tuple)):
+        return "[" + ", ".join(_lit_sql(x, data) for x in v) + "]"
+    try:
+        import decimal
+        if isinstance(v, decimal.Decimal):
+            return f"CAST('{v}' AS DOUBLE)"
+    except ImportError:
+        pass
+    raise PySparkTypeError(f"Unsupported literal type: {type(v).__name__}")
+
+
+def _lit_name(v):
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
+
+
+# --------------------------------------------------------------------------- types
+
+class DataType:
+    _duck_name = "VARCHAR"
+    _simple = "string"
+    _type_name = "string"
+
+    def simpleString(self):
+        return self._simple
+
+    def typeName(self):
+        return self._type_name
+
+    def _duck(self):
+        return self._duck_name
+
+    def __repr__(self):
+        return type(self).__name__ + "()"
+
+    def __eq__(self, other):
+        return type(self) is type(other) and repr(self) == repr(other)
+
+    def __hash__(self):
+        return hash(repr(self))
+
+
+def _simple_type(cls_name, duck, simple, tname):
+    return type(cls_name, (DataType,), {"_duck_name": duck, "_simple": simple, "_type_name": tname})
+
+
+StringType = _simple_type("StringType", "VARCHAR", "string", "string")
+IntegerType = _simple_type("IntegerType", "INTEGER", "int", "integer")
+LongType = _simple_type("LongType", "BIGINT", "bigint", "long")
+ShortType = _simple_type("ShortType", "SMALLINT", "smallint", "short")
+ByteType = _simple_type("ByteType", "TINYINT", "tinyint", "byte")
+DoubleType = _simple_type("DoubleType", "DOUBLE", "double", "double")
+FloatType = _simple_type("FloatType", "FLOAT", "float", "float")
+BooleanType = _simple_type("BooleanType", "BOOLEAN", "boolean", "boolean")
+DateType = _simple_type("DateType", "DATE", "date", "date")
+TimestampType = _simple_type("TimestampType", "TIMESTAMP", "timestamp", "timestamp")
+NullType = _simple_type("NullType", "VARCHAR", "void", "void")
+
+
+class DecimalType(DataType):
+    def __init__(self, precision=10, scale=0):
+        self.precision, self.scale = precision, scale
+
+    def simpleString(self):
+        return f"decimal({self.precision},{self.scale})"
+
+    typeName = simpleString
+
+    def _duck(self):
+        return f"DECIMAL({self.precision},{self.scale})"
+
+    def __repr__(self):
+        return f"DecimalType({self.precision}, {self.scale})"
+
+
+class ArrayType(DataType):
+    def __init__(self, elementType, containsNull=True):
+        self.elementType, self.containsNull = elementType, containsNull
+
+    def simpleString(self):
+        return f"array<{self.elementType.simpleString()}>"
+
+    def typeName(self):
+        return "array"
+
+    def _duck(self):
+        return self.elementType._duck() + "[]"
+
+    def __repr__(self):
+        return f"ArrayType({self.elementType!r}, {self.containsNull})"
+
+
+class MapType(DataType):
+    def __init__(self, keyType, valueType, valueContainsNull=True):
+        self.keyType, self.valueType = keyType, valueType
+
+    def simpleString(self):
+        return f"map<{self.keyType.simpleString()},{self.valueType.simpleString()}>"
+
+    def typeName(self):
+        return "map"
+
+    def _duck(self):
+        return f"MAP({self.keyType._duck()}, {self.valueType._duck()})"
+
+    def __repr__(self):
+        return f"MapType({self.keyType!r}, {self.valueType!r})"
+
+
+class StructField:
+    def __init__(self, name, dataType, nullable=True, metadata=None):
+        self.name, self.dataType, self.nullable = name, dataType, nullable
+
+    def simpleString(self):
+        return f"{self.name}:{self.dataType.simpleString()}"
+
+    def __repr__(self):
+        return f"StructField('{self.name}', {self.dataType!r}, {self.nullable})"
+
+    def __eq__(self, other):
+        return isinstance(other, StructField) and repr(self) == repr(other)
+
+
+class StructType(DataType):
+    def __init__(self, fields=None):
+        self.fields = list(fields or [])
+
+    def add(self, field, data_type=None, nullable=True, metadata=None):
+        if isinstance(field, StructField):
+            self.fields.append(field)
+        else:
+            if isinstance(data_type, str):
+                data_type = _parse_spark_type(data_type)
+            self.fields.append(StructField(field, data_type, nullable))
+        return self
+
+    def fieldNames(self):
+        return [f.name for f in self.fields]
+
+    @property
+    def names(self):
+        return self.fieldNames()
+
+    def simpleString(self):
+        return "struct<" + ",".join(f.simpleString() for f in self.fields) + ">"
+
+    def typeName(self):
+        return "struct"
+
+    def _duck(self):
+        return "STRUCT(" + ", ".join(f"{_qi(f.name)} {f.dataType._duck()}" for f in self.fields) + ")"
+
+    def __iter__(self):
+        return iter(self.fields)
+
+    def __len__(self):
+        return len(self.fields)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.fields[key]
+        for f in self.fields:
+            if f.name == key:
+                return f
+        raise KeyError(key)
+
+    def __repr__(self):
+        return "StructType([" + ", ".join(repr(f) for f in self.fields) + "])"
+
+
+_SPARK_TYPE_ALIASES = {
+    "string": StringType, "varchar": StringType, "char": StringType,
+    "int": IntegerType, "integer": IntegerType, "bigint": LongType, "long": LongType,
+    "smallint": ShortType, "short": ShortType, "tinyint": ByteType, "byte": ByteType,
+    "double": DoubleType, "float": FloatType, "real": FloatType,
+    "boolean": BooleanType, "bool": BooleanType, "date": DateType,
+    "timestamp": TimestampType, "timestamp_ntz": TimestampType, "void": NullType,
+}
+
+
+def _split_top(s, sep=","):
+    out, depth, cur = [], 0, ""
+    for ch in s:
+        if ch in "<(":
+            depth += 1
+        elif ch in ">)":
+            depth -= 1
+        if ch == sep and depth == 0:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur)
+    return [x.strip() for x in out]
+
+
+def _parse_spark_type(s):
+    s = s.strip()
+    low = s.lower()
+    if low in _SPARK_TYPE_ALIASES:
+        return _SPARK_TYPE_ALIASES[low]()
+    m = re.fullmatch(r"(?:decimal|numeric|dec)\s*(?:\((\d+)\s*,\s*(\d+)\))?", low)
+    if m:
+        return DecimalType(int(m.group(1) or 10), int(m.group(2) or 0))
+    m = re.fullmatch(r"array\s*<(.*)>", s, re.I | re.S)
+    if m:
+        return ArrayType(_parse_spark_type(m.group(1)))
+    m = re.fullmatch(r"map\s*<(.*)>", s, re.I | re.S)
+    if m:
+        k, v = _split_top(m.group(1))
+        return MapType(_parse_spark_type(k), _parse_spark_type(v))
+    m = re.fullmatch(r"struct\s*<(.*)>", s, re.I | re.S)
+    if m:
+        fields = []
+        for part in _split_top(m.group(1)):
+            name, typ = re.split(r"\s*:\s*|\s+", part, maxsplit=1)
+            fields.append(StructField(_clean_name(name), _parse_spark_type(typ)))
+        return StructType(fields)
+    raise PySparkValueError(f"Unsupported data type: {s}")
+
+
+def _parse_ddl(ddl):
+    fields = []
+    for part in _split_top(ddl):
+        name, typ = re.split(r"\s*:\s*|\s+", part.strip(), maxsplit=1)
+        fields.append(StructField(_clean_name(name), _parse_spark_type(typ)))
+    return StructType(fields)
+
+
+def _duck_type(t):
+    if isinstance(t, DataType):
+        return t._duck()
+    if isinstance(t, type) and issubclass(t, DataType):
+        return t()._duck()
+    return _parse_spark_type(str(t))._duck()
+
+
+def _from_duck_type(t):
+    """DuckDB type string -> Spark DataType."""
+    t = t.strip()
+    up = t.upper()
+    if up.endswith("[]"):
+        return ArrayType(_from_duck_type(t[:-2]))
+    simple = {
+        "VARCHAR": StringType, "INTEGER": IntegerType, "BIGINT": LongType, "HUGEINT": LongType,
+        "SMALLINT": ShortType, "TINYINT": ByteType, "UINTEGER": LongType, "UBIGINT": LongType,
+        "DOUBLE": DoubleType, "FLOAT": FloatType, "BOOLEAN": BooleanType, "DATE": DateType,
+        "TIMESTAMP": TimestampType, "TIMESTAMP WITH TIME ZONE": TimestampType, '"NULL"': NullType,
+        "NULL": NullType,
+    }
+    if up in simple:
+        return simple[up]()
+    m = re.fullmatch(r"DECIMAL\((\d+),\s*(\d+)\)", up)
+    if m:
+        p, s = int(m.group(1)), int(m.group(2))
+        return LongType() if s == 0 and p == 38 else DecimalType(p, s)
+    m = re.fullmatch(r"STRUCT\((.*)\)", t, re.S | re.I)
+    if m:
+        fields = []
+        for part in _split_top(m.group(1)):
+            pm = re.match(r'("(?:[^"]|"")*"|\S+)\s+(.*)', part, re.S)
+            name = pm.group(1)
+            if name.startswith('"'):
+                name = name[1:-1].replace('""', '"')
+            fields.append(StructField(name, _from_duck_type(pm.group(2))))
+        return StructType(fields)
+    m = re.fullmatch(r"MAP\((.*)\)", t, re.S | re.I)
+    if m:
+        k, v = _split_top(m.group(1))
+        return MapType(_from_duck_type(k), _from_duck_type(v))
+    return StringType()
+
+
+# --------------------------------------------------------------------------- Row
+
+class Row(tuple):
+    """A row of data, accessible by position, attribute or key."""
+
+    def __new__(cls, *args, **kwargs):
+        if args and kwargs:
+            raise ValueError("Can not use both args and kwargs to create Row")
+        if kwargs:
+            r = tuple.__new__(cls, kwargs.values())
+            r._fields = list(kwargs.keys())
+        else:
+            r = tuple.__new__(cls, args)
+            r._fields = None
+        return r
+
+    @classmethod
+    def _make(cls, fields, values):
+        r = tuple.__new__(cls, values)
+        r._fields = list(fields)
+        return r
+
+    def __call__(self, *values):
+        # Row("a", "b")(1, 2) creates Row(a=1, b=2)
+        return Row._make(list(self), values)
+
+    def asDict(self, recursive=False):
+        if not self._fields:
+            raise TypeError("Cannot convert a Row class into dict")
+        def conv(v):
+            if recursive and isinstance(v, Row) and v._fields:
+                return v.asDict(True)
+            if recursive and isinstance(v, list):
+                return [conv(x) for x in v]
+            return v
+        return {k: conv(v) for k, v in zip(self._fields, self)}
+
+    def __getattr__(self, item):
+        if item.startswith("__") or item == "_fields":
+            raise AttributeError(item)
+        fields = self.__dict__.get("_fields") or []
+        if item in fields:
+            return tuple.__getitem__(self, fields.index(item))
+        raise AttributeError(item)
+
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            fields = self._fields or []
+            if item in fields:
+                return tuple.__getitem__(self, fields.index(item))
+            raise KeyError(item)
+        return tuple.__getitem__(self, item)
+
+    def __contains__(self, item):
+        return item in (self._fields or tuple(self))
+
+    def __repr__(self):
+        if self._fields:
+            return "Row(" + ", ".join(f"{k}={v!r}" for k, v in zip(self._fields, self)) + ")"
+        return "<Row(" + ", ".join(repr(v) for v in self) + ")>"
+
+
+# --------------------------------------------------------------------------- Column
+
+class Column:
+    """An expression over the rows of a DataFrame."""
+
+    def __init__(self, sql, name=None, agg=None, order=None):
+        self._sql = sql
+        self._name = sql if name is None else name
+        self._agg = agg      # (template(arg_sql) -> sql, arg_sql) for aggregate functions
+        self._order = order  # "ASC NULLS FIRST" etc. when used for sorting
+
+    def _with(self, **kw):
+        c = Column(self._sql, self._name, self._agg, self._order)
+        for k, v in kw.items():
+            setattr(c, "_" + k, v)
+        return c
+
+    def __repr__(self):
+        return f"Column<'{self._name}'>"
+
+    def __bool__(self):
+        raise PySparkValueError(
+            "Cannot convert column into bool: please use '&' for 'and', '|' for 'or', "
+            "'~' for 'not' when building DataFrame boolean expressions.")
+
+    __nonzero__ = __bool__
+
+    def __iter__(self):
+        raise PySparkTypeError("Column is not iterable")
+
+    def __contains__(self, item):
+        raise PySparkValueError("Cannot apply 'in' operator against a column: please use 'contains' "
+                                "in a string column or 'array_contains' function for an array column.")
+
+    __hash__ = object.__hash__
+
+    # -- operators
+    def _bin(self, other, op, label=None, reverse=False):
+        o = _to_col_lit(other)
+        a, b = (o, self) if reverse else (self, o)
+        return Column(f"({a._sql} {op} {b._sql})", f"({a._name} {label or op} {b._name})")
+
+    def __eq__(self, o): return self._bin(o, "=")
+    def __ne__(self, o): return self._bin(o, "!=")
+    def __lt__(self, o): return self._bin(o, "<")
+    def __le__(self, o): return self._bin(o, "<=")
+    def __gt__(self, o): return self._bin(o, ">")
+    def __ge__(self, o): return self._bin(o, ">=")
+    def __and__(self, o): return self._bin(o, "AND")
+    def __or__(self, o): return self._bin(o, "OR")
+    def __rand__(self, o): return self._bin(o, "AND", reverse=True)
+    def __ror__(self, o): return self._bin(o, "OR", reverse=True)
+    def __add__(self, o): return self._bin(o, "+")
+    def __sub__(self, o): return self._bin(o, "-")
+    def __mul__(self, o): return self._bin(o, "*")
+    def __truediv__(self, o): return self._bin(o, "/")
+    def __mod__(self, o): return self._bin(o, "%")
+    def __pow__(self, o): return Column(f"pow({self._sql}, {_to_col_lit(o)._sql})", f"POWER({self._name}, {_to_col_lit(o)._name})")
+    def __radd__(self, o): return self._bin(o, "+", reverse=True)
+    def __rsub__(self, o): return self._bin(o, "-", reverse=True)
+    def __rmul__(self, o): return self._bin(o, "*", reverse=True)
+    def __rtruediv__(self, o): return self._bin(o, "/", reverse=True)
+    def __rmod__(self, o): return self._bin(o, "%", reverse=True)
+    def __neg__(self): return Column(f"(- {self._sql})", f"(- {self._name})")
+    def __invert__(self): return Column(f"(NOT {self._sql})", f"(NOT {self._name})")
+
+    # -- naming and types
+    def alias(self, *alias, **kwargs):
+        return self._with(name=str(alias[0]))
+
+    name = alias
+
+    def cast(self, dataType):
+        return Column(f"TRY_CAST({self._sql} AS {_duck_type(dataType)})", self._name)
+
+    astype = cast
+
+    # -- predicates
+    def isNull(self): return Column(f"({self._sql} IS NULL)", f"({self._name} IS NULL)")
+    def isNotNull(self): return Column(f"({self._sql} IS NOT NULL)", f"({self._name} IS NOT NULL)")
+
+    def isin(self, *cols):
+        if len(cols) == 1 and isinstance(cols[0], (list, tuple, set)):
+            cols = list(cols[0])
+        if not cols:
+            return Column("FALSE", f"({self._name} IN ())")
+        vals = [_to_col_lit(c) for c in cols]
+        return Column(f"({self._sql} IN ({', '.join(v._sql for v in vals)}))",
+                      f"({self._name} IN ({', '.join(v._name for v in vals)}))")
+
+    def between(self, lowerBound, upperBound):
+        lo, hi = _to_col_lit(lowerBound), _to_col_lit(upperBound)
+        return Column(f"({self._sql} BETWEEN {lo._sql} AND {hi._sql})",
+                      f"(({self._name} >= {lo._name}) AND ({self._name} <= {hi._name}))")
+
+    def like(self, other): return Column(f"({self._sql} LIKE {_lit_sql(other)})", f"{self._name} LIKE {other}")
+    def ilike(self, other): return Column(f"({self._sql} ILIKE {_lit_sql(other)})", f"ilike({self._name}, {other})")
+    def rlike(self, other): return Column(f"regexp_matches({self._sql}, {_lit_sql(other)})", f"RLIKE({self._name}, {other})")
+
+    def startswith(self, other):
+        o = _to_col_lit(other)
+        return Column(f"starts_with({self._sql}, {o._sql})", f"startswith({self._name}, {o._name})")
+
+    def endswith(self, other):
+        o = _to_col_lit(other)
+        return Column(f"suffix({self._sql}, {o._sql})", f"endswith({self._name}, {o._name})")
+
+    def contains(self, other):
+        o = _to_col_lit(other)
+        return Column(f"contains({self._sql}, {o._sql})", f"contains({self._name}, {o._name})")
+
+    def eqNullSafe(self, other):
+        o = _to_col_lit(other)
+        return Column(f"({self._sql} IS NOT DISTINCT FROM {o._sql})", f"({self._name} <=> {o._name})")
+
+    def substr(self, startPos, length):
+        s, n = _to_col_lit(startPos), _to_col_lit(length)
+        return Column(f"substring({self._sql}, {s._sql}, {n._sql})", f"substring({self._name}, {s._name}, {n._name})")
+
+    # -- nested data
+    def getItem(self, key):
+        if isinstance(key, int):
+            return Column(f"{self._sql}[{key + 1}]", f"{self._name}[{key}]")
+        return Column(f"{self._sql}[{_lit_sql(key)}]", f"{self._name}[{key}]")
+
+    def getField(self, name):
+        return Column(f"{self._sql}[{_lit_sql(name)}]", f"{self._name}.{name}")
+
+    def __getitem__(self, k):
+        if isinstance(k, slice):
+            raise PySparkValueError("Column slicing isn't supported; use substr() or slice().")
+        return self.getItem(k)
+
+    # -- ordering
+    def asc(self): return self._with(order="ASC NULLS FIRST")
+    def asc_nulls_first(self): return self._with(order="ASC NULLS FIRST")
+    def asc_nulls_last(self): return self._with(order="ASC NULLS LAST")
+    def desc(self): return self._with(order="DESC NULLS LAST")
+    def desc_nulls_first(self): return self._with(order="DESC NULLS FIRST")
+    def desc_nulls_last(self): return self._with(order="DESC NULLS LAST")
+
+    # -- windows and conditionals
+    def over(self, window):
+        if not isinstance(window, WindowSpec):
+            raise PySparkTypeError("over() expects a WindowSpec, for example Window.partitionBy(...).orderBy(...)")
+        spec = window._spec()
+        return Column(f"{self._sql} OVER ({spec})", f"{self._name} OVER ({window._label()})")
+
+    def when(self, condition, value):
+        raise PySparkTypeError("when() can only be applied on a Column previously generated by when() function")
+
+    def otherwise(self, value):
+        raise PySparkTypeError("otherwise() can only be applied on a Column previously generated by when() function")
+
+
+class _Case(Column):
+    def __init__(self, branches, default=None):
+        self._branches, self._default = branches, default
+        sql = "CASE " + " ".join(f"WHEN {c._sql} THEN {v._sql}" for c, v in branches)
+        name = "CASE " + " ".join(f"WHEN {c._name} THEN {v._name}" for c, v in branches)
+        if default is not None:
+            sql += f" ELSE {default._sql}"
+            name += f" ELSE {default._name}"
+        super().__init__(sql + " END", name + " END")
+
+    def when(self, condition, value):
+        if self._default is not None:
+            raise PySparkTypeError("when() can't be applied once otherwise() is applied")
+        return _Case(self._branches + [(_cond(condition), _to_col_lit(value))])
+
+    def otherwise(self, value):
+        if self._default is not None:
+            raise PySparkTypeError("otherwise() can only be applied once")
+        return _Case(self._branches, _to_col_lit(value))
+
+
+def _cond(c):
+    if isinstance(c, Column):
+        return c
+    raise PySparkTypeError(f"condition should be a Column, got {type(c).__name__}")
+
+
+def _to_col_lit(x):
+    return x if isinstance(x, Column) else lit(x)
+
+
+def _c(x):
+    """Column, or a column name, or a literal."""
+    if isinstance(x, Column):
+        return x
+    if isinstance(x, str):
+        return col(x)
+    return lit(x)
+
+
+def _flatten(cols):
+    if len(cols) == 1 and isinstance(cols[0], (list, tuple)):
+        return list(cols[0])
+    return list(cols)
+
+
+def col(name):
+    name = str(name)
+    if name == "*":
+        return Column("*", "*")
+    if name.endswith(".*"):
+        return Column(_qi(_clean_name(name[:-2])) + ".*", name)
+    if "." in name and not name.startswith(_BT):
+        parts = [_clean_name(p) for p in name.split(".")]
+        return Column(".".join(_qi(p) for p in parts), parts[-1])
+    n = _clean_name(name)
+    return Column(_qi(n), n)
+
+
+column = col
+
+
+def lit(value):
+    if isinstance(value, Column):
+        return value
+    return Column(_lit_sql(value), _lit_name(value))
+
+
+# --------------------------------------------------------------------------- Window
+
+class WindowSpec:
+    def __init__(self, part=(), order=(), frame=None):
+        self._part, self._orderby, self._frame = tuple(part), tuple(order), frame
+
+    def partitionBy(self, *cols):
+        return WindowSpec([_c(c) if isinstance(c, (str, Column)) else _c(c) for c in _flatten(cols)], self._orderby, self._frame)
+
+    def orderBy(self, *cols):
+        return WindowSpec(self._part, [_c(c) for c in _flatten(cols)], self._frame)
+
+    def rowsBetween(self, start, end):
+        return WindowSpec(self._part, self._orderby, ("ROWS", start, end))
+
+    def rangeBetween(self, start, end):
+        return WindowSpec(self._part, self._orderby, ("RANGE", start, end))
+
+    @staticmethod
+    def _bound(v):
+        if v <= -(1 << 62):
+            return "UNBOUNDED PRECEDING"
+        if v >= (1 << 62):
+            return "UNBOUNDED FOLLOWING"
+        if v == 0:
+            return "CURRENT ROW"
+        return f"{-v} PRECEDING" if v < 0 else f"{v} FOLLOWING"
+
+    def _spec(self):
+        parts = []
+        if self._part:
+            parts.append("PARTITION BY " + ", ".join(c._sql for c in self._part))
+        if self._orderby:
+            parts.append("ORDER BY " + ", ".join(f"{c._sql} {c._order or 'ASC NULLS FIRST'}" for c in self._orderby))
+        if self._frame:
+            kind, s, e = self._frame
+            parts.append(f"{kind} BETWEEN {self._bound(s)} AND {self._bound(e)}")
+        return " ".join(parts)
+
+    def _label(self):
+        parts = []
+        if self._part:
+            parts.append("PARTITION BY " + ", ".join(c._name for c in self._part))
+        if self._orderby:
+            parts.append("ORDER BY " + ", ".join(f"{c._name} {(c._order or 'ASC NULLS FIRST')}" for c in self._orderby))
+        return " ".join(parts)
+
+
+class Window:
+    unboundedPreceding = _LONG_MIN
+    unboundedFollowing = _LONG_MAX
+    currentRow = 0
+
+    @staticmethod
+    def partitionBy(*cols):
+        return WindowSpec().partitionBy(*cols)
+
+    @staticmethod
+    def orderBy(*cols):
+        return WindowSpec().orderBy(*cols)
+
+    @staticmethod
+    def rowsBetween(start, end):
+        return WindowSpec().rowsBetween(start, end)
+
+    @staticmethod
+    def rangeBetween(start, end):
+        return WindowSpec().rangeBetween(start, end)
+
+
+# --------------------------------------------------------------------------- functions
+
+_F = {}
+
+
+def _fn(*names):
+    def deco(f):
+        for n in names:
+            _F[n] = f
+        return f
+    return deco
+
+
+def _call(duck, spark, *args):
+    return Column(f"{duck}({', '.join(a._sql for a in args)})", f"{spark}({', '.join(a._name for a in args)})")
+
+
+def _agg(spark, c, template, arg_sql=None):
+    """Aggregate column. template(arg_sql) -> SQL; keeps the template so pivot() can rewrite it."""
+    c = _c(c)
+    a = c._sql if arg_sql is None else arg_sql
+    return Column(template(a), f"{spark}({c._name})", agg=(template, a))
+
+
+_F.update(col=col, column=column, lit=lit)
+
+
+@_fn("expr")
+def expr(s):
+    return Column(f"({s})", s)
+
+
+@_fn("when")
+def when(condition, value):
+    return _Case([(_cond(condition), _to_col_lit(value))])
+
+
+@_fn("coalesce")
+def coalesce(*cols):
+    return _call("coalesce", "coalesce", *[_c(c) for c in cols])
+
+
+@_fn("nvl", "ifnull")
+def nvl(c1, c2):
+    return _call("coalesce", "nvl", _c(c1), _c(c2))
+
+
+@_fn("nullif")
+def nullif(c1, c2):
+    return _call("nullif", "nullif", _c(c1), _c(c2))
+
+
+@_fn("isnull")
+def isnull(c):
+    c = _c(c)
+    return Column(f"({c._sql} IS NULL)", f"({c._name} IS NULL)")
+
+
+@_fn("isnotnull")
+def isnotnull(c):
+    c = _c(c)
+    return Column(f"({c._sql} IS NOT NULL)", f"({c._name} IS NOT NULL)")
+
+
+@_fn("greatest")
+def greatest(*cols):
+    return _call("greatest", "greatest", *[_c(c) for c in cols])
+
+
+@_fn("least")
+def least(*cols):
+    return _call("least", "least", *[_c(c) for c in cols])
+
+
+# -- aggregates
+@_fn("sum")
+def f_sum(c): return _agg("sum", c, lambda a: f"sum({a})")
+
+
+@_fn("avg", "mean")
+def f_avg(c): return _agg("avg", c, lambda a: f"avg({a})")
+
+
+@_fn("min")
+def f_min(c): return _agg("min", c, lambda a: f"min({a})")
+
+
+@_fn("max")
+def f_max(c): return _agg("max", c, lambda a: f"max({a})")
+
+
+@_fn("count")
+def f_count(c):
+    if (isinstance(c, str) and c == "*") or (isinstance(c, Column) and c._sql == "*"):
+        return Column("count(*)", "count(1)", agg=(lambda a: f"count({a})", "1"))
+    if not isinstance(c, (str, Column)):
+        return Column("count(*)", f"count({_lit_name(c)})", agg=(lambda a: f"count({a})", "1"))
+    return _agg("count", c, lambda a: f"count({a})")
+
+
+@_fn("countDistinct", "count_distinct")
+def count_distinct(c, *cols):
+    if cols:
+        cs = [_c(x) for x in (c,) + cols]
+        inner = "(" + ", ".join(x._sql for x in cs) + ")"
+        return Column(f"count(DISTINCT {inner})", f"count(DISTINCT {', '.join(x._name for x in cs)})",
+                      agg=(lambda a: f"count(DISTINCT {a})", inner))
+    c = _c(c)
+    return Column(f"count(DISTINCT {c._sql})", f"count(DISTINCT {c._name})",
+                  agg=(lambda a: f"count(DISTINCT {a})", c._sql))
+
+
+@_fn("approx_count_distinct", "approxCountDistinct")
+def approx_count_distinct(c, rsd=None): return _agg("approx_count_distinct", c, lambda a: f"approx_count_distinct({a})")
+
+
+@_fn("sum_distinct", "sumDistinct")
+def sum_distinct(c):
+    c = _c(c)
+    return Column(f"sum(DISTINCT {c._sql})", f"sum(DISTINCT {c._name})", agg=(lambda a: f"sum(DISTINCT {a})", c._sql))
+
+
+@_fn("first")
+def first(c, ignorenulls=False):
+    if ignorenulls:
+        return _agg("first", c, lambda a: f"first({a}) FILTER (WHERE {a} IS NOT NULL)")
+    return _agg("first", c, lambda a: f"first({a})")
+
+
+@_fn("last")
+def last(c, ignorenulls=False):
+    if ignorenulls:
+        return _agg("last", c, lambda a: f"last({a}) FILTER (WHERE {a} IS NOT NULL)")
+    return _agg("last", c, lambda a: f"last({a})")
+
+
+@_fn("collect_list")
+def collect_list(c): return _agg("collect_list", c, lambda a: f"coalesce(list({a}) FILTER (WHERE {a} IS NOT NULL), [])")
+
+
+@_fn("collect_set")
+def collect_set(c): return _agg("collect_set", c, lambda a: f"coalesce(list(DISTINCT {a}) FILTER (WHERE {a} IS NOT NULL), [])")
+
+
+@_fn("stddev", "stddev_samp", "std")
+def stddev(c): return _agg("stddev", c, lambda a: f"stddev_samp({a})")
+
+
+@_fn("stddev_pop")
+def stddev_pop(c): return _agg("stddev_pop", c, lambda a: f"stddev_pop({a})")
+
+
+@_fn("variance", "var_samp")
+def variance(c): return _agg("variance", c, lambda a: f"var_samp({a})")
+
+
+@_fn("var_pop")
+def var_pop(c): return _agg("var_pop", c, lambda a: f"var_pop({a})")
+
+
+@_fn("median")
+def median(c): return _agg("median", c, lambda a: f"median({a})")
+
+
+@_fn("count_if")
+def count_if(c): return _agg("count_if", c, lambda a: f"count_if({a})")
+
+
+@_fn("max_by")
+def max_by(c, ord):
+    c, o = _c(c), _c(ord)
+    return Column(f"arg_max({c._sql}, {o._sql})", f"max_by({c._name}, {o._name})")
+
+
+@_fn("min_by")
+def min_by(c, ord):
+    c, o = _c(c), _c(ord)
+    return Column(f"arg_min({c._sql}, {o._sql})", f"min_by({c._name}, {o._name})")
+
+
+@_fn("percentile_approx")
+def percentile_approx(c, percentage, accuracy=10000):
+    c = _c(c)
+    return Column(f"approx_quantile({c._sql}, {percentage})", f"percentile_approx({c._name}, {percentage}, {accuracy})")
+
+
+# -- window functions
+@_fn("row_number")
+def row_number(): return Column("row_number()", "row_number()")
+
+
+@_fn("rank")
+def rank(): return Column("rank()", "RANK()")
+
+
+@_fn("dense_rank")
+def dense_rank(): return Column("dense_rank()", "DENSE_RANK()")
+
+
+@_fn("percent_rank")
+def percent_rank(): return Column("percent_rank()", "PERCENT_RANK()")
+
+
+@_fn("cume_dist")
+def cume_dist(): return Column("cume_dist()", "CUME_DIST()")
+
+
+@_fn("ntile")
+def ntile(n): return Column(f"ntile({int(n)})", f"ntile({n})")
+
+
+@_fn("lag")
+def lag(c, offset=1, default=None):
+    c = _c(c)
+    d = f", {_lit_sql(default)}" if default is not None else ""
+    return Column(f"lag({c._sql}, {int(offset)}{d})", f"lag({c._name}, {offset}, {_lit_name(default)})")
+
+
+@_fn("lead")
+def lead(c, offset=1, default=None):
+    c = _c(c)
+    d = f", {_lit_sql(default)}" if default is not None else ""
+    return Column(f"lead({c._sql}, {int(offset)}{d})", f"lead({c._name}, {offset}, {_lit_name(default)})")
+
+
+# -- simple scalar functions: spark name -> duckdb name
+for _spark, _duck in {
+    "upper": "upper", "lower": "lower", "trim": "trim", "ltrim": "ltrim", "rtrim": "rtrim",
+    "length": "length", "reverse": "reverse", "abs": "abs", "sqrt": "sqrt", "exp": "exp",
+    "floor": "floor", "ceil": "ceil", "ceiling": "ceil", "signum": "sign", "log10": "log10",
+    "log2": "log2", "year": "year", "month": "month", "dayofmonth": "day", "day": "day",
+    "dayofyear": "dayofyear", "hour": "hour", "minute": "minute", "second": "second",
+    "weekofyear": "weekofyear", "quarter": "quarter", "md5": "md5", "isnan": "isnan",
+    "array_distinct": "list_distinct", "flatten": "flatten", "array_max": "list_max",
+    "array_min": "list_min", "last_day": "last_day", "ascii": "ascii", "sin": "sin", "cos": "cos",
+}.items():
+    _F[_spark] = (lambda d, s: lambda c: _call(d, s, _c(c)))(_duck, _spark)
+
+
+@_fn("dayofweek")
+def dayofweek(c):
+    c = _c(c)
+    return Column(f"(dayofweek({c._sql}) + 1)", f"dayofweek({c._name})")
+
+
+@_fn("size", "array_size", "cardinality")
+def size(c):
+    c = _c(c)
+    return Column(f"coalesce(len({c._sql}), -1)", f"size({c._name})")
+
+
+@_fn("round")
+def f_round(c, scale=0):
+    c = _c(c)
+    return Column(f"round({c._sql}, {int(scale)})", f"round({c._name}, {scale})")
+
+
+@_fn("bround")
+def bround(c, scale=0):
+    c = _c(c)
+    return Column(f"round_even({c._sql}, {int(scale)})", f"bround({c._name}, {scale})")
+
+
+@_fn("pow", "power")
+def f_pow(c1, c2):
+    a, b = _c(c1), _c(c2)
+    return Column(f"pow({a._sql}, {b._sql})", f"POWER({a._name}, {b._name})")
+
+
+@_fn("log")
+def log(arg1, arg2=None):
+    if arg2 is None:
+        c = _c(arg1)
+        return Column(f"ln({c._sql})", f"ln({c._name})")
+    c = _c(arg2)
+    return Column(f"(ln({c._sql}) / ln({float(arg1)}))", f"LOG({arg1}, {c._name})")
+
+
+@_fn("ln")
+def ln(c):
+    c = _c(c)
+    return Column(f"ln({c._sql})", f"ln({c._name})")
+
+
+@_fn("concat")
+def concat(*cols):
+    cs = [_c(c) for c in cols]
+    return Column("(" + " || ".join(c._sql for c in cs) + ")", f"concat({', '.join(c._name for c in cs)})")
+
+
+@_fn("concat_ws")
+def concat_ws(sep, *cols):
+    cs = [_c(c) for c in cols]
+    return Column(f"concat_ws({_lit_sql(sep)}, {', '.join(c._sql for c in cs)})",
+                  f"concat_ws({sep}, {', '.join(c._name for c in cs)})")
+
+
+@_fn("substring", "substr")
+def substring(c, pos, len):
+    c = _c(c)
+    return Column(f"substring({c._sql}, {int(pos)}, {int(len)})", f"substring({c._name}, {pos}, {len})")
+
+
+@_fn("instr")
+def instr(c, substr):
+    c = _c(c)
+    return Column(f"instr({c._sql}, {_lit_sql(substr)})", f"instr({c._name}, {substr})")
+
+
+@_fn("lpad")
+def lpad(c, len, pad):
+    c = _c(c)
+    return Column(f"lpad({c._sql}, {int(len)}, {_lit_sql(pad)})", f"lpad({c._name}, {len}, {pad})")
+
+
+@_fn("rpad")
+def rpad(c, len, pad):
+    c = _c(c)
+    return Column(f"rpad({c._sql}, {int(len)}, {_lit_sql(pad)})", f"rpad({c._name}, {len}, {pad})")
+
+
+@_fn("repeat")
+def repeat(c, n):
+    c = _c(c)
+    return Column(f"repeat({c._sql}, {int(n)})", f"repeat({c._name}, {n})")
+
+
+@_fn("initcap")
+def initcap(c):
+    c = _c(c)
+    words = f"string_split(lower({c._sql}), ' ')"
+    return Column(f"array_to_string(list_transform({words}, w -> upper(w[1]) || w[2:]), ' ')", f"initcap({c._name})")
+
+
+@_fn("regexp_replace")
+def regexp_replace(c, pattern, replacement):
+    c = _c(c)
+    repl = re.sub(r"\$(\d)", r"\\\1", str(replacement))  # Java $1 -> RE2 \1
+    return Column(f"regexp_replace({c._sql}, {_lit_sql(pattern)}, {_lit_sql(repl)}, 'g')",
+                  f"regexp_replace({c._name}, {pattern}, {replacement}, 1)")
+
+
+@_fn("regexp_extract")
+def regexp_extract(c, pattern, idx):
+    c = _c(c)
+    return Column(f"regexp_extract({c._sql}, {_lit_sql(pattern)}, {int(idx)})",
+                  f"regexp_extract({c._name}, {pattern}, {idx})")
+
+
+@_fn("split")
+def split(c, pattern, limit=-1):
+    c = _c(c)
+    return Column(f"string_split_regex({c._sql}, {_lit_sql(pattern)})", f"split({c._name}, {pattern}, {limit})")
+
+
+@_fn("translate")
+def translate(c, matching, replace):
+    c = _c(c)
+    return Column(f"translate({c._sql}, {_lit_sql(matching)}, {_lit_sql(replace)})",
+                  f"translate({c._name}, {matching}, {replace})")
+
+
+@_fn("sha2")
+def sha2(c, numBits):
+    if int(numBits) not in (0, 256):
+        raise NotAvailableInTrainer("Only sha2(col, 256) is available in this trainer.")
+    c = _c(c)
+    return Column(f"sha256({c._sql})", f"sha2({c._name}, {numBits})")
+
+
+@_fn("format_number")
+def format_number(c, d):
+    c = _c(c)
+    return Column(f"format('{{:,.{int(d)}f}}', {c._sql})", f"format_number({c._name}, {d})")
+
+
+# -- dates
+def _java_fmt(fmt):
+    out = []
+    for tok in re.findall(r"'[^']*'|y+|M+|d+|H+|h+|m+|s+|S+|E+|a|.", fmt):
+        if tok.startswith("'"):
+            out.append(tok[1:-1].replace("%", "%%") or "'")
+        elif tok[0] == "y":
+            out.append("%y" if len(tok) == 2 else "%Y")
+        elif tok[0] == "M":
+            out.append({1: "%-m", 2: "%m", 3: "%b"}.get(len(tok), "%B"))
+        elif tok[0] == "d":
+            out.append("%-d" if len(tok) == 1 else "%d")
+        elif tok[0] == "H":
+            out.append("%-H" if len(tok) == 1 else "%H")
+        elif tok[0] == "h":
+            out.append("%-I" if len(tok) == 1 else "%I")
+        elif tok[0] == "m":
+            out.append("%-M" if len(tok) == 1 else "%M")
+        elif tok[0] == "s":
+            out.append("%-S" if len(tok) == 1 else "%S")
+        elif tok[0] == "S":
+            out.append("%g")
+        elif tok[0] == "E":
+            out.append("%A" if len(tok) >= 4 else "%a")
+        elif tok == "a":
+            out.append("%p")
+        else:
+            out.append(tok.replace("%", "%%"))
+    return "".join(out)
+
+
+@_fn("to_date")
+def to_date(c, format=None):
+    c = _c(c)
+    if format is None:
+        return Column(f"TRY_CAST({c._sql} AS DATE)", f"to_date({c._name})")
+    return Column(f"CAST(try_strptime(CAST({c._sql} AS VARCHAR), {_lit_sql(_java_fmt(format))}) AS DATE)",
+                  f"to_date({c._name}, {format})")
+
+
+@_fn("to_timestamp")
+def to_timestamp(c, format=None):
+    c = _c(c)
+    if format is None:
+        return Column(f"TRY_CAST({c._sql} AS TIMESTAMP)", f"to_timestamp({c._name})")
+    return Column(f"CAST(try_strptime(CAST({c._sql} AS VARCHAR), {_lit_sql(_java_fmt(format))}) AS TIMESTAMP)",
+                  f"to_timestamp({c._name}, {format})")
+
+
+@_fn("date_format")
+def date_format(c, format):
+    c = _c(c)
+    return Column(f"strftime(TRY_CAST({c._sql} AS TIMESTAMP), {_lit_sql(_java_fmt(format))})",
+                  f"date_format({c._name}, {format})")
+
+
+@_fn("date_add", "dateadd")
+def date_add(c, days):
+    c, d = _c(c), _to_col_lit(days)
+    return Column(f"CAST(TRY_CAST({c._sql} AS DATE) + CAST({d._sql} AS INTEGER) AS DATE)", f"date_add({c._name}, {d._name})")
+
+
+@_fn("date_sub")
+def date_sub(c, days):
+    c, d = _c(c), _to_col_lit(days)
+    return Column(f"CAST(TRY_CAST({c._sql} AS DATE) - CAST({d._sql} AS INTEGER) AS DATE)", f"date_sub({c._name}, {d._name})")
+
+
+@_fn("add_months")
+def add_months(c, months):
+    c, m = _c(c), _to_col_lit(months)
+    return Column(f"CAST(TRY_CAST({c._sql} AS DATE) + to_months(CAST({m._sql} AS INTEGER)) AS DATE)",
+                  f"add_months({c._name}, {m._name})")
+
+
+@_fn("datediff", "date_diff")
+def datediff(end, start):
+    e, s = _c(end), _c(start)
+    return Column(f"date_diff('day', TRY_CAST({s._sql} AS DATE), TRY_CAST({e._sql} AS DATE))",
+                  f"datediff({e._name}, {s._name})")
+
+
+@_fn("current_date", "curdate")
+def current_date(): return Column("current_date", "current_date()")
+
+
+@_fn("current_timestamp", "now")
+def current_timestamp(): return Column("CAST(current_timestamp AS TIMESTAMP)", "current_timestamp()")
+
+
+_TRUNC = {"year": "year", "yyyy": "year", "yy": "year", "quarter": "quarter", "month": "month", "mon": "month",
+          "mm": "month", "week": "week", "day": "day", "dd": "day", "hour": "hour", "minute": "minute",
+          "second": "second"}
+
+
+@_fn("date_trunc")
+def date_trunc(format, timestamp):
+    c = _c(timestamp)
+    part = _TRUNC.get(str(format).lower())
+    if not part:
+        raise PySparkValueError(f"Unsupported date_trunc format: {format}")
+    return Column(f"CAST(date_trunc('{part}', TRY_CAST({c._sql} AS TIMESTAMP)) AS TIMESTAMP)",
+                  f"date_trunc({format}, {c._name})")
+
+
+@_fn("trunc")
+def trunc(date, format):
+    c = _c(date)
+    part = _TRUNC.get(str(format).lower())
+    if not part:
+        raise PySparkValueError(f"Unsupported trunc format: {format}")
+    return Column(f"CAST(date_trunc('{part}', TRY_CAST({c._sql} AS DATE)) AS DATE)", f"trunc({c._name}, {format})")
+
+
+@_fn("make_date")
+def make_date(year, month, day):
+    return _call("make_date", "make_date", _c(year), _c(month), _c(day))
+
+
+# -- arrays and structs
+@_fn("array")
+def array(*cols):
+    cs = [_c(c) for c in _flatten(cols)]
+    return Column("[" + ", ".join(c._sql for c in cs) + "]", f"array({', '.join(c._name for c in cs)})")
+
+
+@_fn("array_contains")
+def array_contains(c, value):
+    c, v = _c(c), _to_col_lit(value)
+    return Column(f"list_contains({c._sql}, {v._sql})", f"array_contains({c._name}, {v._name})")
+
+
+@_fn("element_at")
+def element_at(c, extraction):
+    c = _c(c)
+    return Column(f"{c._sql}[{_to_col_lit(extraction)._sql}]", f"element_at({c._name}, {extraction})")
+
+
+@_fn("array_join")
+def array_join(c, delimiter, null_replacement=None):
+    c = _c(c)
+    inner = c._sql if null_replacement is None else \
+        f"list_transform({c._sql}, x -> coalesce(CAST(x AS VARCHAR), {_lit_sql(null_replacement)}))"
+    return Column(f"array_to_string({inner}, {_lit_sql(delimiter)})", f"array_join({c._name}, {delimiter})")
+
+
+@_fn("array_sort")
+def array_sort(c):
+    c = _c(c)
+    return Column(f"list_sort({c._sql}, 'ASC', 'NULLS LAST')", f"array_sort({c._name})")
+
+
+@_fn("sort_array")
+def sort_array(c, asc=True):
+    c = _c(c)
+    order = "'ASC', 'NULLS FIRST'" if asc else "'DESC', 'NULLS LAST'"
+    return Column(f"list_sort({c._sql}, {order})", f"sort_array({c._name}, {str(asc).lower()})")
+
+
+@_fn("slice")
+def f_slice(c, start, length):
+    c = _c(c)
+    return Column(f"list_slice({c._sql}, {int(start)}, {int(start) + int(length) - 1})", f"slice({c._name}, {start}, {length})")
+
+
+@_fn("array_position")
+def array_position(c, value):
+    c = _c(c)
+    return Column(f"coalesce(list_position({c._sql}, {_lit_sql(value)}), 0)", f"array_position({c._name}, {value})")
+
+
+@_fn("array_union")
+def array_union(c1, c2):
+    a, b = _c(c1), _c(c2)
+    return Column(f"list_distinct(list_concat({a._sql}, {b._sql}))", f"array_union({a._name}, {b._name})")
+
+
+@_fn("array_intersect")
+def array_intersect(c1, c2):
+    a, b = _c(c1), _c(c2)
+    return Column(f"list_intersect({a._sql}, {b._sql})", f"array_intersect({a._name}, {b._name})")
+
+
+@_fn("explode")
+def explode(c):
+    c = _c(c)
+    return Column(f"unnest({c._sql})", "col")
+
+
+@_fn("explode_outer")
+def explode_outer(c):
+    c = _c(c)
+    return Column(f"unnest(CASE WHEN {c._sql} IS NULL OR len({c._sql}) = 0 THEN [NULL] ELSE {c._sql} END)", "col")
+
+
+@_fn("struct")
+def struct(*cols):
+    cs = [_c(c) for c in _flatten(cols)]
+    return Column("struct_pack(" + ", ".join(f"{_qi(c._name)} := {c._sql}" for c in cs) + ")",
+                  f"struct({', '.join(c._name for c in cs)})")
+
+
+_lambda_ids = itertools.count(1)
+
+
+def _lambda(f, nargs=1):
+    names = [f"__x{next(_lambda_ids)}" for _ in range(nargs)]
+    body = _to_col_lit(f(*[Column(n, n) for n in names]))
+    params = names[0] if nargs == 1 else "(" + ", ".join(names) + ")"
+    return f"{params} -> {body._sql}"
+
+
+@_fn("transform")
+def transform(c, f):
+    c = _c(c)
+    return Column(f"list_transform({c._sql}, {_lambda(f)})", f"transform({c._name}, lambdafunction)")
+
+
+@_fn("filter")
+def f_filter(c, f):
+    c = _c(c)
+    return Column(f"list_filter({c._sql}, {_lambda(f)})", f"filter({c._name}, lambdafunction)")
+
+
+@_fn("exists")
+def exists(c, f):
+    c = _c(c)
+    return Column(f"(len(list_filter({c._sql}, {_lambda(f)})) > 0)", f"exists({c._name}, lambdafunction)")
+
+
+@_fn("forall")
+def forall(c, f):
+    c = _c(c)
+    return Column(f"(len(list_filter({c._sql}, {_lambda(lambda x: ~_to_col_lit(f(x)))})) = 0)",
+                  f"forall({c._name}, lambdafunction)")
+
+
+@_fn("aggregate", "reduce")
+def aggregate(c, initialValue, merge, finish=None):
+    c, z = _c(c), _to_col_lit(initialValue)
+    sql = f"list_reduce(list_prepend({z._sql}, {c._sql}), {_lambda(merge, 2)})"
+    if finish is not None:
+        out = _to_col_lit(finish(Column(f"({sql})")))
+        sql = out._sql
+    return Column(sql, f"aggregate({c._name}, {z._name}, lambdafunction)")
+
+
+# -- misc
+@_fn("broadcast")
+def broadcast(df):
+    return df  # a hint for Spark's planner; DuckDB picks join strategies itself
+
+
+@_fn("monotonically_increasing_id")
+def monotonically_increasing_id():
+    return Column("(row_number() OVER () - 1)", "monotonically_increasing_id()")
+
+
+@_fn("spark_partition_id")
+def spark_partition_id():
+    return Column("0", "SPARK_PARTITION_ID()")
+
+
+@_fn("input_file_name")
+def input_file_name():
+    return Column("''", "input_file_name()")
+
+
+for _n in ("asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last"):
+    _F[_n] = (lambda m: lambda c: getattr(_c(c), m)())(_n)
+
+
+def _udf_unavailable(*args, **kwargs):
+    raise NotAvailableInTrainer(
+        "Python UDFs aren't available in this browser trainer. Use built-in functions instead: "
+        "they're also much faster on Databricks, because a Python UDF sends every row to a Python process.")
+
+
+@_fn("udf", "pandas_udf")
+def udf(f=None, returnType=None, *args, **kwargs):
+    if f is None or isinstance(f, (str, DataType)):
+        return lambda fn: _udf_unavailable
+    return _udf_unavailable
+
+
+for _n in ("from_json", "to_json", "get_json_object", "json_tuple", "schema_of_json", "window", "session_window",
+           "input_file_block_start", "from_unixtime", "unix_timestamp", "months_between"):
+    _F[_n] = (lambda n: lambda *a, **k: (_ for _ in ()).throw(
+        NotAvailableInTrainer(f"F.{n}() isn't available in this browser trainer.")))(_n)
+
+
+# --------------------------------------------------------------------------- DataFrame
+
+_ids = itertools.count(1)
+
+
+def _new_id():
+    return f"_t{next(_ids)}"
+
+
+def _sel_item(c):
+    if c._sql == "*" or c._sql.endswith(".*") or c._sql == _qi(c._name):
+        return c._sql
+    return f"{c._sql} AS {_qi(c._name)}"
+
+
+def _as_col(c):
+    if isinstance(c, Column):
+        return c
+    if isinstance(c, str):
+        return col(c)
+    raise PySparkTypeError(f"Expected a column name or Column, got {type(c).__name__}")
+
+
+class DataFrame:
+    """A lazily evaluated, distributed-style table, compiled to SQL."""
+
+    def __init__(self, session, from_, scope, id_, proj=None, where=(), group=None, order=(),
+                 limit=None, distinct=False, qualify=(), analyze=True):
+        self.sparkSession = session
+        self._from, self._scope, self._id = from_, frozenset(scope), id_
+        self._proj, self._where, self._group = proj, tuple(where), group
+        self._order, self._limit, self._distinct, self._qualify = tuple(order), limit, distinct, tuple(qualify)
+        self._cols = None
+        if analyze:
+            self._analyze()
+
+    def _copy(self, analyze=True, **kw):
+        f = dict(from_=self._from, scope=self._scope, id_=self._id, proj=self._proj, where=self._where,
+                 group=self._group, order=self._order, limit=self._limit, distinct=self._distinct,
+                 qualify=self._qualify)
+        f.update(kw)
+        return DataFrame(self.sparkSession, analyze=analyze, **f)
+
+    # -- compilation
+    def _sql(self):
+        r = lambda s: _resolve(s, self._scope)
+        sel = ", ".join(r(p) for p in self._proj) if self._proj is not None else "*"
+        q = "SELECT " + ("DISTINCT " if self._distinct else "") + sel + " FROM " + r(self._from)
+        if self._where:
+            q += " WHERE " + " AND ".join("(" + r(w) + ")" for w in self._where)
+        if self._group:
+            q += " GROUP BY " + ", ".join(r(g) for g in self._group)
+        if self._qualify:
+            q += " QUALIFY " + " AND ".join("(" + r(w) + ")" for w in self._qualify)
+        if self._order:
+            q += " ORDER BY " + ", ".join(r(o) for o in self._order)
+        if self._limit is not None:
+            q += f" LIMIT {self._limit}"
+        return q
+
+    def _analyze(self):
+        res = _run("DESCRIBE " + self._sql())
+        self._cols = [(r[0], r[1]) for r in res["rows"]]
+
+    def _schema_pairs(self):
+        if self._cols is None:
+            self._analyze()
+        return self._cols
+
+    def _grouped(self):
+        return self._group is not None
+
+    def _projectable(self):
+        return (self._proj is None and not self._grouped() and self._limit is None
+                and not self._distinct and not self._qualify)
+
+    def _pure(self):
+        return self._projectable() and not self._where and not self._order
+
+    def _wrap(self, alias=None):
+        a = alias or self._id
+        return DataFrame(self.sparkSession, f"({self._sql()}) AS {_qi(a)}", {a}, a, analyze=False)._with_cols(self._cols)
+
+    def _with_cols(self, cols):
+        self._cols = cols
+        return self
+
+    def _as_from_item(self, avoid=frozenset(), single=False):
+        if self._pure() and not (self._scope & avoid) and (len(self._scope) == 1 or not single):
+            return self._from, self._scope
+        a = self._id if self._id not in avoid else _new_id()
+        return f"({self._sql()}) AS {_qi(a)}", frozenset({a})
+
+    # -- schema
+    @property
+    def columns(self):
+        return [n for n, _ in self._schema_pairs()]
+
+    @property
+    def dtypes(self):
+        return [(n, _from_duck_type(t).simpleString()) for n, t in self._schema_pairs()]
+
+    @property
+    def schema(self):
+        return StructType([StructField(n, _from_duck_type(t)) for n, t in self._schema_pairs()])
+
+    def printSchema(self, level=None):
+        lines = ["root"]
+
+        def walk(name, dt, depth, label="nullable"):
+            pad = " |   " * depth
+            lines.append(f"{pad} |-- {name}: {dt.typeName()} ({label} = true)")
+            if isinstance(dt, StructType):
+                for f in dt.fields:
+                    walk(f.name, f.dataType, depth + 1)
+            elif isinstance(dt, ArrayType):
+                walk("element", dt.elementType, depth + 1, "containsNull")
+            elif isinstance(dt, MapType):
+                lines.append(f"{' |   ' * (depth + 1)} |-- key: {dt.keyType.typeName()}")
+                walk("value", dt.valueType, depth + 1, "valueContainsNull")
+
+        for f in self.schema.fields:
+            walk(f.name, f.dataType, 0)
+        print("\n".join(lines) + "\n")
+
+    def __repr__(self):
+        return "DataFrame[" + ", ".join(f"{n}: {t}" for n, t in self.dtypes) + "]"
+
+    def _has_col(self, name):
+        return any(n.lower() == name.lower() for n in self.columns)
+
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            if item == "*":
+                return Column("*", "*")
+            name = _clean_name(item)
+            if not self._has_col(name):
+                raise AnalysisException(f"[UNRESOLVED_COLUMN] A column with name `{name}` cannot be resolved. "
+                                        f"Did you mean one of: {', '.join(self.columns)}?")
+            return Column(_ref(self._id, name), name)
+        if isinstance(item, int):
+            return self[self.columns[item]]
+        if isinstance(item, Column):
+            return self.filter(item)
+        if isinstance(item, (list, tuple)):
+            return self.select(*item)
+        raise PySparkTypeError(f"Unexpected item type: {type(item).__name__}")
+
+    def __getattr__(self, name):
+        if name.startswith("_") or name in ("sparkSession",):
+            raise AttributeError(name)
+        if self._has_col(name):
+            return self[name]
+        raise AttributeError(f"'DataFrame' object has no attribute '{name}'")
+
+    # -- transformations
+    def select(self, *cols):
+        cs = [_as_col(c) for c in _flatten(cols)]
+        base = self if self._projectable() else self._wrap()
+        return base._copy(proj=[_sel_item(c) for c in cs], id_=_new_id())
+
+    def selectExpr(self, *exprs):
+        base = self if self._projectable() else self._wrap()
+        return base._copy(proj=list(_flatten(exprs)), id_=_new_id())
+
+    def filter(self, condition):
+        sql = f"({condition})" if isinstance(condition, str) else _cond(condition)._sql
+        base = self if self._projectable() else self._wrap()
+        return base._copy(where=base._where + (sql,))
+
+    where = filter
+
+    def withColumn(self, colName, col):
+        if not isinstance(col, Column):
+            raise PySparkTypeError(f"[NOT_COLUMN] Argument `col` should be a Column, got {type(col).__name__}.")
+        base = self if self._projectable() else self._wrap()
+        if base._has_col(colName):
+            proj = [f"* REPLACE ({col._sql} AS {_qi(colName)})"]
+        else:
+            proj = ["*", f"{col._sql} AS {_qi(colName)}"]
+        return base._copy(proj=proj, id_=_new_id())
+
+    def withColumns(self, *colsMap):
+        df = self
+        for k, v in colsMap[0].items():
+            df = df.withColumn(k, v)
+        return df
+
+    def withColumnRenamed(self, existing, new):
+        if not self._has_col(existing):
+            return self
+        base = self if self._projectable() else self._wrap()
+        proj = [f"{_qi(n)} AS {_qi(new)}" if n.lower() == existing.lower() else _qi(n) for n in base.columns]
+        return base._copy(proj=proj, id_=_new_id())
+
+    def withColumnsRenamed(self, colsMap):
+        df = self
+        for k, v in colsMap.items():
+            df = df.withColumnRenamed(k, v)
+        return df
+
+    def toDF(self, *cols):
+        a = _new_id()
+        names = ", ".join(_qi(c) for c in cols)
+        return DataFrame(self.sparkSession, f"({self._sql()}) AS {_qi(a)}({names})", {a}, a)
+
+    def drop(self, *cols):
+        names = set()
+        for c in cols:
+            names.add((c if isinstance(c, str) else c._name).lower())
+        keep = [n for n in self.columns if n.lower() not in names]
+        if len(keep) == len(self.columns):
+            return self
+        base = self if self._projectable() else self._wrap()
+        return base._copy(proj=[_qi(n) for n in keep], id_=_new_id())
+
+    def alias(self, alias):
+        return DataFrame(self.sparkSession, f"({self._sql()}) AS {_qi(alias)}", {alias}, alias)
+
+    def orderBy(self, *cols, ascending=None):
+        cs = [_as_col(c) for c in _flatten(cols)]
+        items = []
+        for i, c in enumerate(cs):
+            asc = ascending[i] if isinstance(ascending, (list, tuple)) else ascending
+            if asc is None:
+                od = c._order or "ASC NULLS FIRST"
+            else:
+                od = "ASC NULLS FIRST" if asc else "DESC NULLS LAST"
+            items.append(f"{c._sql} {od}")
+        base = self if (self._limit is None and not self._distinct) else self._wrap()
+        return base._copy(order=items)
+
+    sort = orderBy
+    sortWithinPartitions = orderBy
+
+    def limit(self, num):
+        n = int(num) if self._limit is None else min(int(num), self._limit)
+        return self._copy(limit=n)
+
+    def distinct(self):
+        base = self if (self._limit is None and not self._qualify and not self._order) else self._wrap()
+        return base._copy(distinct=True)
+
+    def dropDuplicates(self, subset=None):
+        if subset is None:
+            return self.distinct()
+        if isinstance(subset, str):
+            subset = [subset]
+        base = self._wrap()
+        part = ", ".join(_qi(_clean_name(s)) for s in subset)
+        return base._copy(qualify=(f"row_number() OVER (PARTITION BY {part}) = 1",))
+
+    drop_duplicates = dropDuplicates
+
+    def groupBy(self, *cols):
+        return GroupedData(self, [_as_col(c) for c in _flatten(cols)])
+
+    groupby = groupBy
+
+    def agg(self, *exprs):
+        return self.groupBy().agg(*exprs)
+
+    def join(self, other, on=None, how=None):
+        how_key = (how or "inner").lower().replace("_", "")
+        kinds = {"inner": "INNER", "cross": "CROSS", "outer": "FULL OUTER", "full": "FULL OUTER",
+                 "fullouter": "FULL OUTER", "left": "LEFT", "leftouter": "LEFT", "right": "RIGHT",
+                 "rightouter": "RIGHT", "semi": "SEMI", "leftsemi": "SEMI", "anti": "ANTI", "leftanti": "ANTI"}
+        if how_key not in kinds:
+            raise PySparkValueError(f"Unsupported join type '{how}'. Use one of: inner, cross, outer, full, "
+                                    "left, left_outer, right, right_outer, left_semi, left_anti.")
+        kind = kinds[how_key]
+        if isinstance(on, str):
+            on = [on]
+        if on is None or kind == "CROSS":
+            lf, ls = self._as_from_item()
+            rf, rs = other._as_from_item(avoid=ls)
+            if on is None:
+                return DataFrame(self.sparkSession, f"{lf} CROSS JOIN {rf}", ls | rs, _new_id())
+        if isinstance(on, (list, tuple)) and on and all(isinstance(k, str) for k in on):
+            lf, ls = self._as_from_item(single=True)
+            rf, rs = other._as_from_item(avoid=ls, single=True)
+            (la,), (ra,) = tuple(ls), tuple(rs)
+            keys = [_clean_name(k) for k in on]
+            using = ", ".join(_qi(k) for k in keys)
+            from_ = f"{lf} {kind} JOIN {rf} USING ({using})"
+            if kind in ("SEMI", "ANTI"):
+                return DataFrame(self.sparkSession, from_, ls | rs, _new_id())
+            keyset = {k.lower() for k in keys}
+            key_items = []
+            for k in keys:
+                qk = _qi(k)
+                if kind == "FULL OUTER":
+                    key_items.append(f"coalesce({_qi(la)}.{qk}, {_qi(ra)}.{qk}) AS {qk}")
+                elif kind == "RIGHT":
+                    key_items.append(f"{_qi(ra)}.{qk} AS {qk}")
+                else:
+                    key_items.append(f"{_qi(la)}.{qk} AS {qk}")
+            rest = [f"{_qi(la)}.{_qi(c)}" for c in self.columns if c.lower() not in keyset]
+            rest += [f"{_qi(ra)}.{_qi(c)}" for c in other.columns if c.lower() not in keyset]
+            return DataFrame(self.sparkSession, from_, ls | rs, _new_id(), proj=key_items + rest)
+        conds = on if isinstance(on, (list, tuple)) else [on]
+        conds = [_cond(c) for c in conds]
+        cond_sql = " AND ".join(c._sql for c in conds)
+        lf, ls = self._as_from_item()
+        rf, rs = other._as_from_item(avoid=ls, single=True)
+        if kind == "CROSS":
+            return DataFrame(self.sparkSession, f"{lf} CROSS JOIN {rf}", ls | rs, _new_id(), where=(cond_sql,))
+        return DataFrame(self.sparkSession, f"{lf} {kind} JOIN {rf} ON {cond_sql}", ls | rs, _new_id())
+
+    def crossJoin(self, other):
+        return self.join(other, how="cross")
+
+    def _setop(self, other, op):
+        a = _new_id()
+        return DataFrame(self.sparkSession, f"(({self._sql()}) {op} ({other._sql()})) AS {_qi(a)}", {a}, a)
+
+    def union(self, other):
+        if len(self.columns) != len(other.columns):
+            raise AnalysisException(
+                f"[NUM_COLUMNS_MISMATCH] UNION can only be performed on inputs with the same number of columns, "
+                f"but the first input has {len(self.columns)} columns and the second input has {len(other.columns)} columns.")
+        return self._setop(other, "UNION ALL")
+
+    unionAll = union
+
+    def unionByName(self, other, allowMissingColumns=False):
+        if not allowMissingColumns:
+            a = {c.lower() for c in self.columns}
+            b = {c.lower() for c in other.columns}
+            if a != b:
+                raise AnalysisException("[UNION_BY_NAME] Both DataFrames need the same column names "
+                                        "(or pass allowMissingColumns=True).")
+        return self._setop(other, "UNION ALL BY NAME")
+
+    def intersect(self, other): return self._setop(other, "INTERSECT")
+    def intersectAll(self, other): return self._setop(other, "INTERSECT ALL")
+    def subtract(self, other): return self._setop(other, "EXCEPT")
+    def exceptAll(self, other): return self._setop(other, "EXCEPT ALL")
+
+    def fillna(self, value, subset=None):
+        if isinstance(subset, str):
+            subset = [subset]
+        sub = None if subset is None else {s.lower() for s in subset}
+        proj = []
+        for n, t in self._schema_pairs():
+            dt = _from_duck_type(t)
+            v = None
+            if isinstance(value, dict):
+                for k, x in value.items():
+                    if k.lower() == n.lower():
+                        v = x
+            elif sub is None or n.lower() in sub:
+                numeric = isinstance(dt, (IntegerType, LongType, ShortType, ByteType, DoubleType, FloatType, DecimalType))
+                if isinstance(value, bool):
+                    v = value if isinstance(dt, BooleanType) else None
+                elif isinstance(value, (int, float)):
+                    v = value if numeric else None
+                elif isinstance(value, str):
+                    v = value if isinstance(dt, StringType) else None
+            if v is None:
+                proj.append(_qi(n))
+            else:
+                proj.append(f"CAST(coalesce({_qi(n)}, {_lit_sql(v)}) AS {t}) AS {_qi(n)}")
+        base = self if self._projectable() else self._wrap()
+        return base._copy(proj=proj)
+
+    def dropna(self, how="any", thresh=None, subset=None):
+        if isinstance(subset, str):
+            subset = [subset]
+        cols = subset or self.columns
+        notnull = [f"({_qi(c)} IS NOT NULL)" for c in cols]
+        if thresh is not None:
+            cond = "(" + " + ".join(f"CAST({x} AS INTEGER)" for x in notnull) + f") >= {int(thresh)}"
+        elif how == "all":
+            cond = " OR ".join(notnull)
+        else:
+            cond = " AND ".join(notnull)
+        return self.filter(Column(f"({cond})"))
+
+    @property
+    def na(self):
+        return DataFrameNaFunctions(self)
+
+    def transform(self, func, *args, **kwargs):
+        return func(self, *args, **kwargs)
+
+    def cache(self):
+        return self
+
+    def persist(self, storageLevel=None):
+        return self
+
+    def unpersist(self, blocking=False):
+        return self
+
+    def checkpoint(self, eager=True):
+        return self
+
+    localCheckpoint = checkpoint
+
+    def repartition(self, numPartitions=None, *cols):
+        return self
+
+    def coalesce(self, numPartitions):
+        return self
+
+    def hint(self, name, *parameters):
+        return self
+
+    @property
+    def rdd(self):
+        raise NotAvailableInTrainer("RDDs aren't available in this trainer. Use the DataFrame API "
+                                    "(it's also what Databricks recommends).")
+
+    @property
+    def write(self):
+        return DataFrameWriter(self)
+
+    @property
+    def writeStream(self):
+        raise NotAvailableInTrainer("Structured Streaming needs a Databricks cluster. See the Production lessons.")
+
+    def withWatermark(self, eventTime, delayThreshold):
+        raise NotAvailableInTrainer("Watermarks need Structured Streaming, which needs a Databricks cluster.")
+
+    def createOrReplaceTempView(self, name):
+        _run(f"CREATE OR REPLACE TEMP VIEW {_table_ident(name)} AS {self._sql()}")
+
+    def createTempView(self, name):
+        if self.sparkSession.catalog.tableExists(name):
+            raise AnalysisException(f"[TEMP_TABLE_OR_VIEW_ALREADY_EXISTS] Cannot create the temporary view `{name}` because it already exists.")
+        self.createOrReplaceTempView(name)
+
+    createOrReplaceGlobalTempView = createOrReplaceTempView
+    createGlobalTempView = createTempView
+
+    # -- actions
+    def _fetch(self, limit=None):
+        df = self if limit is None else self.limit(limit)
+        res = _run(df._sql())
+        return res
+
+    def collect(self):
+        return _to_rows(self._fetch())
+
+    def take(self, num):
+        return _to_rows(self._fetch(num))
+
+    def head(self, n=None):
+        if n is None:
+            rows = self.take(1)
+            return rows[0] if rows else None
+        return self.take(n)
+
+    def first(self):
+        return self.head()
+
+    def tail(self, num):
+        return self.collect()[-num:] if num else []
+
+    def isEmpty(self):
+        return len(self.take(1)) == 0
+
+    def count(self):
+        res = _run(f"SELECT count(*) FROM ({self._sql()}) AS __c")
+        return int(res["rows"][0][0])
+
+    def toPandas(self):
+        raise NotAvailableInTrainer("pandas isn't loaded in this trainer. Use collect(), show() or display().")
+
+    def toLocalIterator(self, prefetchPartitions=False):
+        return iter(self.collect())
+
+    def foreach(self, f):
+        for r in self.collect():
+            f(r)
+
+    def show(self, n=20, truncate=True, vertical=False):
+        rows = self.take(n + 1)
+        more = len(rows) > n
+        rows = rows[:n]
+        print(_show_table(self.columns, rows, truncate, vertical, more, n))
+
+    def describe(self, *cols):
+        cols = _flatten(cols) or [c for c, t in self._schema_pairs()
+                                  if isinstance(_from_duck_type(t), (StringType, IntegerType, LongType, ShortType,
+                                                                     DoubleType, FloatType, DecimalType))]
+        types = dict(self._schema_pairs())
+        q = f"({self._sql()})"
+        parts = []
+        for stat in ("count", "mean", "stddev", "min", "max"):
+            items = [f"'{stat}' AS summary"]
+            for c in cols:
+                numeric = not isinstance(_from_duck_type(types[c]), StringType)
+                qc = _qi(c)
+                expr_ = {"count": f"count({qc})",
+                         "mean": f"avg({qc})" if numeric else "NULL",
+                         "stddev": f"stddev_samp({qc})" if numeric else "NULL",
+                         "min": f"min({qc})", "max": f"max({qc})"}[stat]
+                items.append(f"CAST({expr_} AS VARCHAR) AS {qc}")
+            parts.append(f"SELECT {', '.join(items)} FROM {q} AS __d")
+        a = _new_id()
+        return DataFrame(self.sparkSession, f"({' UNION ALL '.join(parts)}) AS {_qi(a)}", {a}, a)
+
+    summary = describe
+
+    def explain(self, extended=None, mode=None):
+        res = _run("EXPLAIN " + self._sql())
+        plan = "\n".join(r[1] for r in res["rows"] if r[0] == "physical_plan") or str(res["rows"])
+        print("== Physical Plan ==\n(This trainer runs on DuckDB, so this is DuckDB's plan, not Spark's.)\n" + plan)
+
+
+class DataFrameNaFunctions:
+    def __init__(self, df):
+        self._df = df
+
+    def fill(self, value, subset=None):
+        return self._df.fillna(value, subset)
+
+    def drop(self, how="any", thresh=None, subset=None):
+        return self._df.dropna(how, thresh, subset)
+
+
+class GroupedData:
+    def __init__(self, df, keys, pivot=None):
+        self._df, self._keys, self._pivot = df, keys, pivot
+
+    def agg(self, *exprs):
+        if len(exprs) == 1 and isinstance(exprs[0], dict):
+            exprs = [_dict_agg(fn, c) for c, fn in exprs[0].items()]
+        exprs = [e for e in exprs]
+        for e in exprs:
+            if not isinstance(e, Column):
+                raise PySparkTypeError("agg() expects Column expressions such as F.sum('amount'), or a dict.")
+        df = self._df
+        base = df if (df._projectable() and not df._order) else df._wrap()
+        key_items = [_sel_item(k) for k in self._keys]
+        if self._pivot is not None:
+            agg_items = self._pivot_items(base, exprs)
+        else:
+            agg_items = [_sel_item(e) for e in exprs]
+        group = [k._sql for k in self._keys]
+        return base._copy(proj=key_items + agg_items, group=group, id_=_new_id())
+
+    def _pivot_items(self, base, exprs):
+        pcol, values = self._pivot
+        if values is None:
+            res = _run(f"SELECT DISTINCT {_resolve(pcol._sql, base._scope)} AS v FROM {_resolve(base._from, base._scope)}"
+                       + ("" if not base._where else " WHERE " + " AND ".join("(" + _resolve(w, base._scope) + ")" for w in base._where))
+                       + " ORDER BY 1")
+            values = [r[0] for r in res["rows"] if r[0] is not None]
+        items = []
+        for v in values:
+            for e in exprs:
+                if e._agg is None:
+                    raise AnalysisException("pivot() needs aggregate functions such as F.sum('amount').")
+                template, arg = e._agg
+                sql = template(f"CASE WHEN {pcol._sql} = {_lit_sql(v)} THEN {arg} END")
+                if sql.startswith("count("):
+                    sql = f"nullif({sql}, 0)"  # Spark leaves missing pivot cells NULL, even for count
+                name = str(v) if len(exprs) == 1 else f"{v}_{e._name}"
+                items.append(f"{sql} AS {_qi(name)}")
+        return items
+
+    def pivot(self, pivot_col, values=None):
+        return GroupedData(self._df, self._keys, (_as_col(pivot_col), values))
+
+    def count(self):
+        return self.agg(f_count("*").alias("count"))
+
+    def _numeric(self, fn, cols):
+        if not cols:
+            keys = {k._name.lower() for k in self._keys}
+            cols = [n for n, t in self._df._schema_pairs()
+                    if isinstance(_from_duck_type(t), (IntegerType, LongType, ShortType, ByteType, DoubleType, FloatType, DecimalType))
+                    and n.lower() not in keys]
+        return self.agg(*[fn(c) for c in cols])
+
+    def sum(self, *cols): return self._numeric(f_sum, cols)
+    def avg(self, *cols): return self._numeric(f_avg, cols)
+    mean = avg
+    def min(self, *cols): return self._numeric(f_min, cols)
+    def max(self, *cols): return self._numeric(f_max, cols)
+
+
+def _dict_agg(fn, c):
+    fn = fn.lower()
+    table = {"sum": f_sum, "avg": f_avg, "mean": f_avg, "min": f_min, "max": f_max, "count": f_count,
+             "first": first, "last": last, "collect_list": collect_list, "collect_set": collect_set,
+             "stddev": stddev, "variance": variance}
+    if fn not in table:
+        raise PySparkValueError(f"Unsupported aggregate function in dict: {fn}")
+    out = table[fn](c)
+    return out.alias(f"{'avg' if fn == 'mean' else fn}({c})")
+
+
+class DataFrameWriter:
+    def __init__(self, df):
+        self._df, self._mode = df, "errorifexists"
+
+    def mode(self, saveMode):
+        self._mode = (saveMode or "errorifexists").lower()
+        return self
+
+    def format(self, source): return self
+    def option(self, key, value): return self
+    def options(self, **options): return self
+    def partitionBy(self, *cols): return self
+    def bucketBy(self, numBuckets, col, *cols): return self
+    def sortBy(self, col, *cols): return self
+    def clusterBy(self, *cols): return self
+
+    def saveAsTable(self, name, format=None, mode=None, partitionBy=None, **options):
+        mode = (mode or self._mode).lower()
+        t = _table_ident(name)
+        exists = self._df.sparkSession.catalog.tableExists(name)
+        sql = self._df._sql()
+        if mode in ("error", "errorifexists", "default"):
+            if exists:
+                raise AnalysisException(f"[TABLE_OR_VIEW_ALREADY_EXISTS] Table `{name}` already exists. "
+                                        "Use .mode(\"overwrite\") or .mode(\"append\").")
+            _run(f"CREATE TABLE {t} AS {sql}")
+        elif mode == "overwrite":
+            _run(f"CREATE OR REPLACE TABLE {t} AS {sql}")
+        elif mode == "append":
+            _run(f"INSERT INTO {t} BY NAME {sql}" if exists else f"CREATE TABLE {t} AS {sql}")
+        elif mode == "ignore":
+            if not exists:
+                _run(f"CREATE TABLE {t} AS {sql}")
+        else:
+            raise PySparkValueError(f"Unknown save mode: {mode}. Use append, overwrite, error or ignore.")
+
+    def insertInto(self, tableName, overwrite=None):
+        t = _table_ident(tableName)
+        if overwrite or self._mode == "overwrite":
+            _run(f"DELETE FROM {t}")
+        _run(f"INSERT INTO {t} {self._df._sql()}")
+
+    def _files(self, *a, **k):
+        raise NotAvailableInTrainer(_FILES_MSG)
+
+    save = csv = json = parquet = text = orc = _files
+
+
+class DataFrameReader:
+    def __init__(self, session):
+        self._session = session
+
+    def format(self, source): return self
+    def option(self, key, value): return self
+    def options(self, **options): return self
+    def schema(self, schema): return self
+
+    def table(self, tableName):
+        return self._session.table(tableName)
+
+    def _files(self, *a, **k):
+        raise NotAvailableInTrainer(_FILES_MSG)
+
+    load = csv = json = parquet = text = orc = _files
+
+
+# --------------------------------------------------------------------------- results
+
+def _to_value(v, kind):
+    if v is None:
+        return None
+    if kind == "date":
+        return datetime.date.fromisoformat(v)
+    if kind == "timestamp":
+        return datetime.datetime.fromisoformat(v)
+    if kind == "float":
+        return float(v)
+    if kind == "int":
+        return int(v)
+    if kind == "struct" and isinstance(v, dict):
+        return Row(**v)
+    return v
+
+
+def _to_rows(res):
+    cols, kinds = res["columns"], res["kinds"]
+    return [Row._make(cols, [_to_value(v, k) for v, k in zip(r, kinds)]) for r in res["rows"]]
+
+
+def _java_double(v):
+    if v != v:
+        return "NaN"
+    if v in (float("inf"), float("-inf")):
+        return "Infinity" if v > 0 else "-Infinity"
+    a = abs(v)
+    if a != 0 and (a >= 1e7 or a < 1e-3):
+        m, e = f"{v:.16E}".split("E")
+        m = m.rstrip("0")
+        if m.endswith("."):
+            m += "0"
+        return f"{m}E{int(e)}"
+    return repr(float(v))
+
+
+def _show_str(v):
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, float):
+        return _java_double(v)
+    if isinstance(v, datetime.datetime):
+        s = v.isoformat(sep=" ")
+        return s
+    if isinstance(v, datetime.date):
+        return v.isoformat()
+    if isinstance(v, Row):
+        return "{" + ", ".join(_show_str(x) for x in v) + "}"
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{_show_str(k)} -> {_show_str(x)}" for k, x in v.items()) + "}"
+    if isinstance(v, list):
+        return "[" + ", ".join(_show_str(x) for x in v) + "]"
+    return str(v)
+
+
+def _show_table(cols, rows, truncate, vertical, more, n):
+    t = 20 if truncate is True else (int(truncate) if truncate else 0)
+
+    def cut(s):
+        if t and len(s) > t:
+            return s[:t] if t < 4 else s[:t - 3] + "..."
+        return s
+
+    cells = [[cut(_show_str(v)) for v in r] for r in rows]
+    heads = [cut(c) for c in cols]
+    if vertical:
+        w = max([len(h) for h in heads] + [0])
+        out = []
+        for i, r in enumerate(cells):
+            out.append(f"-RECORD {i}" + "-" * 10)
+            out += [f" {h.ljust(w)} | {v}" for h, v in zip(heads, r)]
+        if not cells:
+            out.append("(0 rows)")
+        return "\n".join(out)
+    widths = [max([3, len(h)] + [len(r[i]) for r in cells]) for i, h in enumerate(heads)]
+    pad = (lambda s, w: s.rjust(w)) if t else (lambda s, w: s.ljust(w))
+    sep = "+" + "+".join("-" * w for w in widths) + "+"
+    lines = [sep, "|" + "|".join(pad(h, w) for h, w in zip(heads, widths)) + "|", sep]
+    lines += ["|" + "|".join(pad(v, w) for v, w in zip(r, widths)) + "|" for r in cells]
+    lines.append(sep)
+    if more:
+        lines.append(f"only showing top {n} row{'s' if n != 1 else ''}")
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------- session
+
+class _Conf:
+    def __init__(self):
+        self._d = {"spark.sql.shuffle.partitions": "200", "spark.sql.adaptive.enabled": "true",
+                   "spark.sql.ansi.enabled": "false"}
+
+    def set(self, key, value):
+        self._d[key] = str(value)
+
+    def get(self, key, default=None):
+        return self._d.get(key, default)
+
+    def unset(self, key):
+        self._d.pop(key, None)
+
+
+class _Catalog:
+    def __init__(self, session):
+        self._s = session
+
+    def _names(self):
+        res = _run("SELECT table_name, table_type FROM information_schema.tables ORDER BY 1")
+        return res["rows"]
+
+    def listTables(self, dbName=None):
+        Table = Row("name", "catalog", "namespace", "description", "tableType", "isTemporary")
+        return [Table(n, "main", ["default"], None, "VIEW" if "VIEW" in (t or "") else "MANAGED", "VIEW" in (t or ""))
+                for n, t in self._names()]
+
+    def tableExists(self, tableName, dbName=None):
+        target = _clean_name(str(tableName).split(".")[-1]).lower()
+        return any(n.lower() == target for n, _ in self._names())
+
+    def dropTempView(self, viewName):
+        _run(f"DROP VIEW IF EXISTS {_table_ident(viewName)}")
+        return True
+
+    dropGlobalTempView = dropTempView
+
+
+class _SparkContext:
+    defaultParallelism = 8
+    appName = "databricks-trainer"
+
+    def setLogLevel(self, level):
+        pass
+
+
+class _Builder:
+    def appName(self, name): return self
+    def master(self, master): return self
+    def config(self, key=None, value=None, conf=None, **kw): return self
+    def enableHiveSupport(self): return self
+
+    def getOrCreate(self):
+        return spark
+
+
+class SparkSession:
+    builder = _Builder()
+
+    def __init__(self):
+        self.conf = _Conf()
+        self.catalog = _Catalog(self)
+        self.sparkContext = _SparkContext()
+        self.version = "3.5.0 (browser trainer on DuckDB)"
+
+    @classmethod
+    def getActiveSession(cls):
+        return spark
+
+    def newSession(self):
+        return self
+
+    def stop(self):
+        pass
+
+    @property
+    def read(self):
+        return DataFrameReader(self)
+
+    @property
+    def readStream(self):
+        raise NotAvailableInTrainer("Structured Streaming needs a Databricks cluster. See the Production lessons.")
+
+    def table(self, tableName):
+        a = _new_id()
+        return DataFrame(self, f"{_table_ident(tableName)} AS {_qi(a)}", {a}, a)
+
+    def sql(self, sqlQuery, args=None, **kwargs):
+        q = sqlQuery.strip().rstrip(";")
+        if args:
+            def sub(m):
+                k = m.group(1)
+                return _lit_sql(args[k]) if k in args else m.group(0)
+            q = re.sub(r":(\w+)", sub, q)
+        if re.match(r"(?is)^\s*(\(|select\b|with\b|from\b|values\b|table\b)", q):
+            a = _new_id()
+            return DataFrame(self, f"({q}) AS {_qi(a)}", {a}, a)
+        res = _run(q)
+        if res["columns"] and res["rows"]:
+            return self.createDataFrame([tuple(r) for r in res["rows"]], res["columns"])
+        a = _new_id()
+        return DataFrame(self, f"(SELECT NULL AS result WHERE false) AS {_qi(a)}", {a}, a)
+
+    def range(self, start, end=None, step=1, numPartitions=None):
+        if end is None:
+            start, end = 0, start
+        a = _new_id()
+        return DataFrame(self, f"(SELECT range AS id FROM range({int(start)}, {int(end)}, {int(step)})) AS {_qi(a)}", {a}, a)
+
+    def createDataFrame(self, data, schema=None, samplingRatio=None, verifySchema=True):
+        if isinstance(data, DataFrame):
+            return data
+        rows = list(data)
+        names, types_ = None, None
+        if isinstance(schema, StructType):
+            names, types_ = schema.fieldNames(), [f.dataType._duck() for f in schema.fields]
+        elif isinstance(schema, DataType):
+            names, types_ = ["value"], [schema._duck()]
+        elif isinstance(schema, str):
+            if re.fullmatch(r"\s*\w+\s*", schema) and schema.strip().lower() in _SPARK_TYPE_ALIASES:
+                names, types_ = ["value"], [_parse_spark_type(schema)._duck()]
+            else:
+                st = _parse_ddl(schema)
+                names, types_ = st.fieldNames(), [f.dataType._duck() for f in st.fields]
+        elif isinstance(schema, (list, tuple)):
+            names = [str(s) for s in schema]
+        first_row = rows[0] if rows else None
+        if rows and isinstance(first_row, Row) and first_row._fields:
+            names = names or list(first_row._fields)
+            tuples = [tuple(r) for r in rows]
+        elif rows and isinstance(first_row, dict):
+            names = names or list(first_row.keys())
+            tuples = [tuple(r.get(n) for n in names) for r in rows]
+        elif rows and not isinstance(first_row, (tuple, list)):
+            tuples = [(x,) for x in rows]
+            names = names or ["value"]
+        else:
+            tuples = [tuple(r) for r in rows]
+        if not rows:
+            if not types_:
+                raise PySparkValueError("[CANNOT_INFER_EMPTY_SCHEMA] Can not infer schema from an empty dataset.")
+            sql = "SELECT " + ", ".join(f"CAST(NULL AS {t}) AS {_qi(n)}" for n, t in zip(names, types_)) + " WHERE false"
+        else:
+            width = len(tuples[0])
+            if names is None:
+                names = [f"_{i + 1}" for i in range(width)]
+            if any(len(t) != len(names) for t in tuples):
+                raise PySparkValueError("[LENGTH_SHOULD_BE_THE_SAME] Each row needs one value per column.")
+            values = ", ".join("(" + ", ".join(_lit_sql(v, data=True) for v in t) + ")" for t in tuples)
+            sql = f"SELECT * FROM (VALUES {values}) AS __v({', '.join(_qi(n) for n in names)})"
+            if types_:
+                sql = ("SELECT " + ", ".join(f"CAST({_qi(n)} AS {t}) AS {_qi(n)}" for n, t in zip(names, types_))
+                       + f" FROM ({sql}) AS __v2")
+        a = _new_id()
+        return DataFrame(self, f"({sql}) AS {_qi(a)}", {a}, a)
+
+
+spark = SparkSession()
+
+
+class _DeltaTable:
+    @classmethod
+    def _unavailable(cls, *a, **k):
+        raise NotAvailableInTrainer("Delta Lake's Python API (DeltaTable) needs a Databricks cluster. "
+                                    "Practise it in the Delta pattern exercises.")
+
+    forName = forPath = isDeltaTable = createIfNotExists = create = _unavailable
+
+
+class StorageLevel:
+    MEMORY_ONLY = "MEMORY_ONLY"
+    MEMORY_AND_DISK = "MEMORY_AND_DISK"
+    DISK_ONLY = "DISK_ONLY"
+    MEMORY_AND_DISK_DESER = "MEMORY_AND_DISK_DESER"
+    OFF_HEAP = "OFF_HEAP"
+
+
+# --------------------------------------------------------------------------- display and host API
+
+def display(obj=None, *args, **kwargs):
+    """Databricks notebook display(): renders a DataFrame as a table (first 1,000 rows)."""
+    if isinstance(obj, DataFrame):
+        rows = obj.take(1000)
+        payload = {"columns": obj.columns, "rows": [[None if v is None else _show_str(v) for v in r] for r in rows]}
+        if _host["display"] is not None:
+            _host["display"](json.dumps(payload))
+        else:
+            print(_show_table(obj.columns, rows, False, False, False, 1000))
+    else:
+        print(obj)
+
+
+def _install_modules():
+    M = _pytypes.ModuleType
+    pyspark = M("pyspark")
+    sql = M("pyspark.sql")
+    functions = M("pyspark.sql.functions")
+    window = M("pyspark.sql.window")
+    types_mod = M("pyspark.sql.types")
+    utils = M("pyspark.sql.utils")
+    errors = M("pyspark.errors")
+    delta = M("delta")
+    delta_tables = M("delta.tables")
+    dlt = M("dlt")
+
+    functions.__dict__.update(_F)
+    window.Window, window.WindowSpec = Window, WindowSpec
+    for name in ("DataType", "StringType", "IntegerType", "LongType", "ShortType", "ByteType", "DoubleType",
+                 "FloatType", "BooleanType", "DateType", "TimestampType", "NullType", "DecimalType", "ArrayType",
+                 "MapType", "StructField", "StructType", "Row"):
+        setattr(types_mod, name, globals()[name])
+    for mod in (utils, errors):
+        mod.AnalysisException = AnalysisException
+        mod.PySparkTypeError = PySparkTypeError
+        mod.PySparkValueError = PySparkValueError
+    for name, obj in dict(SparkSession=SparkSession, DataFrame=DataFrame, Column=Column, Row=Row, Window=Window,
+                          WindowSpec=WindowSpec, GroupedData=GroupedData, DataFrameWriter=DataFrameWriter,
+                          DataFrameReader=DataFrameReader, functions=functions, types=types_mod,
+                          window=window, utils=utils).items():
+        setattr(sql, name, obj)
+    pyspark.sql, pyspark.errors, pyspark.StorageLevel = sql, errors, StorageLevel
+    pyspark.__version__ = "3.5.0"
+    delta.tables, delta_tables.DeltaTable = delta_tables, _DeltaTable
+
+    def _dlt_unavailable(*a, **k):
+        raise NotAvailableInTrainer("Lakeflow Declarative Pipelines (dlt) run as pipelines on Databricks, not in a notebook. "
+                                    "See the Production lessons and pattern exercises.")
+    for n in ("table", "view", "expect", "expect_or_drop", "expect_or_fail", "read", "read_stream"):
+        setattr(dlt, n, _dlt_unavailable)
+
+    sys.modules.update({
+        "pyspark": pyspark, "pyspark.sql": sql, "pyspark.sql.functions": functions,
+        "pyspark.sql.window": window, "pyspark.sql.types": types_mod, "pyspark.sql.utils": utils,
+        "pyspark.errors": errors, "delta": delta, "delta.tables": delta_tables, "dlt": dlt,
+    })
+
+
+_install_modules()
+
+
+def setup(query_json, display_hook=None):
+    _host["query"], _host["display"] = query_json, display_hook
+    _run("SET default_null_order = 'nulls_first_on_asc_last_on_desc'")
+
+
+def new_namespace():
+    return {"__name__": "__main__", "spark": spark, "display": display}
+
+
+def run_cell(code, ns):
+    """Run user code. Returns None on success, or a short traceback string limited to the user's code."""
+    try:
+        exec(compile(code, "<cell>", "exec"), ns)
+        return None
+    except SyntaxError as e:
+        line = (e.text or "").rstrip()
+        return f"SyntaxError: {e.msg} (line {e.lineno})" + (f"\n    {line.strip()}" if line else "")
+    except BaseException as e:  # noqa: BLE001 - we report every error to the learner
+        frames = [f for f in traceback.extract_tb(e.__traceback__) if f.filename == "<cell>"]
+        lines = code.splitlines()
+        out = []
+        for f in frames[-3:]:
+            src = lines[f.lineno - 1].strip() if 0 < f.lineno <= len(lines) else ""
+            out.append(f"  line {f.lineno}: {src}")
+        msg = str(e)
+        out.append(f"{type(e).__name__}: {msg}" if msg else type(e).__name__)
+        return "\n".join(out)
+
+
+def _norm(v):
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        r = round(v, 4)
+        return str(int(r)) if r == int(r) else repr(r)
+    if isinstance(v, datetime.datetime):
+        return v.isoformat(sep=" ")
+    if isinstance(v, datetime.date):
+        return v.isoformat()
+    if isinstance(v, Row):
+        return json.dumps([_norm(x) for x in v])
+    if isinstance(v, list):
+        return json.dumps([_norm(x) for x in v])
+    if isinstance(v, dict):
+        return json.dumps({str(k): _norm(x) for k, x in v.items()})
+    return str(v)
+
+
+def result_json(ns, name="result"):
+    """The learner's `result` DataFrame as {columns, rows (normalized), display}."""
+    if name not in ns:
+        return json.dumps({"error": f"Assign your final DataFrame to a variable called `{name}`."})
+    v = ns[name]
+    if not isinstance(v, DataFrame):
+        return json.dumps({"error": f"`{name}` should be a DataFrame, but it's a {type(v).__name__}."})
+    try:
+        rows = v.collect()
+    except Exception as e:  # noqa: BLE001
+        return json.dumps({"error": f"{type(e).__name__}: {e}"})
+    return json.dumps({
+        "columns": v.columns,
+        "rows": [[_norm(x) for x in r] for r in rows],
+        "display": [[None if x is None else _show_str(x) for x in r] for r in rows],
+    })

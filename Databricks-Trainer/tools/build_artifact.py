@@ -2,9 +2,10 @@
 wrap the page in their own document skeleton, such as a claude.ai Artifact.
 
 Usage: python3 tools/build_artifact.py OUT_DIR
-Writes OUT_DIR/index.html. Put the DuckDB worker and the gzipped .wasm in OUT_DIR/duckdb/
-(see README) and publish them alongside the page.
+Writes OUT_DIR/index.html. Put the gzipped DuckDB .wasm in OUT_DIR/duckdb/ and the Pyodide
+runtime files in OUT_DIR/pyodide/ (see README), and publish them alongside the page.
 """
+import json
 import pathlib
 import re
 import sys
@@ -23,6 +24,8 @@ scripts = "\n".join(
     for src in re.findall(r'<script src="([^"]+)"></script>', html)
 )
 
+shim = json.dumps((root / "py/pyspark_shim.py").read_text()).replace("</", "<\\/")
+
 page = f"""{title}
 <meta name="claude:viewport-fit-sides" content="cover">
 {fonts}
@@ -30,8 +33,9 @@ page = f"""{title}
 {css}
 </style>
 {body}
-<script>window.TRAINER_DUCKDB_LOCAL = "duckdb/";</script>
+<script>window.TRAINER_DUCKDB_LOCAL = "duckdb/"; window.TRAINER_PYODIDE_LOCAL = "pyodide/";</script>
 {scripts}
+<script>TRAINER.pysparkShimSource = {shim};</script>
 """
 (out / "index.html").write_text(page)
 print("wrote", out / "index.html", len(page), "bytes")
