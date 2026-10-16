@@ -12,6 +12,8 @@
   --good-soft: #e3f3ea;
   --bad: #b3261e;
   --bad-soft: #fbe7e5;
+  --warn: #8a5a00;
+  --warn-soft: #fbf0d9;
   --code-bg: #1e2127;
   --code-text: #e6e6e6;
   --radius: 10px;
@@ -33,6 +35,8 @@
     --good-soft: #17301f;
     --bad: #ff8a80;
     --bad-soft: #3a1c1a;
+    --warn: #f0b85a;
+    --warn-soft: #3a2e17;
     --code-bg: #0f1114;
     color-scheme: dark;
   }
@@ -51,6 +55,8 @@
   --good-soft: #17301f;
   --bad: #ff8a80;
   --bad-soft: #3a1c1a;
+  --warn: #f0b85a;
+  --warn-soft: #3a2e17;
   --code-bg: #0f1114;
   color-scheme: dark;
 }
@@ -198,6 +204,10 @@ table.ref th { background: var(--surface-2); }
 .feedback { margin: 16px 0; padding: 12px 16px; border-radius: 8px; }
 .feedback.good { background: var(--good-soft); border: 1px solid var(--good); }
 .feedback.bad { background: var(--bad-soft); border: 1px solid var(--bad); }
+.feedback.warn { background: var(--warn-soft); border: 1px solid var(--warn); }
+.feedback.neutral { background: var(--surface-2); border: 1px solid var(--border); }
+.option.partial { border-color: var(--warn); background: var(--warn-soft); }
+.option.partial .letter { background: var(--warn); color: var(--surface); }
 .feedback ul { margin: 6px 0 0; padding-left: 1.2em; }
 .good-text { color: var(--good); font-weight: 600; }
 .bad-text { color: var(--bad); font-weight: 600; }
@@ -254,3 +264,42 @@ pre.stdout { white-space: pre; overflow-x: auto; }
   h1 { font-size: 1.5rem; }
   .breakdown li { grid-template-columns: 80px 1fr 36px; }
 }
+
+/* ---------- architect track */
+.brief > :first-child { margin-top: 0; }
+.brief > :last-child { margin-bottom: 0; }
+.eyebrow { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
+.card.quiz { margin-top: 16px; }
+.design-review { padding-left: 1.3em; display: grid; gap: 12px; }
+.review-q { font-weight: 600; }
+.review-a { color: var(--muted); }
+.pill { display: inline-block; font-size: .72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-right: 4px; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.calc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px; margin-top: 16px; }
+.calc-field label { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 6px; }
+.calc-input { display: flex; align-items: center; gap: 8px; }
+.calc-input input { flex: 1; min-width: 0; font: 1rem var(--mono); padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-variant-numeric: tabular-nums; }
+.calc-input input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.calc-input input.ok { border-color: var(--good); background: var(--good-soft); }
+.calc-input input.bad { border-color: var(--bad); background: var(--bad-soft); }
+.calc-input span { color: var(--muted); font-size: .85rem; min-width: 3em; }
+
+/* ---------- diagrams (inline SVG, themed through tokens) */
+.diagram { margin: 20px 0; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 620px; height: auto; color: var(--text); }
+.diagram figcaption { font-size: .88rem; color: var(--muted); margin-top: 8px; max-width: 70ch; }
+.diagram .d-box { fill: var(--surface); stroke: var(--muted); stroke-width: 1.2; }
+.diagram .d-group { fill: var(--surface-2); fill-opacity: .55; stroke: var(--border); stroke-width: 1.2; }
+.diagram .d-group.d-accent { fill: none; stroke: var(--accent); stroke-dasharray: 6 4; }
+.diagram .d-line { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+.diagram .d-line.d-accent { stroke: var(--accent); stroke-width: 2.2; }
+.diagram .d-dash { stroke-dasharray: 5 4; }
+.diagram .d-head { fill: var(--muted); }
+.diagram .d-head.d-accent-fill { fill: var(--accent); }
+.diagram text { fill: currentColor; font-family: var(--sans); }
+.diagram .d-label { font-size: 12.5px; font-weight: 600; }
+.diagram .d-title { font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.diagram .d-note { font-size: 11px; fill: var(--muted); }
+.diagram .d-accent-text { fill: var(--accent); font-weight: 600; }

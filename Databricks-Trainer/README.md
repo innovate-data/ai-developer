@@ -1,19 +1,22 @@
 # Databricks Trainer
 
-A static, single-page web app for learning Databricks: preparation for the **Databricks Certified Data Engineer Associate** exam, plus a hands-on **PySpark** track. There's no backend and no build step. Progress is saved in the browser's `localStorage`.
+A static, single-page web app for learning Databricks, with three tracks: preparation for the **Databricks Certified Data Engineer Associate** exam, a hands-on **PySpark** track, and an **Azure Solutions Architect** track. There's no backend and no build step. Progress is saved in the browser's `localStorage`.
 
 ## What's inside
 
 | | |
 |---|---|
 | **Lessons** | 13 short lessons across the 5 exam domains: Platform, Ingestion, Transformations, Production pipelines, Governance |
-| **Quizzes** | 46 multiple-choice questions with explanations. There's a quiz per domain (70% counts as passing) and a 20-question mixed practice quiz with a per-domain breakdown |
+| **Quizzes** | 205 multiple-choice questions with explanations across the three tracks: a quiz per domain or module (70% counts as passing) and a 20-question mixed quiz per track with a per-topic breakdown |
 | **SQL exercises** | 9 exercises that run **real SQL in your browser** on [DuckDB-WASM](https://duckdb.org/docs/api/wasm/overview) against a small retail dataset. Your result set is compared with the expected one |
 | **Spark pattern exercises** | 6 exercises for syntax that can't run in a browser (notebooks and widgets, Auto Loader, MERGE, Lakeflow Declarative Pipelines expectations, Unity Catalog grants, time travel and RESTORE). Your code is checked against the required patterns, with specific feedback |
 | **SQL sandbox** | Free-form queries against the sample tables |
 | **PySpark track** | 4 modules (DataFrame fundamentals, window and advanced functions, reading/writing and Delta, performance and internals), 10 lessons with "Try it" examples, 26 quiz questions |
 | **PySpark exercises** | 15 exercises where your PySpark code **actually runs** in the browser and your `result` DataFrame is compared with the expected one, plus 3 syntax-checked Delta/I/O exercises |
 | **PySpark sandbox** | A notebook-style Python session with `spark` and `display()` ready to use |
+| **Solutions Architect track (Azure)** | 5 modules (platform architecture and networking, identity/security/Unity Catalog design, reference architectures, sizing and cost, migration/DR/operations), 10 lessons with architecture diagrams |
+| **Architecture case studies** | 5 customer scenarios (private bank workspace, real-time retail, multi-BU governance, Synapse migration, cost reduction) where each design decision gets feedback |
+| **Sizing & cost calculations** | 5 exercises: subnet capacity, classic job cost, jobs vs all-purpose savings, SQL warehouse scale-out, Event Hubs throughput units |
 
 ## Run it
 
@@ -36,6 +39,8 @@ js/content-lessons.js       domains + lesson HTML
 js/content-quiz.js          question bank
 js/content-exercises.js     sample dataset + SQL and pattern exercises
 js/content-pyspark.js       PySpark track: modules, lessons, questions, exercises
+js/content-architect.js     Solutions Architect track: modules, lessons with SVG diagrams, questions, case studies, calculations
+js/content-quiz-extra.js    second half of the question bank (all tracks)
 js/engine.js                DuckDB-WASM (sync build) + Pyodide loading, Arrow conversion
 js/app.js                   router, views, progress, answer checking
 py/pyspark_shim.py          PySpark-compatible DataFrame API that compiles to SQL on DuckDB
@@ -54,6 +59,8 @@ Run the tests with `pip install duckdb==1.1.1 pytest && pytest tests/` (needs No
 - **Question**: add an object to `TRAINER.questions` with `domain`, `q`, `options`, `answer` (index of the correct option) and `explain`. Text wrapped in backticks is shown as inline code.
 - **Lesson**: add an object to `TRAINER.lessons`. `body` is trusted HTML.
 - **PySpark exercise**: `kind: "python"`, plus `starter` and `solution` that assign a DataFrame to `result`, optionally `ordered: true` and `requires: [{ re, msg }]`. Column names must match (case-insensitively).
+- **Case study**: `kind: "scenario"` with `brief` (HTML) and `steps: [{ q, options: [{ text, score: 0|1|2, feedback }] }]`. Options are shuffled, and 70% of the points counts as solved.
+- **Calculation**: `kind: "calc"` with `prompt` (HTML), `answers: [{ label, unit, value, tol }]`, `hints` and an `explanation` (HTML).
 - **SQL exercise**: `kind: "sql"`, plus `starter`, `solution` and optionally `ordered: true`. Column names are ignored, but column order and values must match. Numbers are compared to 4 decimal places.
 - **Pattern exercise**: `kind: "pattern"`, `lang` (`"sql"` or `"python"`), and `checks: [{ re, msg, absent? }]`. Comments are stripped before checking. SQL checks are case-insensitive.
 
