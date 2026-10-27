@@ -24,7 +24,7 @@ import pyspark_shim as shim  # noqa: E402
 
 CONTENT = json.loads(subprocess.check_output(["node", "-e", """
 globalThis.window = globalThis;
-for (const f of ["lessons", "quiz", "exercises", "pyspark"]) require(process.argv[1] + "/js/content-" + f + ".js");
+for (const f of ["lessons", "quiz", "exercises", "pyspark", "professional", "professional-practice"]) require(process.argv[1] + "/js/content-" + f + ".js");
 process.stdout.write(JSON.stringify({ exercises: TRAINER.exercises, sql: TRAINER.datasetSql }));
 """, str(ROOT)]))
 

@@ -27,7 +27,7 @@ def use(mods):
 
 content = json.loads(subprocess.check_output(["node", "-e", """
 globalThis.window = globalThis;
-for (const f of ["lessons", "quiz", "exercises", "pyspark", "architect", "quiz-extra"]) require(process.argv[1] + "/js/content-" + f + ".js");
+for (const f of ["lessons", "quiz", "exercises", "pyspark", "architect", "quiz-extra", "professional", "professional-practice"]) require(process.argv[1] + "/js/content-" + f + ".js");
 process.stdout.write(JSON.stringify({ sql: TRAINER.datasetSql }));""", str(ROOT)]))
 
 con = duckdb.connect()
@@ -76,6 +76,8 @@ SCHEMAS = {
  "order_items": T.StructType([T.StructField("order_id", T.IntegerType()), T.StructField("product_id", T.IntegerType()), T.StructField("quantity", T.IntegerType())]),
  "bronze_events": T.StructType([T.StructField("event_id", T.StringType()), T.StructField("customer_id", T.IntegerType()), T.StructField("event_type", T.StringType()), T.StructField("event_ts", T.TimestampType()), T.StructField("ingest_ts", T.TimestampType())]),
  "carts": T.StructType([T.StructField("cart_id", T.IntegerType()), T.StructField("customer_id", T.IntegerType()), T.StructField("items", T.ArrayType(T.IntegerType())), T.StructField("created_at", T.TimestampType())]),
+ "customer_updates": T.StructType([T.StructField("customer_id", T.IntegerType()), T.StructField("name", T.StringType()), T.StructField("email", T.StringType()), T.StructField("country", T.StringType()), T.StructField("op", T.StringType()), T.StructField("seq", T.IntegerType()), T.StructField("change_ts", T.TimestampType())]),
+ "orders_cdf": T.StructType([T.StructField("order_id", T.IntegerType()), T.StructField("status", T.StringType()), T.StructField("_change_type", T.StringType()), T.StructField("_commit_version", T.IntegerType())]),
 }
 with use(REAL_MODS):
     for name, schema in SCHEMAS.items():

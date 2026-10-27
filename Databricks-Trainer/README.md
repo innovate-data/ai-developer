@@ -1,13 +1,13 @@
 # Databricks Trainer
 
-A static, single-page web app for learning Databricks, with three tracks: preparation for the **Databricks Certified Data Engineer Associate** exam, a hands-on **PySpark** track, and an **Azure Solutions Architect** track. There's no backend and no build step. Progress is saved in the browser's `localStorage`.
+A static, single-page web app for learning Databricks, with four tracks: preparation for the **Databricks Certified Data Engineer Associate** exam, preparation for the **Databricks Certified Data Engineer Professional** exam (with timed mock exams), a hands-on **PySpark** track, and an **Azure Solutions Architect** track. There's no backend and no build step. Progress is saved in the browser's `localStorage`.
 
 ## What's inside
 
 | | |
 |---|---|
 | **Lessons** | 13 short lessons across the 5 exam domains: Platform, Ingestion, Transformations, Production pipelines, Governance |
-| **Quizzes** | 205 multiple-choice questions with explanations across the three tracks: a quiz per domain or module (70% counts as passing) and a 20-question mixed quiz per track with a per-topic breakdown |
+| **Quizzes** | 505 multiple-choice questions with explanations across the four tracks: a quiz per domain or module (70% counts as passing) and a 20-question mixed quiz per track with a per-topic breakdown |
 | **SQL exercises** | 9 exercises that run **real SQL in your browser** on [DuckDB-WASM](https://duckdb.org/docs/api/wasm/overview) against a small retail dataset. Your result set is compared with the expected one |
 | **Spark pattern exercises** | 6 exercises for syntax that can't run in a browser (notebooks and widgets, Auto Loader, MERGE, Lakeflow Declarative Pipelines expectations, Unity Catalog grants, time travel and RESTORE). Your code is checked against the required patterns, with specific feedback |
 | **SQL sandbox** | Free-form queries against the sample tables |
@@ -17,6 +17,10 @@ A static, single-page web app for learning Databricks, with three tracks: prepar
 | **Solutions Architect track (Azure)** | 5 modules (platform architecture and networking, identity/security/Unity Catalog design, reference architectures, sizing and cost, migration/DR/operations), 10 lessons with architecture diagrams |
 | **Architecture case studies** | 5 customer scenarios (private bank workspace, real-time retail, multi-BU governance, Synapse migration, cost reduction) where each design decision gets feedback |
 | **Sizing & cost calculations** | 5 exercises: subnet capacity, classic job cost, jobs vs all-purpose savings, SQL warehouse scale-out, Event Hubs throughput units |
+| **Data Engineer Professional track** | 9 modules, one per section of the exam guide effective Oct 9, 2026, each labelled with its exam weight: developing code (23%), ingestion & acquisition (12%), data manipulation (12%), monitoring & alerting (10%), cost & performance (15%), security & compliance (8%), governance (5%), debugging & deploying (10%), data modeling (5%). 22 lessons |
+| **Professional question bank** | 300 exam-style questions, split across the sections in proportion to their weights. Answer options were written so the correct one isn't given away by its length |
+| **Timed mock exams** | 5 full mock exams of 60 questions in 120 minutes, like the real exam. Each follows the section weights, and no question repeats across mocks. Answers are hidden until you submit; you can flag questions and jump between them, the timer survives reloads and submits automatically at zero, and results show a per-section breakdown and a review of every question |
+| **Professional exercises** | 4 SQL and 4 PySpark exercises that run in the browser (latest change per key from a CDC feed, MERGE preview, SCD Type 2 history, SCD Type 1 apply, incremental loads with a high-water mark, Change Data Feed net changes, data quality profiling, quarantine), 5 syntax exercises (foreachBatch MERGE, AUTO CDC SCD2, row filters and column masks, bundle targets, VARIANT and AI functions) and 5 case studies (slow MERGE, failing stream, GDPR erasure, partner sharing, CI/CD) |
 
 ## Run it
 
@@ -40,7 +44,9 @@ js/content-quiz.js          question bank
 js/content-exercises.js     sample dataset + SQL and pattern exercises
 js/content-pyspark.js       PySpark track: modules, lessons, questions, exercises
 js/content-architect.js     Solutions Architect track: modules, lessons with SVG diagrams, questions, case studies, calculations
-js/content-quiz-extra.js    second half of the question bank (all tracks)
+js/content-quiz-extra.js    second half of the question bank (Associate, PySpark and architect tracks)
+js/content-professional*.js Data Engineer Professional track: modules and lessons, sample CDC tables,
+                            exercises and case studies, 300 questions (two files)
 js/engine.js                DuckDB-WASM (sync build) + Pyodide loading, Arrow conversion
 js/app.js                   router, views, progress, answer checking
 py/pyspark_shim.py          PySpark-compatible DataFrame API that compiles to SQL on DuckDB
@@ -65,7 +71,7 @@ pip install duckdb==1.1.1 pytest            # needs Node.js
 pytest tests/                                # shim + every PySpark exercise
 
 pip install pyspark==3.5.3                   # also needs Java 11, 17 or 21
-pytest tests/test_matches_real_pyspark.py    # ~350 snippets compared with real Spark 3.5
+pytest tests/test_matches_real_pyspark.py    # ~390 snippets, including every PySpark exercise solution, compared with real Spark 3.5
 ```
 
 The second suite runs each snippet on real PySpark and on the shim and compares column names, types, rows and `show()` text. It is skipped when PySpark or Java isn't installed.
@@ -88,4 +94,5 @@ Scripts (DuckDB's blocking build, `pyodide.js`, `pyodide.asm.js`) still load fro
 ## Notes
 
 - The SQL exercises use SQL that works in both DuckDB and Databricks (ANSI SQL plus `QUALIFY`, `count_if`, `date_trunc`). Spark-only features are covered by the pattern exercises.
-- The content follows the public exam guide topics as of 2025/2026, including newer names such as Lakeflow Declarative Pipelines (formerly DLT) and Lakeflow Jobs. Check the [official exam page](https://www.databricks.com/learn/certification/data-engineer-associate) for the current outline and weights.
+- The Associate content follows the public exam guide topics as of 2025/2026, including newer names such as Lakeflow Declarative Pipelines (formerly DLT) and Lakeflow Jobs. Check the [official exam page](https://www.databricks.com/learn/certification/data-engineer-associate) for the current outline and weights.
+- The Professional track follows the exam guide effective **Oct 9, 2026** (60 scored questions, 120 minutes), including its new names and topics: Declarative Automation Bundles (formerly Databricks Asset Bundles), AUTO CDC, Lakeflow Connect, VARIANT, AI functions, ABAC with governed tags, and Unity Catalog metric views. Section weights are stored on each module (`weight` in `js/content-professional.js`), so the mock exams follow any future change automatically. Databricks doesn't publish a passing score; the trainer uses 70% as a target.

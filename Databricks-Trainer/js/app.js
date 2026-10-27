@@ -18,6 +18,7 @@
   const examDomains = T.domains.filter((d) => !d.track);
   const pyDomains = T.domains.filter((d) => d.track === "pyspark");
   const saDomains = T.domains.filter((d) => d.track === "architect");
+  const proDomains = T.domains.filter((d) => d.track === "professional");
   const shuffle = (arr) => {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -29,7 +30,7 @@
 
   // ------------------------------------------------------------------ progress
   const STORE_KEY = "dbx-trainer-v1";
-  const emptyProgress = () => ({ lessons: {}, quiz: {}, exercises: {}, drafts: {}, cases: {} });
+  const emptyProgress = () => ({ lessons: {}, quiz: {}, exercises: {}, drafts: {}, cases: {}, mock: {}, mockRun: null });
   let progress = emptyProgress();
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
@@ -119,13 +120,14 @@
   // Strip comments so commented-out code doesn't satisfy pattern checks.
   function stripComments(code, lang) {
     if (lang === "python") return code.replace(/#[^\n]*/g, "");
+    if (lang === "yaml") return code.replace(/(^|\s)#[^\n]*/g, "$1");
     return code.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
   }
 
   function checkPattern(ex, code) {
     const src = stripComments(code, ex.lang);
     if (/____/.test(src)) return { ok: false, failures: ["Fill in all the ____ blanks."] };
-    const flags = ex.lang === "python" ? "m" : "im";
+    const flags = ex.lang === "python" || ex.lang === "yaml" ? "m" : "im";
     const failures = ex.checks.filter((c) => new RegExp(c.re, flags).test(src) === !!c.absent).map((c) => c.msg);
     return { ok: failures.length === 0, failures };
   }
@@ -183,7 +185,7 @@
       const s = domainStats(d.id);
       const quiz = s.quizBest === undefined ? "Not taken" : s.quizBest + "%";
       return `<a class="card domain-card" href="#/domain/${d.id}">
-        <div class="domain-num">${label} ${i + 1}</div>
+        <div class="domain-num">${label} ${i + 1}${d.weight ? ` · ${d.weight}% of exam` : ""}</div>
         <h3>${esc(d.title)}</h3>
         <p>${esc(d.summary)}</p>
         <ul class="stats">
@@ -196,19 +198,20 @@
   }
 
   function viewHome() {
-    const examPct = trackPct(examDomains), pyPct = trackPct(pyDomains), saPct = trackPct(saDomains);
+    const examPct = trackPct(examDomains), pyPct = trackPct(pyDomains), saPct = trackPct(saDomains), proPct = trackPct(proDomains);
     const ids = (ds) => new Set(ds.map((d) => d.id));
-    const examIds = ids(examDomains), pyIds = ids(pyDomains), saIds = ids(saDomains);
+    const examIds = ids(examDomains), pyIds = ids(pyDomains), saIds = ids(saDomains), proIds = ids(proDomains);
     const next = T.lessons.find((l) => examIds.has(l.domain) && !progress.lessons[l.id]);
     const nextPy = T.lessons.find((l) => pyIds.has(l.domain) && !progress.lessons[l.id]);
     const nextSa = T.lessons.find((l) => saIds.has(l.domain) && !progress.lessons[l.id]);
+    const nextPro = T.lessons.find((l) => proIds.has(l.domain) && !progress.lessons[l.id]);
     const cta = next
       ? `<a class="btn primary" href="#/lesson/${next.id}">${examPct ? "Continue" : "Start"}: ${esc(next.title)}</a>`
       : `<a class="btn primary" href="#/quiz/all">Take the mixed exam quiz</a>`;
 
     return `<section class="hero">
         <h1>Databricks Trainer</h1>
-        <p class="lead">Three tracks: prepare for the Data Engineer Associate exam, learn PySpark with code that runs in your browser, and practise designing Azure Databricks solutions as an architect.</p>
+        <p class="lead">Four tracks: prepare for the Data Engineer Associate and Professional exams, learn PySpark with code that runs in your browser, and practise designing Azure Databricks solutions as an architect.</p>
         <div class="actions">${cta}
           <a class="btn" href="#/exercises">Hands-on exercises</a>
           <a class="btn" href="#/pyspark">PySpark sandbox</a>
@@ -232,7 +235,15 @@
       </div>
       <p class="muted">Design Azure Databricks platforms: networking, security, Unity Catalog topology, reference architectures, sizing and cost, migration and DR. Practise with case studies and cost calculations. ${nextSa ? `Next up: <a href="#/lesson/${nextSa.id}">${esc(nextSa.title)}</a>.` : ""}</p>
       <div class="grid">${domainCards(saDomains, "Module")}</div>
-      <p class="muted small">Progress is saved in this browser only. A domain or module counts as complete once you score 70% or more on its quiz. Exam content follows the public exam guide topics; check the <a href="https://www.databricks.com/learn/certification/data-engineer-associate" target="_blank" rel="noopener">official exam page</a> for the current outline.</p>`;
+      <div class="track-head">
+        <h2>Data Engineer Professional</h2>
+        <div class="progress-row"><div class="bar"><div style="width:${proPct}%"></div></div><span>${proPct}%</span></div>
+      </div>
+      <p class="muted">The nine sections of the exam guide (effective Oct 9, 2026), weighted like the real exam: ${proQuestionCount()} questions, runnable CDC and SCD exercises, case studies and ${MOCK.count} timed mock exams. ${nextPro ? `Next up: <a href="#/lesson/${nextPro.id}">${esc(nextPro.title)}</a>.` : ""}</p>
+      <div class="grid">${domainCards(proDomains, "Module")}</div>
+      <h3 class="sub-head">Timed mock exams</h3>
+      <div class="grid mock-cards">${mockNumbers().map(mockCard).join("")}</div>
+      <p class="muted small">Progress is saved in this browser only. A domain or module counts as complete once you score 70% or more on its quiz. Exam content follows the public exam guide topics; check the official <a href="https://www.databricks.com/learn/certification/data-engineer-associate" target="_blank" rel="noopener">Associate</a> and <a href="https://www.databricks.com/learn/certification/data-engineer-professional" target="_blank" rel="noopener">Professional</a> exam pages for the current outlines.</p>`;
   }
 
   function viewDomain(id) {
@@ -244,10 +255,11 @@
     ).join("");
     const exercises = T.exercises.filter((x) => x.domain === id).map(exerciseRow).join("");
     const nq = T.questions.filter((q) => q.domain === id).length;
-    const trackName = { pyspark: "PySpark / ", architect: "Solutions Architect / " }[d.track] || "";
+    const trackName = { pyspark: "PySpark / ", architect: "Solutions Architect / ", professional: "DE Professional / " }[d.track] || "";
     return `<nav class="crumbs"><a href="#/">Home</a> / ${trackName}${esc(d.title)}</nav>
       <h1>${esc(d.title)}</h1>
       <p class="lead">${esc(d.summary)}</p>
+      ${d.weight ? `<p class="muted">Section weight: ${d.weight}% of the exam. Practise it under exam conditions in the <a href="#/mocks">timed mock exams</a>.</p>` : ""}
       <h2>Lessons</h2><ul class="list">${lessons}</ul>
       <h2>Quiz</h2>
       <div class="card row">
@@ -269,6 +281,10 @@
       document.getElementById("mark-done").addEventListener("click", () => {
         progress.lessons[id] = true; save();
         location.hash = sameDomainNext ? `#/lesson/${next.id}` : `#/quiz/${l.domain}`;
+      });
+      // Code blocks wider than the page scroll sideways; make those reachable by keyboard.
+      document.querySelectorAll(".lesson pre").forEach((pre) => {
+        if (pre.scrollWidth > pre.clientWidth) { pre.tabIndex = 0; pre.setAttribute("aria-label", "Code example (scrollable)"); }
       });
       // "Try it" buttons copy a runnable example into the PySpark sandbox.
       document.querySelectorAll(".lesson pre[data-try]").forEach((pre) => {
@@ -300,7 +316,8 @@
   const MIXED = {
     all: { title: "Mixed exam quiz", domains: examDomains },
     "py-all": { title: "Mixed PySpark quiz", domains: pyDomains },
-    "sa-all": { title: "Mixed architect quiz", domains: saDomains }
+    "sa-all": { title: "Mixed architect quiz", domains: saDomains },
+    "pro-all": { title: "Mixed Professional quiz", domains: proDomains }
   };
 
   function viewQuiz(scope) {
@@ -396,32 +413,36 @@
       : x.kind === "python" ? '<span class="tag run">Runs PySpark</span>'
       : x.kind === "scenario" ? '<span class="tag run">Case study</span>'
       : x.kind === "calc" ? '<span class="tag">Calculation</span>'
-      : `<span class="tag">${x.lang === "python" ? "PySpark" : "Spark SQL"} syntax</span>`;
+      : `<span class="tag">${{ python: "PySpark", yaml: "YAML" }[x.lang] || "Spark SQL"} syntax</span>`;
     return `<li><a href="#/exercise/${x.id}">${status}${esc(x.title)}</a><span class="row-tags">${kind}<span class="tag level-${x.level.toLowerCase()}">${x.level}</span></span></li>`;
   }
 
   function viewExercises() {
     const rows = (pred) => T.exercises.filter(pred).map(exerciseRow).join("");
     const isPy = (x) => x.domain.startsWith("py-");
+    const isPro = (x) => x.domain.startsWith("pro-");
     const done = Object.keys(progress.exercises).filter((k) => T.exercises.some((x) => x.id === k)).length;
     return `<nav class="crumbs"><a href="#/">Home</a> / Exercises</nav>
       <h1>Hands-on exercises</h1>
       <p class="lead">${done} of ${T.exercises.length} solved.</p>
       <h2>SQL: runs in your browser</h2>
       <p class="muted">Your query runs on DuckDB-WASM against a small retail dataset, and the results are compared with the expected output. The SQL works in both DuckDB and Databricks (ANSI SQL plus QUALIFY, count_if and date_trunc).</p>
-      <ul class="list">${rows((x) => x.kind === "sql")}</ul>
+      <ul class="list">${rows((x) => x.kind === "sql" && !isPro(x))}</ul>
       <h2>PySpark: runs in your browser</h2>
       <p class="muted">Write PySpark DataFrame code and assign your answer to <code>result</code>. It runs in Python in your browser on the same tables, through a PySpark-compatible API.</p>
-      <ul class="list">${rows((x) => x.kind === "python")}</ul>
+      <ul class="list">${rows((x) => x.kind === "python" && !isPro(x))}</ul>
       <h2>Spark & Databricks syntax</h2>
       <p class="muted">Auto Loader, MERGE, pipelines, Unity Catalog, file I/O and the Delta Python API need a real cluster, so these exercises check your code against the required syntax.</p>
-      <ul class="list">${rows((x) => x.kind === "pattern" && !isPy(x))}${rows((x) => x.kind === "pattern" && isPy(x))}</ul>
+      <ul class="list">${rows((x) => x.kind === "pattern" && !isPy(x) && !isPro(x))}${rows((x) => x.kind === "pattern" && isPy(x))}</ul>
       <h2>Architecture case studies</h2>
       <p class="muted">Work through a customer scenario one design decision at a time. Each choice gets feedback, and 70% or more counts as solved.</p>
-      <ul class="list">${rows((x) => x.kind === "scenario")}</ul>
+      <ul class="list">${rows((x) => x.kind === "scenario" && !isPro(x))}</ul>
       <h2>Sizing & cost calculations</h2>
       <p class="muted">Size subnets, warehouses and event streams, and estimate DBU and VM costs from given example rates.</p>
-      <ul class="list">${rows((x) => x.kind === "calc")}</ul>`;
+      <ul class="list">${rows((x) => x.kind === "calc")}</ul>
+      <h2>Data Engineer Professional</h2>
+      <p class="muted">Harder, exam-style practice: CDC, MERGE and SCD logic that runs in your browser, syntax for streaming upserts, AUTO CDC, row filters and Asset Bundles, and case studies on performance, streaming failures, compliance, sharing and CI/CD.</p>
+      <ul class="list">${rows((x) => isPro(x) && (x.kind === "sql" || x.kind === "python"))}${rows((x) => isPro(x) && x.kind === "pattern")}${rows((x) => isPro(x) && x.kind === "scenario")}</ul>`;
   }
 
   function datasetPanel() {
@@ -788,6 +809,263 @@
       <div id="output" class="output"></div>`;
   }
 
+
+  // ---------------- timed mock exams (Data Engineer Professional)
+  // Each mock has 60 questions, 120 minutes, like the real exam. Questions are picked per section in
+  // proportion to its weight, and every question appears in exactly one mock.
+  const MOCK = { count: 5, size: 60, minutes: 120, pass: 70 };
+  let mockTimer = null;
+
+  function proQuestionCount() {
+    const ids = new Set(proDomains.map((d) => d.id));
+    return T.questions.filter((q) => ids.has(q.domain)).length;
+  }
+  function mockNumbers() {
+    return Array.from({ length: MOCK.count }, (_, i) => i + 1);
+  }
+  function mockQuestions(n) {
+    const out = [];
+    for (const d of proDomains) {
+      const want = Math.round((MOCK.size * d.weight) / 100);
+      const pool = T.questions.filter((q) => q.domain === d.id);
+      out.push(...pool.filter((_, j) => j % MOCK.count === n - 1).slice(0, want));
+    }
+    return out;
+  }
+  const fmtTime = (ms) => {
+    const t = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  function mockCard(n) {
+    const rec = progress.mock[n];
+    const running = progress.mockRun && progress.mockRun.n === n;
+    const status = running ? "In progress" : rec ? `Best ${rec.best}% · ${rec.attempts} attempt${rec.attempts > 1 ? "s" : ""}` : "Not taken";
+    return `<a class="card domain-card" href="#/mock/${n}">
+        <div class="domain-num">Timed · ${MOCK.size} questions · ${MOCK.minutes} min</div>
+        <h3>Mock exam ${n}</h3>
+        <ul class="stats"><li><span>${status}</span></li></ul>
+      </a>`;
+  }
+
+  function viewMocks() {
+    clearInterval(mockTimer);
+    return `<nav class="crumbs"><a href="#/">Home</a> / DE Professional</nav>
+      <h1>Mock exams</h1>
+      <p class="lead">${MOCK.count} full-length practice exams for the Data Engineer Professional certification: ${MOCK.size} questions in ${MOCK.minutes} minutes each, like the real exam. Questions are spread across the nine sections by their exam weight, and no question appears in more than one mock.</p>
+      <h2>Exams</h2>
+      <div class="grid">${mockNumbers().map(mockCard).join("")}</div>
+      <h2>How it works</h2>
+      <ul>
+        <li>No feedback until you submit. You can change answers, flag questions and jump between them.</li>
+        <li>The timer keeps running if you leave the page or close the tab, and the exam is submitted when time runs out.</li>
+        <li>Databricks doesn't publish a passing score. Aim for ${MOCK.pass}% or more before booking the exam.</li>
+      </ul>`;
+  }
+
+  function viewMock(nStr, sub) {
+    clearInterval(mockTimer);
+    const n = Number(nStr);
+    if (!Number.isInteger(n) || n < 1 || n > MOCK.count) return viewNotFound();
+    if (sub === "review") return viewMockReview(n);
+    const run = progress.mockRun;
+    if (run && run.n === n) return viewMockRun(n);
+    const rec = progress.mock[n];
+    const other = run && run.n !== n ? run.n : null;
+    setTimeout(() => {
+      const start = document.getElementById("mock-start");
+      if (start) start.addEventListener("click", () => {
+        const qs = shuffle(mockQuestions(n));
+        progress.mockRun = {
+          n, ids: qs.map((q) => q.id),
+          orders: qs.map((q) => shuffle(q.options.map((_, i) => i))),
+          answers: qs.map(() => null), flags: qs.map(() => false), i: 0,
+          startedAt: Date.now(), endsAt: Date.now() + MOCK.minutes * 60000
+        };
+        save(); render();
+      });
+      const discard = document.getElementById("mock-discard");
+      if (discard) discard.addEventListener("click", () => {
+        if (!discard.classList.contains("armed")) {
+          discard.classList.add("armed"); discard.textContent = "Click again to discard it";
+          return;
+        }
+        progress.mockRun = null; save(); render(true);
+      });
+    });
+    const sections = proDomains.map((d) => `<li>${esc(d.title)} <span class="muted">(${d.weight}%)</span></li>`).join("");
+    return `<nav class="crumbs"><a href="#/">Home</a> / <a href="#/mocks">Mock exams</a></nav>
+      <h1>Mock exam ${n}</h1>
+      <div class="card">
+        <p><strong>${MOCK.size} questions · ${MOCK.minutes} minutes.</strong> Answers are scored when you submit, with a breakdown by exam section and explanations for every question.</p>
+        ${rec ? `<p>Best score: <strong>${rec.best}%</strong> · Last attempt: ${rec.last.pct}% (${esc(new Date(rec.last.date).toLocaleDateString())}) · <a href="#/mock/${n}/review">Review last attempt</a></p>` : ""}
+        ${other ? `<div class="feedback warn">Mock exam ${other} is in progress. <a href="#/mock/${other}">Resume it</a>, or <button class="linklike" id="mock-discard">discard it</button> to start this one.</div>`
+          : `<button class="btn primary" id="mock-start">${rec ? "Start a new attempt" : "Start the exam"}</button>`}
+      </div>
+      <h2>Sections</h2><ol class="sections">${sections}</ol>`;
+  }
+
+  function scoreMock(run) {
+    const qs = run.ids.map((id) => T.questions.find((q) => q.id === id));
+    const correct = qs.filter((q, i) => q && run.answers[i] !== null && run.orders[i][run.answers[i]] === q.answer).length;
+    return { qs, correct, pct: Math.round((correct / qs.length) * 100) };
+  }
+
+  function submitMock(timedOut) {
+    const run = progress.mockRun;
+    if (!run) return;
+    clearInterval(mockTimer);
+    const { pct } = scoreMock(run);
+    const prev = progress.mock[run.n] || { best: 0, attempts: 0 };
+    progress.mock[run.n] = {
+      best: Math.max(prev.best, pct), attempts: prev.attempts + 1,
+      last: { pct, date: Date.now(), seconds: Math.round((Math.min(Date.now(), run.endsAt) - run.startedAt) / 1000), timedOut: !!timedOut,
+              ids: run.ids, orders: run.orders, answers: run.answers, flags: run.flags }
+    };
+    progress.mockRun = null;
+    save();
+    if (location.hash === `#/mock/${run.n}/review`) render(); else location.hash = `#/mock/${run.n}/review`;
+  }
+
+  function viewMockRun(n) {
+    const run = progress.mockRun;
+    if (Date.now() >= run.endsAt) { setTimeout(() => submitMock(true)); return `<p class="muted">Time is up. Scoring your exam…</p>`; }
+    const qs = run.ids.map((id) => T.questions.find((q) => q.id === id));
+
+    function renderQuestion() {
+      const i = run.i, q = qs[i], order = run.orders[i], pick = run.answers[i];
+      const opts = order.map((orig, k) =>
+        `<button class="option${pick === k ? " selected" : ""}" data-k="${k}" aria-pressed="${pick === k}"><span class="letter">${"ABCD"[k]}</span>${fmt(q.options[orig])}</button>`).join("");
+      const body = document.getElementById("mock-body");
+      body.innerHTML = `<div class="quiz-meta"><span>Question ${i + 1} of ${qs.length}</span>
+          <button class="linklike flag${run.flags[i] ? " on" : ""}" id="mock-flag" aria-pressed="${run.flags[i]}">${run.flags[i] ? "⚑ Flagged" : "⚐ Flag for review"}</button></div>
+        <p class="question">${fmt(q.q)}</p>
+        ${q.code ? `<pre><code>${esc(q.code)}</code></pre>` : ""}
+        <div class="options">${opts}</div>
+        <div class="mock-nav">
+          <button class="btn" id="mock-prev" ${i === 0 ? "disabled" : ""}>← Previous</button>
+          <button class="btn primary" id="mock-next" ${i === qs.length - 1 ? "disabled" : ""}>Next →</button>
+        </div>`;
+      body.querySelectorAll(".option").forEach((b) => b.addEventListener("click", () => {
+        const k = Number(b.dataset.k);
+        run.answers[i] = run.answers[i] === k ? null : k; // click again to clear
+        save(); renderQuestion(); renderPalette();
+      }));
+      document.getElementById("mock-flag").addEventListener("click", () => {
+        run.flags[i] = !run.flags[i]; save(); renderQuestion(); renderPalette();
+      });
+      document.getElementById("mock-prev").addEventListener("click", () => go(i - 1));
+      document.getElementById("mock-next").addEventListener("click", () => go(i + 1));
+    }
+    function go(i) {
+      if (i < 0 || i >= qs.length) return;
+      run.i = i; save(); renderQuestion(); renderPalette();
+      document.getElementById("mock-body").scrollIntoView({ block: "nearest" });
+    }
+    function renderPalette() {
+      const answered = run.answers.filter((a) => a !== null).length;
+      const flagged = run.flags.filter(Boolean).length;
+      document.getElementById("mock-count").textContent = `${answered}/${qs.length} answered${flagged ? ` · ${flagged} flagged` : ""}`;
+      document.getElementById("palette").innerHTML = qs.map((_, k) => {
+        const cls = ["pal", run.answers[k] !== null ? "answered" : "", run.flags[k] ? "flagged" : "", k === run.i ? "current" : ""].join(" ");
+        const label = `Question ${k + 1}${run.answers[k] !== null ? ", answered" : ""}${run.flags[k] ? ", flagged" : ""}`;
+        return `<button class="${cls}" data-k="${k}" aria-label="${label}">${k + 1}</button>`;
+      }).join("");
+      document.querySelectorAll("#palette .pal").forEach((b) => b.addEventListener("click", () => go(Number(b.dataset.k))));
+    }
+    function tick() {
+      const el = document.getElementById("mock-timer");
+      if (!el || !progress.mockRun || progress.mockRun.n !== n) { clearInterval(mockTimer); return; }
+      const left = run.endsAt - Date.now();
+      if (left <= 0) { submitMock(true); return; }
+      el.textContent = fmtTime(left);
+      el.classList.toggle("low", left < 10 * 60000);
+    }
+
+    setTimeout(() => {
+      renderQuestion(); renderPalette(); tick();
+      mockTimer = setInterval(tick, 1000);
+      const sub = document.getElementById("mock-submit");
+      sub.addEventListener("click", () => {
+        const left = run.answers.filter((a) => a === null).length;
+        if (!sub.classList.contains("armed")) {
+          sub.classList.add("armed");
+          sub.textContent = left ? `${left} unanswered. Click again to submit` : "Click again to submit";
+          setTimeout(() => { sub.classList.remove("armed"); sub.textContent = "Submit exam"; }, 5000);
+          return;
+        }
+        submitMock(false);
+      });
+    });
+    return `<nav class="crumbs"><a href="#/">Home</a> / <a href="#/mocks">Mock exams</a> / Mock exam ${n}</nav>
+      <h1 class="exam-title">Mock exam ${n}</h1>
+      <div class="mock-bar" role="status">
+        <span class="timer" id="mock-timer" aria-label="Time left">${fmtTime(run.endsAt - Date.now())}</span>
+        <span id="mock-count" class="muted"></span>
+        <button class="btn" id="mock-submit">Submit exam</button>
+      </div>
+      <div class="card quiz" id="mock-body"></div>
+      <h2 class="sub-head">All questions</h2>
+      <div class="palette" id="palette"></div>
+      <p class="muted small">Answers are saved in this browser as you go. The timer keeps running if you leave this page.</p>`;
+  }
+
+  function viewMockReview(n) {
+    const rec = progress.mock[n];
+    if (!rec) return `<nav class="crumbs"><a href="#/">Home</a> / <a href="#/mocks">Mock exams</a></nav><h1>Mock exam ${n}</h1><p>No attempt yet. <a href="#/mock/${n}">Start the exam</a>.</p>`;
+    const last = rec.last;
+    const { qs, correct, pct } = scoreMock(last);
+    const isRight = (i) => last.answers[i] !== null && last.orders[i][last.answers[i]] === qs[i].answer;
+    const byDomain = proDomains.map((d) => {
+      const idx = qs.map((q, i) => (q.domain === d.id ? i : -1)).filter((i) => i >= 0);
+      if (!idx.length) return "";
+      const c = idx.filter(isRight).length;
+      return `<li><span>${esc(d.short)}</span><div class="bar thin"><div style="width:${(c / idx.length) * 100}%"></div></div><span>${c}/${idx.length}</span></li>`;
+    }).join("");
+    const card = (q, i) => {
+      const pick = last.answers[i];
+      const yours = pick === null ? '<span class="bad-text">Not answered</span>' : `<span class="${isRight(i) ? "good-text" : "bad-text"}">Your answer:</span> ${fmt(q.options[last.orders[i][pick]])}`;
+      return `<div class="card review" data-state="${isRight(i) ? "right" : "wrong"}${last.flags[i] ? " flagged" : ""}">
+          <div class="quiz-meta"><span>Question ${i + 1}${last.flags[i] ? " · ⚑ flagged" : ""}</span><span class="tag">${esc(domainById(q.domain).short)}</span></div>
+          <p class="question">${fmt(q.q)}</p>
+          ${q.code ? `<pre><code>${esc(q.code)}</code></pre>` : ""}
+          <p>${yours}</p>
+          ${isRight(i) ? "" : `<p><span class="good-text">Correct:</span> ${fmt(q.options[q.answer])}</p>`}
+          <p class="muted">${fmt(q.explain)}</p>
+          <a href="#/domain/${q.domain}">Review ${esc(domainById(q.domain).short)}</a>
+        </div>`;
+    };
+    setTimeout(() => {
+      const list = document.getElementById("review-list");
+      const show = (mode) => {
+        list.querySelectorAll(".review").forEach((el) => {
+          const st = el.dataset.state;
+          el.hidden = mode === "wrong" ? !st.startsWith("wrong") : mode === "flagged" ? !st.includes("flagged") : false;
+        });
+        document.querySelectorAll(".filter-btn").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+      };
+      document.querySelectorAll(".filter-btn").forEach((b) => b.addEventListener("click", () => show(b.dataset.mode)));
+      show(correct === qs.length ? "all" : "wrong");
+    });
+    const mins = last.seconds < 60 ? "under 1" : Math.round(last.seconds / 60);
+    return `<nav class="crumbs"><a href="#/">Home</a> / <a href="#/mocks">Mock exams</a> / Mock exam ${n}</nav>
+      <h1>Mock exam ${n}: results</h1>
+      <div class="score ${pct >= MOCK.pass ? "good" : "bad"}"><div class="big">${pct}%</div>
+        <div>${correct} of ${qs.length} correct · ${mins} min${last.timedOut ? " (time ran out)" : ""} · ${pct >= MOCK.pass ? "At or above the 70% target." : "Below the 70% target. Review the weak sections below."}<br>
+        <span class="muted small">Best: ${rec.best}% over ${rec.attempts} attempt${rec.attempts > 1 ? "s" : ""}</span></div></div>
+      <h2>By exam section</h2>
+      <ul class="breakdown wide">${byDomain}</ul>
+      <div class="actions"><a class="btn primary" href="#/mock/${n}">Retake mock ${n}</a><a class="btn" href="#/mocks">All mock exams</a></div>
+      <h2>Review</h2>
+      <div class="toolbar" role="group" aria-label="Filter questions">
+        <button class="btn filter-btn" data-mode="wrong">Incorrect or unanswered</button>
+        <button class="btn filter-btn" data-mode="flagged">Flagged</button>
+        <button class="btn filter-btn" data-mode="all">All ${qs.length}</button>
+      </div>
+      <div id="review-list">${qs.map(card).join("")}</div>`;
+  }
+
   function viewNotFound() {
     return `<h1>Page not found</h1><p><a href="#/">Back to home</a></p>`;
   }
@@ -811,6 +1089,9 @@
       ${top("quiz-py-all", "#/quiz/py-all", "Mixed PySpark quiz")}
       <div class="nav-label">Solutions Architect</div>${group(saDomains)}
       ${top("quiz-sa-all", "#/quiz/sa-all", "Mixed architect quiz")}
+      <div class="nav-label">DE Professional</div>${group(proDomains)}
+      ${top("quiz-pro-all", "#/quiz/pro-all", "Mixed Professional quiz")}
+      ${top("mocks", "#/mocks", progress.mockRun ? "Mock exams · in progress" : "Mock exams")}
       <div class="nav-label">Practice</div>
       ${top("exercises", "#/exercises", "Exercises")}
       ${top("pyspark", "#/pyspark", "PySpark sandbox")}
@@ -830,7 +1111,7 @@
   }
 
   function parseRoute() {
-    const [, a, b] = (location.hash || "#/").replace(/^#/, "").split("/");
+    const [, a, b, c] = (location.hash || "#/").replace(/^#/, "").split("/");
     switch (a) {
       case "domain": return { name: "domain", domain: b, view: () => viewDomain(b) };
       case "lesson": {
@@ -845,6 +1126,8 @@
       }
       case "sandbox": return { name: "sandbox", view: viewSandbox };
       case "pyspark": return { name: "pyspark", view: viewPySandbox };
+      case "mocks": return { name: "mocks", view: viewMocks };
+      case "mock": return { name: "mocks", view: () => viewMock(b, c) };
       default: return { name: "home", view: viewHome };
     }
   }

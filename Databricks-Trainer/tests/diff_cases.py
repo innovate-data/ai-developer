@@ -382,3 +382,14 @@ sql("fn-lit-types", "SELECT 1 a, 1.5 b, 'x' c, true d, null e, DATE'2024-01-01' 
 sql("fn-nested-calls", "SELECT upper(substring(concat(name, ' x'), 1, 5)) AS a, length(trim(upper(name))) AS b FROM customers")
 sql("fn-in-where-group", "SELECT year(order_date) AS y, count(*) AS n FROM orders WHERE month(order_date) >= 3 GROUP BY year(order_date)")
 sql("ddl-roundtrip", "SELECT 1 AS x")
+
+
+# ---- every PySpark exercise solution (PySpark track and Data Engineer Professional track)
+import json as _json, pathlib as _pathlib, subprocess as _subprocess
+_ROOT = _pathlib.Path(__file__).resolve().parent.parent
+_EX = _json.loads(_subprocess.check_output(["node", "-e", """
+globalThis.window = globalThis;
+for (const f of ["lessons", "quiz", "exercises", "pyspark", "professional", "professional-practice"]) require(process.argv[1] + "/js/content-" + f + ".js");
+process.stdout.write(JSON.stringify(TRAINER.exercises.filter((x) => x.kind === "python")));""", str(_ROOT)]))
+for _x in _EX:
+    C.append(("exercise-" + _x["id"], _x["solution"], bool(_x.get("ordered")), False))
