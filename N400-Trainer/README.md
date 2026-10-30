@@ -5,7 +5,7 @@ Open `index.html` in any browser. No install or server needed; progress is saved
 
 ## What it covers
 
-- **Civics study**: flashcards for the 100 civics questions, filtered by topic. Missed questions come back sooner; a question counts as learned after 3 correct answers in a row.
+- **Civics study**: flashcards for both official civics question lists, filtered by topic: the 2025 list (128 questions, USCIS form M-1778) and the 2008 list (100 questions). The app uses the list that matches your test version. Missed questions come back sooner; a question counts as learned after 3 correct answers in a row.
 - **Mock civics test**: the officer's questions are read aloud. Follows the stop rules of the test you take:
   - 2025 test (N-400 filed on or after Oct 20, 2025): up to 20 questions, 12 correct to pass, ends at 9 incorrect.
   - 2008 test (filed before Oct 20, 2025): up to 10 questions, 6 correct to pass, ends at 5 incorrect.
@@ -15,6 +15,6 @@ Open `index.html` in any browser. No install or server needed; progress is saved
 
 ## Keep it current
 
-- Answers about current officials (President, Vice President, Speaker of the House) are as of October 2026. Edit the `RAW` array in `index.html` after elections.
-- The question bank is the 2008 100-question list. The 2025 test uses a 128-question list on the same topics; review it at
-  https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test before the interview.
+- Answers about current officials (President, Vice President, Speaker of the House, Chief Justice) are as of October 2026. Edit the `RAW25` and `RAW08` arrays in `index.html` after elections, and check https://www.uscis.gov/citizenship/testupdates.
+- The 2025 list was entered without access to the USCIS PDF. Compare it with the official list at
+  https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test

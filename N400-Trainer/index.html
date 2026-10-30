@@ -199,14 +199,20 @@ dl.vocab dd.ex { font-size: 0.88rem; font-style: italic; }
   </div>
   <div class="panel">
     <span class="eyebrow">Which civics test do you take?</span>
-    <p class="lede">USCIS uses the <b>2025 civics test</b> if you filed your N-400 on or after October 20, 2025: the officer asks up to 20 questions and you pass with 12 correct. If you filed before that date you take the <b>2008 test</b>: up to 10 questions, 6 correct to pass. Choose yours under <a href="#setup">My answers</a>; the mock test follows that format.</p>
-    <p class="note">The study bank here is the official 100-question 2008 list, with current officials as of October 2026. The 2025 test draws from a 128-question list that covers the same topics with some new and reworded questions. Before your interview, review the official list at <a href="https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test" target="_blank" rel="noopener">uscis.gov</a>. Answers about current officials can change after elections.</p>
+    <p class="lede">USCIS uses the <b>2025 civics test</b> if you filed your N-400 on or after October 20, 2025: the officer asks up to 20 questions and you pass with 12 correct. If you filed before that date you take the <b>2008 test</b>: up to 10 questions, 6 correct to pass. Choose yours under <a href="#setup">My answers</a>; the study cards and mock test follow it. <b id="ov-bank"></b></p>
+    <p class="note">Both question lists follow the official USCIS lists (2025: form M-1778), with current officials as of October 2026. Answers about current officials can change after elections, so check <a href="https://www.uscis.gov/citizenship/testupdates" target="_blank" rel="noopener">uscis.gov/citizenship/testupdates</a> before your interview, and compare with the official lists at <a href="https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test" target="_blank" rel="noopener">uscis.gov</a>.</p>
   </div>
 </section>
 
 <!-- CIVICS STUDY -->
 <section class="view" id="v-civics" hidden>
   <div class="row">
+    <label class="field" style="flex:1 1 200px">Question list
+      <select id="cv-version">
+        <option value="2025">2025 test · 128 questions</option>
+        <option value="2008">2008 test · 100 questions</option>
+      </select>
+    </label>
     <label class="field" style="flex:1 1 220px">Topic
       <select id="cv-filter"></select>
     </label>
@@ -388,7 +394,7 @@ dl.vocab dd.ex { font-size: 0.88rem; font-style: italic; }
 "use strict";
 
 /* ---------- Data: 2008 civics test (100 questions), officials current as of Oct 2026 ---------- */
-const RAW = [
+const RAW08 = [
 [1,"What is the supreme law of the land?","the Constitution"],
 [2,"What does the Constitution do?","sets up the government|defines the government|protects basic rights of Americans"],
 [3,"The idea of self-government is in the first three words of the Constitution. What are these words?","We the People"],
@@ -490,7 +496,7 @@ const RAW = [
 [99,"When do we celebrate Independence Day?","July 4"],
 [100,"Name two national U.S. holidays.","New Year’s Day|Martin Luther King, Jr. Day|Presidents’ Day|Memorial Day|Juneteenth|Independence Day|Labor Day|Columbus Day|Veterans Day|Thanksgiving|Christmas"]
 ];
-function catOf(n) {
+function catOf08(n) {
   if (n <= 12) return ["American Government", "Principles of American Democracy"];
   if (n <= 47) return ["American Government", "System of Government"];
   if (n <= 57) return ["American Government", "Rights and Responsibilities"];
@@ -501,7 +507,150 @@ function catOf(n) {
   if (n <= 98) return ["Integrated Civics", "Symbols"];
   return ["Integrated Civics", "Holidays"];
 }
-const QS = RAW.map(([n, q, a, note]) => { const [cat, sub] = catOf(n); return { n, q, a, note, cat, sub }; });
+/* ---------- Data: 2025 civics test (128 questions, USCIS form M-1778), officials current as of Oct 2026 ---------- */
+const RAW25 = [
+[1,"What is the form of government of the United States?","Republic|Constitution-based federal republic|Representative democracy"],
+[2,"What is the supreme law of the land?","(U.S.) Constitution"],
+[3,"Name one thing the U.S. Constitution does.","Forms the government|Defines powers of government|Defines the parts of government|Protects the rights of the people"],
+[4,"The U.S. Constitution starts with the words “We the People.” What does “We the People” mean?","Self-government|Popular sovereignty|Consent of the governed|People should govern themselves|(Example of) social contract"],
+[5,"How are changes made to the U.S. Constitution?","Amendments|The amendment process"],
+[6,"What does the Bill of Rights protect?","(The basic) rights of Americans|(The basic) rights of people living in the United States"],
+[7,"How many amendments does the U.S. Constitution have?","Twenty-seven (27)"],
+[8,"Why is the Declaration of Independence important?","It says America is free from British control.|It says all people are created equal.|It identifies inherent rights.|It identifies individual freedoms."],
+[9,"What founding document said the American colonies were free from Britain?","Declaration of Independence"],
+[10,"Name two important ideas from the Declaration of Independence and the U.S. Constitution.","Equality|Liberty|Social contract|Natural rights|Limited government|Self-government"],
+[11,"The words “Life, Liberty, and the pursuit of Happiness” are in what founding document?","Declaration of Independence"],
+[12,"What is the economic system of the United States?","Capitalism|Free market economy"],
+[13,"What is the rule of law?","Everyone must follow the law.|Leaders must obey the law.|Government must obey the law.|No one is above the law."],
+[14,"Many documents influenced the U.S. Constitution. Name one.","Declaration of Independence|Articles of Confederation|Federalist Papers|Anti-Federalist Papers|Virginia Declaration of Rights|Fundamental Orders of Connecticut|Mayflower Compact|Iroquois Great Law of Peace"],
+[15,"There are three branches of government. Why?","So one part does not become too powerful|Checks and balances|Separation of powers"],
+[16,"Name the three branches of government.","Legislative, executive, and judicial|Congress, president, and the courts"],
+[17,"The President of the United States is in charge of which branch of government?","Executive branch"],
+[18,"What part of the federal government writes laws?","(U.S.) Congress|(U.S. or national) legislature|Legislative branch"],
+[19,"What are the two parts of the U.S. Congress?","Senate and House (of Representatives)"],
+[20,"Name one power of the U.S. Congress.","Writes laws|Declares war|Makes the federal budget"],
+[21,"How many U.S. senators are there?","One hundred (100)"],
+[22,"How long is a term for a U.S. senator?","Six (6) years"],
+[23,"Who is one of your state’s U.S. senators now?","@senator","Residents of Washington, D.C. and U.S. territories should say they have no U.S. senators."],
+[24,"How many voting members are in the House of Representatives?","Four hundred thirty-five (435)"],
+[25,"How long is a term for a member of the House of Representatives?","Two (2) years"],
+[26,"Why do U.S. representatives serve shorter terms than U.S. senators?","To more closely follow public opinion"],
+[27,"How many senators does each state have?","Two (2)"],
+[28,"Why does each state have two senators?","Equal representation (for small states)|The Great Compromise (Connecticut Compromise)"],
+[29,"Name your U.S. representative.","@rep","Residents of territories with nonvoting Delegates or Resident Commissioners may give that person's name, or say they have no voting representative."],
+[30,"What is the name of the Speaker of the House of Representatives now?","Mike Johnson|Johnson","Check uscis.gov/citizenship/testupdates before your interview."],
+[31,"Who does a U.S. senator represent?","Citizens of their state|People of their state"],
+[32,"Who elects U.S. senators?","Citizens from their state"],
+[33,"Who does a member of the House of Representatives represent?","Citizens in their (congressional) district|People from their (congressional) district"],
+[34,"Who elects members of the House of Representatives?","Citizens from their (congressional) district"],
+[35,"Some states have more representatives than other states. Why?","(Because of) the state’s population|(Because) they have more people|(Because) some states have more people"],
+[36,"The President of the United States is elected for how many years?","Four (4) years"],
+[37,"The President of the United States can serve only two terms. Why?","(Because of) the 22nd Amendment|To keep the president from becoming too powerful"],
+[38,"What is the name of the President of the United States now?","Donald J. Trump|Donald Trump|Trump","Check uscis.gov/citizenship/testupdates before your interview."],
+[39,"What is the name of the Vice President of the United States now?","JD Vance|Vance","Check uscis.gov/citizenship/testupdates before your interview."],
+[40,"If the president can no longer serve, who becomes president?","The Vice President (of the United States)"],
+[41,"Name one power of the president.","Signs bills into law|Vetoes bills|Enforces laws|Commander in Chief (of the military)|Chief diplomat|Appoints federal judges"],
+[42,"Who is Commander in Chief of the U.S. military?","The President (of the United States)"],
+[43,"Who signs bills to become laws?","The President (of the United States)"],
+[44,"Who vetoes bills?","The President (of the United States)"],
+[45,"Who appoints federal judges?","The President (of the United States)"],
+[46,"The executive branch has many parts. Name one.","President (of the United States)|Cabinet|Federal departments and agencies"],
+[47,"What does the President’s Cabinet do?","Advises the President (of the United States)"],
+[48,"What are two Cabinet-level positions?","Attorney General|Secretary of Agriculture|Secretary of Commerce|Secretary of Education|Secretary of Energy|Secretary of Health and Human Services|Secretary of Homeland Security|Secretary of Housing and Urban Development|Secretary of the Interior|Secretary of Labor|Secretary of State|Secretary of Transportation|Secretary of the Treasury|Secretary of Veterans Affairs|Secretary of War (Defense)|Administrator of the Environmental Protection Agency|Administrator of the Small Business Administration|Director of the Central Intelligence Agency|Director of National Intelligence|Director of the Office of Management and Budget|U.S. Trade Representative|U.S. Ambassador to the United Nations|White House Chief of Staff|Vice President"],
+[49,"Why is the Electoral College important?","It decides who is elected president.|It provides a compromise between the popular election of the president and congressional selection."],
+[50,"What is one part of the judicial branch?","Supreme Court|Federal Courts"],
+[51,"What does the judicial branch do?","Reviews laws|Explains laws|Resolves disputes (disagreements) about the law|Decides if a law goes against the (U.S.) Constitution"],
+[52,"What is the highest court in the United States?","Supreme Court"],
+[53,"How many seats are on the Supreme Court?","Nine (9)"],
+[54,"How many Supreme Court justices are usually needed to decide a case?","Five (5)"],
+[55,"How long do Supreme Court justices serve?","(For) life|Lifetime appointment|(Until) retirement"],
+[56,"Supreme Court justices serve for life. Why?","To be independent (of politics)|To limit outside (political) influence"],
+[57,"Who is the Chief Justice of the United States now?","John Roberts (John G. Roberts, Jr.)","Check uscis.gov/citizenship/testupdates before your interview."],
+[58,"Name one power that is only for the federal government.","Print paper money|Mint coins|Declare war|Create an army|Make treaties|Set foreign policy"],
+[59,"Name one power that is only for the states.","Provide schooling and education|Provide protection (police)|Provide safety (fire departments)|Give a driver’s license|Approve zoning and land use"],
+[60,"What is the purpose of the 10th Amendment?","(It states that the) powers not given to the federal government belong to the states or to the people."],
+[61,"Who is the governor of your state now?","@gov","Residents of Washington, D.C. should say D.C. does not have a governor."],
+[62,"What is the capital of your state?","@capital","Washington, D.C. is not a state and has no capital. Territory residents name the capital of the territory."],
+[63,"There are four amendments to the U.S. Constitution about who can vote. Describe one of them.","Citizens eighteen (18) and older (can vote).|You don’t have to pay (a poll tax) to vote.|Any citizen can vote. (Women and men can vote.)|A male citizen of any race (can vote)."],
+[64,"Who can vote in federal elections, run for federal office, and serve on a jury in the United States?","Citizens|Citizens of the United States|U.S. citizens"],
+[65,"What are three rights of everyone living in the United States?","Freedom of expression|Freedom of speech|Freedom of assembly|Freedom to petition the government|Freedom of religion|The right to bear arms"],
+[66,"What do we show loyalty to when we say the Pledge of Allegiance?","The United States|The flag"],
+[67,"Name two promises that new citizens make in the Oath of Allegiance.","Give up loyalty to other countries|Defend the (U.S.) Constitution|Obey the laws of the United States|Serve in the military (if needed)|Serve (help, do important work for) the nation (if needed)|Be loyal to the United States"],
+[68,"How can people become United States citizens?","Be born in the United States, under the conditions set by the 14th Amendment|Naturalize|Derive citizenship (under conditions set by Congress)"],
+[69,"What are two examples of civic participation in the United States?","Vote|Run for office|Join a political party|Help with a campaign|Join a civic group|Join a community group|Give an elected official your opinion (on an issue)|Contact elected officials|Support or oppose an issue or policy|Write to a newspaper"],
+[70,"What is one way Americans can serve their country?","Vote|Pay taxes|Obey the law|Serve in the military|Run for office|Work for local, state, or federal government"],
+[71,"Why is it important to pay federal taxes?","Required by law|All people pay to fund the federal government|Required by the (U.S.) Constitution (16th Amendment)|Civic duty"],
+[72,"It is important for all men age 18 through 25 to register for the Selective Service. Name one reason why.","Required by law|Civic duty|Makes the draft fair, if needed"],
+[73,"The colonists came to America for many reasons. Name one.","Freedom|Political liberty|Religious freedom|Economic opportunity|Escape persecution"],
+[74,"Who lived in America before the Europeans arrived?","American Indians|Native Americans"],
+[75,"What group of people was taken and sold as slaves?","Africans|People from Africa"],
+[76,"What war did the Americans fight to win independence from Britain?","American Revolution|The (American) Revolutionary War|War for (American) Independence"],
+[77,"Name one reason why the Americans declared independence from Britain.","High taxes|Taxation without representation|British soldiers stayed in Americans’ houses (boarding, quartering)|They did not have self-government|Boston Massacre|Boston Tea Party (Tea Act)|Stamp Act|Sugar Act|Townshend Acts|Intolerable (Coercive) Acts"],
+[78,"Who wrote the Declaration of Independence?","(Thomas) Jefferson"],
+[79,"When was the Declaration of Independence adopted?","July 4, 1776"],
+[80,"The American Revolution had many important events. Name one.","(Battle of) Bunker Hill|Declaration of Independence|Washington Crossing the Delaware (Battle of Trenton)|(Battle of) Saratoga|Valley Forge (Encampment)|(Battle of) Yorktown (British surrender at Yorktown)"],
+[81,"There were 13 original states. Name five.","New Hampshire|Massachusetts|Rhode Island|Connecticut|New York|New Jersey|Pennsylvania|Delaware|Maryland|Virginia|North Carolina|South Carolina|Georgia"],
+[82,"What founding document was written in 1787?","(U.S.) Constitution"],
+[83,"The Federalist Papers supported the passage of the U.S. Constitution. Name one of the writers.","(James) Madison|(Alexander) Hamilton|(John) Jay|Publius"],
+[84,"Why were the Federalist Papers important?","They helped people understand the (U.S.) Constitution.|They supported passing the (U.S.) Constitution."],
+[85,"Benjamin Franklin is famous for many things. Name one.","Founded the first free public libraries|First Postmaster General of the United States|Helped write the Declaration of Independence|Inventor|U.S. diplomat"],
+[86,"George Washington is famous for many things. Name one.","“Father of Our Country”|First president of the United States|General of the Continental Army|President of the Constitutional Convention"],
+[87,"Thomas Jefferson is famous for many things. Name one.","Writer of the Declaration of Independence|Third president of the United States|Doubled the size of the United States (Louisiana Purchase)|First Secretary of State|Founded the University of Virginia|Writer of the Virginia Statute on Religious Freedom"],
+[88,"James Madison is famous for many things. Name one.","“Father of the Constitution”|Fourth president of the United States|President during the War of 1812|One of the writers of the Federalist Papers"],
+[89,"Alexander Hamilton is famous for many things. Name one.","First Secretary of the Treasury|One of the writers of the Federalist Papers|Helped establish the First Bank of the United States|Aide to General George Washington|Member of the Continental Congress"],
+[90,"What territory did the United States buy from France in 1803?","Louisiana Territory|Louisiana"],
+[91,"Name one war fought by the United States in the 1800s.","War of 1812|Mexican-American War|Civil War|Spanish-American War"],
+[92,"Name the U.S. war between the North and the South.","The Civil War"],
+[93,"The Civil War had many important events. Name one.","(Battle of) Fort Sumter|Emancipation Proclamation|(Battle of) Vicksburg|(Battle of) Gettysburg|Sherman’s March|(Surrender at) Appomattox|(Battle of) Antietam/Sharpsburg|Lincoln was assassinated."],
+[94,"Abraham Lincoln is famous for many things. Name one.","Freed the slaves (Emancipation Proclamation)|Saved (or preserved) the Union|Led the United States during the Civil War|16th president of the United States|Delivered the Gettysburg Address"],
+[95,"What did the Emancipation Proclamation do?","Freed slaves in the Confederacy|Freed slaves in the Confederate states|Freed slaves in most Southern states"],
+[96,"What U.S. war ended slavery?","The Civil War"],
+[97,"What amendment gives citizenship to all persons born in the United States?","14th Amendment"],
+[98,"When did all men get the right to vote?","After the Civil War|During Reconstruction|(With the) 15th Amendment|1870"],
+[99,"Name one leader of the women’s rights movement in the 1800s.","Susan B. Anthony|Elizabeth Cady Stanton|Sojourner Truth|Harriet Tubman|Lucretia Mott|Lucy Stone"],
+[100,"Name one war fought by the United States in the 1900s.","World War I|World War II|Korean War|Vietnam War|(Persian) Gulf War"],
+[101,"Why did the United States enter World War I?","Because Germany attacked U.S. (civilian) ships|To support the Allied Powers (England, France, Italy, and Russia)|To oppose the Central Powers (Germany, Austria-Hungary, the Ottoman Empire, and Bulgaria)"],
+[102,"When did all women get the right to vote?","1920|After World War I|(With the) 19th Amendment"],
+[103,"What was the Great Depression?","Longest economic recession in modern history"],
+[104,"When did the Great Depression start?","The Great Crash (1929)|Stock market crash of 1929"],
+[105,"Who was president during the Great Depression and World War II?","(Franklin) Roosevelt"],
+[106,"Why did the United States enter World War II?","(Bombing of) Pearl Harbor|Japanese attacked Pearl Harbor|To support the Allied Powers (England, France, and Russia)|To oppose the Axis Powers (Germany, Italy, and Japan)"],
+[107,"Dwight Eisenhower is famous for many things. Name one.","General during World War II|President at the end of (during) the Korean War|34th president of the United States|Signed the Federal-Aid Highway Act of 1956 (Created the Interstate System)"],
+[108,"Who was the United States’ main rival during the Cold War?","Soviet Union|USSR|Russia"],
+[109,"During the Cold War, what was one main concern of the United States?","Communism|Nuclear war"],
+[110,"Why did the United States enter the Korean War?","To stop the spread of communism"],
+[111,"Why did the United States enter the Vietnam War?","To stop the spread of communism"],
+[112,"What did the civil rights movement do?","Fought to end racial discrimination"],
+[113,"Martin Luther King, Jr. is famous for many things. Name one.","Fought for civil rights|Worked for equality for all Americans|Worked to ensure that people would “not be judged by the color of their skin, but by the content of their character”"],
+[114,"Why did the United States enter the Persian Gulf War?","To force the Iraqi military from Kuwait"],
+[115,"What major event happened on September 11, 2001 in the United States?","Terrorists attacked the United States.|Terrorists took over two planes and crashed them into the World Trade Center in New York City.|Terrorists took over a plane and crashed into the Pentagon in Arlington, Virginia.|Terrorists took over a plane originally aimed at Washington, D.C., and crashed in a field in Pennsylvania."],
+[116,"Name one U.S. military conflict after the September 11, 2001 attacks.","(Global) War on Terror|War in Afghanistan|War in Iraq"],
+[117,"Name one American Indian tribe in the United States.","Apache|Blackfeet|Cayuga|Cherokee|Cheyenne|Chippewa|Choctaw|Creek|Crow|Hopi|Huron|Inupiat|Lakota|Mohawk|Mohegan|Navajo|Oneida|Onondaga|Pueblo|Seminole|Seneca|Shawnee|Sioux|Teton|Tuscarora"],
+[118,"Name one example of an American innovation.","Light bulb|Automobile (cars, internal combustion engine)|Skyscrapers|Airplane|Assembly line|Landing on the moon|Integrated circuit (IC)"],
+[119,"What is the capital of the United States?","Washington, D.C."],
+[120,"Where is the Statue of Liberty?","New York (Harbor)|Liberty Island","Also accepted: New Jersey, near New York City, and on the Hudson (River)."],
+[121,"Why does the flag have 13 stripes?","(Because there were) 13 original colonies|(Because the stripes) represent the original colonies"],
+[122,"Why does the flag have 50 stars?","(Because there is) one star for each state|(Because) each star represents a state|(Because there are) 50 states"],
+[123,"What is the name of the national anthem?","The Star-Spangled Banner"],
+[124,"The Nation’s first motto was “E Pluribus Unum.” What does that mean?","Out of many, one|We all become one"],
+[125,"What is Independence Day?","A holiday to celebrate U.S. independence (from Britain)|The country’s birthday"],
+[126,"Name three national U.S. holidays.","New Year’s Day|Martin Luther King, Jr. Day|Presidents Day (Washington’s Birthday)|Memorial Day|Juneteenth|Independence Day|Labor Day|Columbus Day|Veterans Day|Thanksgiving Day|Christmas Day"],
+[127,"What is Memorial Day?","A holiday to honor soldiers who died in military service"],
+[128,"What is Veterans Day?","A holiday to honor people in the (U.S.) military|A holiday to honor people who have served (in the U.S. military)"]
+];
+function catOf25(n) {
+  if (n <= 15) return ["American Government", "Principles of American Government"];
+  if (n <= 62) return ["American Government", "System of Government"];
+  if (n <= 72) return ["American Government", "Rights and Responsibilities"];
+  if (n <= 89) return ["American History", "Colonial Period and Independence"];
+  if (n <= 99) return ["American History", "1800s"];
+  if (n <= 118) return ["American History", "Recent American History and Other Important Historical Information"];
+  if (n <= 124) return ["Symbols and Holidays", "Symbols"];
+  return ["Symbols and Holidays", "Holidays"];
+}
+const toQs = (raw, cat) => raw.map(([n, q, a, note]) => { const [c, sub] = cat(n); return { n, q, a, note, cat: c, sub }; });
+const BANKS = { "2008": toQs(RAW08, catOf08), "2025": toQs(RAW25, catOf25) };
+let QS = BANKS["2025"];
 
 const STATES = {"Alabama":"Montgomery","Alaska":"Juneau","Arizona":"Phoenix","Arkansas":"Little Rock","California":"Sacramento","Colorado":"Denver","Connecticut":"Hartford","Delaware":"Dover","Florida":"Tallahassee","Georgia":"Atlanta","Hawaii":"Honolulu","Idaho":"Boise","Illinois":"Springfield","Indiana":"Indianapolis","Iowa":"Des Moines","Kansas":"Topeka","Kentucky":"Frankfort","Louisiana":"Baton Rouge","Maine":"Augusta","Maryland":"Annapolis","Massachusetts":"Boston","Michigan":"Lansing","Minnesota":"Saint Paul","Mississippi":"Jackson","Missouri":"Jefferson City","Montana":"Helena","Nebraska":"Lincoln","Nevada":"Carson City","New Hampshire":"Concord","New Jersey":"Trenton","New Mexico":"Santa Fe","New York":"Albany","North Carolina":"Raleigh","North Dakota":"Bismarck","Ohio":"Columbus","Oklahoma":"Oklahoma City","Oregon":"Salem","Pennsylvania":"Harrisburg","Rhode Island":"Providence","South Carolina":"Columbia","South Dakota":"Pierre","Tennessee":"Nashville","Texas":"Austin","Utah":"Salt Lake City","Vermont":"Montpelier","Virginia":"Richmond","Washington":"Olympia","West Virginia":"Charleston","Wisconsin":"Madison","Wyoming":"Cheyenne","Washington, D.C.":"(D.C. is not a state and has no capital)","Puerto Rico":"San Juan","Guam":"Hagåtña","U.S. Virgin Islands":"Charlotte Amalie","American Samoa":"Pago Pago","Northern Mariana Islands":"Saipan"};
 
@@ -600,6 +749,9 @@ const KEY = "n400-trainer-v1";
 const blank = () => ({ cards: {}, mocks: [], write: {}, settings: { version: "2025", state: "", senator: "", rep: "", gov: "", capital: "" } });
 let S = blank();
 try { const raw = localStorage.getItem(KEY); if (raw) { const p = JSON.parse(raw); S = Object.assign(blank(), p); S.settings = Object.assign(blank().settings, p.settings || {}); } } catch (e) {}
+Object.keys(S.cards).forEach((k) => { if (!k.includes(":")) { S.cards["2008:" + k] = S.cards[k]; delete S.cards[k]; } });
+const ck = (n) => S.settings.version + ":" + n;
+const card = (n) => S.cards[ck(n)];
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 
 const $ = (id) => document.getElementById(id);
@@ -638,7 +790,8 @@ function answersFor(q) {
 }
 function answersHTML(q) {
   const list = answersFor(q);
-  const need = /\b(what are|name) two\b/i.test(q.q) && list.length > 1 ? "Give two answers. " : /Name three/i.test(q.q) ? "Give three answers. " : list.length > 1 ? "Any one of these is correct. " : "";
+  const m = q.q.match(/\b(?:what are|name) (two|three|five)\b/i);
+  const need = m && list.length > 1 ? `Give ${m[1].toLowerCase()} answers. ` : list.length > 1 ? "Any one of these is correct. " : "";
   let h = `<span class="eyebrow">Accepted answers</span>`;
   if (need) h += `<p class="note">${need}</p>`;
   h += `<ul>${list.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`;
@@ -663,13 +816,14 @@ window.addEventListener("hashchange", route);
 document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => (location.hash = b.dataset.go)));
 
 /* ---------- Overview ---------- */
-const box = (n) => (S.cards[n] ? S.cards[n].box : 0);
+const box = (n) => (card(n) ? card(n).box : 0);
 const mastered = (n) => box(n) >= 3;
 function rules() { return S.settings.version === "2008" ? { ask: 10, pass: 6, fail: 5, label: "2008 civics test" } : { ask: 20, pass: 12, fail: 9, label: "2025 civics test" }; }
 function renderOverview() {
   const r = rules();
+  $("ov-bank").textContent = S.settings.version === "2025" ? "You are studying the 2025 list of 128 questions." : "You are studying the 2008 list of 100 questions.";
   $("ov-civics-rule").textContent = `${r.label}: up to ${r.ask} oral questions; ${r.pass} correct answers to pass.`;
-  const groups = ["American Government", "American History", "Integrated Civics"].map((c) => {
+  const groups = [...new Set(QS.map((q) => q.cat))].map((c) => {
     const qs = QS.filter((q) => q.cat === c); const m = qs.filter((q) => mastered(q.n)).length;
     return { label: c, m, t: qs.length };
   });
@@ -682,14 +836,22 @@ function renderOverview() {
 }
 
 /* ---------- Civics study ---------- */
-const FILTERS = [["all", "All 100 questions"], ["cat:American Government", "American Government"], ["cat:American History", "American History"], ["cat:Integrated Civics", "Integrated Civics"]];
-[...new Set(QS.map((q) => q.sub))].forEach((s) => FILTERS.push(["sub:" + s, " " + s]));
-$("cv-filter").innerHTML = FILTERS.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
 let cur = null, lastN = null;
+function setBank() {
+  QS = BANKS[S.settings.version] || BANKS["2025"];
+  const filters = [["all", `All ${QS.length} questions`]];
+  [...new Set(QS.map((q) => q.cat))].forEach((c) => {
+    filters.push(["cat:" + c, c]);
+    [...new Set(QS.filter((q) => q.cat === c).map((q) => q.sub))].forEach((s) => filters.push(["sub:" + s, "\u2003" + s]));
+  });
+  $("cv-filter").innerHTML = filters.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  $("cv-version").value = S.settings.version;
+  lastN = null;
+}
 function pool() {
   const f = $("cv-filter").value;
   let p = QS.filter((q) => f === "all" || (f.startsWith("cat:") && q.cat === f.slice(4)) || (f.startsWith("sub:") && q.sub === f.slice(4)));
-  if ($("cv-weak").checked) p = p.filter((q) => S.cards[q.n] && S.cards[q.n].wrong > 0 && !mastered(q.n));
+  if ($("cv-weak").checked) p = p.filter((q) => card(q.n) && card(q.n).wrong > 0 && !mastered(q.n));
   return p;
 }
 function nextCard() {
@@ -709,15 +871,15 @@ function nextCard() {
   $("cv-no").textContent = "Question " + cur.n;
   $("cv-cat").textContent = cur.cat + " · " + cur.sub;
   const b = box(cur.n);
-  $("cv-box").innerHTML = S.cards[cur.n] ? (b >= 3 ? `<span class="pill ok">Learned</span>` : S.cards[cur.n].wrong ? `<span class="pill bad">Missed before</span>` : `<span class="pill">Seen</span>`) : `<span class="pill">New</span>`;
+  $("cv-box").innerHTML = card(cur.n) ? (b >= 3 ? `<span class="pill ok">Learned</span>` : card(cur.n).wrong ? `<span class="pill bad">Missed before</span>` : `<span class="pill">Seen</span>`) : `<span class="pill">New</span>`;
   $("cv-q").textContent = cur.q;
   $("cv-ans").innerHTML = answersHTML(cur); $("cv-ans").hidden = true;
   $("cv-actions-ask").hidden = false; $("cv-actions-grade").hidden = true;
 }
 function grade(n, ok) {
-  const c = S.cards[n] || { box: 0, right: 0, wrong: 0 };
+  const c = card(n) || { box: 0, right: 0, wrong: 0 };
   if (ok) { c.right++; c.box = Math.min(c.box + 1, 5); } else { c.wrong++; c.box = 0; }
-  S.cards[n] = c; save();
+  S.cards[ck(n)] = c; save();
 }
 $("cv-show").onclick = () => { $("cv-ans").hidden = false; $("cv-actions-ask").hidden = true; $("cv-actions-grade").hidden = false; $("cv-right").focus(); };
 $("cv-speak").onclick = () => cur && speak(cur.q);
@@ -863,7 +1025,9 @@ function loadSettings() {
   $("st-senator").value = st.senator; $("st-rep").value = st.rep; $("st-gov").value = st.gov; $("st-capital").value = st.capital;
 }
 ["senator", "rep", "gov", "capital"].forEach((k) => $("st-" + k).addEventListener("input", (e) => { S.settings[k] = e.target.value.trim(); save(); }));
-$("st-version").onchange = (e) => { S.settings.version = e.target.value; save(); toast("Mock test now uses the " + rules().label + " format"); };
+function setVersion(v) { S.settings.version = v; save(); $("st-version").value = v; setBank(); nextCard(); toast("Now studying the " + rules().label + " (" + QS.length + " questions)"); }
+$("st-version").onchange = (e) => setVersion(e.target.value);
+$("cv-version").onchange = (e) => setVersion(e.target.value);
 $("st-state").onchange = (e) => {
   const s = e.target.value; S.settings.state = s;
   if (s && STATES[s]) { S.settings.capital = STATES[s]; $("st-capital").value = STATES[s]; }
@@ -879,7 +1043,7 @@ $("st-reset").onclick = () => {
 };
 
 /* ---------- Boot ---------- */
-loadSettings(); nextCard(); nextRead(); nextWrite(); nextIv(); renderVocab(); route();
+loadSettings(); setBank(); nextCard(); nextRead(); nextWrite(); nextIv(); renderVocab(); route();
 })();
 </script>
 </body>
