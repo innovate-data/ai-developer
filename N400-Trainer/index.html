@@ -197,6 +197,11 @@ dl.vocab dd.ex { font-size: 0.88rem; font-style: italic; }
       </div>
     </div>
   </div>
+  <div class="panel" id="ov-senior" hidden>
+    <span class="eyebrow">65/20 exemption</span>
+    <h3>Your easier civics test</h3>
+    <p class="lede">Because you are 65 or older and have been a permanent resident for 20 years or more, you study only 20 civics questions. The officer asks 10 of them and you pass with 6 correct. You do not take the English reading and writing tests, and you may take the civics test in your own language with an interpreter.</p>
+  </div>
   <div class="panel">
     <span class="eyebrow">Which civics test do you take?</span>
     <p class="lede">USCIS uses the <b>2025 civics test</b> if you filed your N-400 on or after October 20, 2025: the officer asks up to 20 questions and you pass with 12 correct. If you filed before that date you take the <b>2008 test</b>: up to 10 questions, 6 correct to pass. Choose yours under <a href="#setup">My answers</a>; the study cards and mock test follow it. <b id="ov-bank"></b></p>
@@ -218,6 +223,7 @@ dl.vocab dd.ex { font-size: 0.88rem; font-style: italic; }
     </label>
     <label class="check"><input type="checkbox" id="cv-weak"> Only questions I missed</label>
   </div>
+  <p class="note" id="cv-senior" hidden></p>
   <div class="item" id="cv-card">
     <div class="item-head">
       <span class="item-no" id="cv-no"></span>
@@ -364,6 +370,10 @@ dl.vocab dd.ex { font-size: 0.88rem; font-style: italic; }
           <option value="2008">2008 test (filed before Oct 20, 2025): 10 asked, 6 to pass</option>
         </select>
       </label>
+      <div class="field" style="align-content:start">
+        <label class="check" style="color:var(--ink)"><input type="checkbox" id="st-senior"> I qualify for the 65/20 exemption</label>
+        <span class="note" style="font-weight:400">You were 65 or older when you filed, and had been a green card holder for 20 years or more.</span>
+      </div>
       <label class="field">State or territory where you live
         <select id="st-state"></select>
       </label>
@@ -650,6 +660,10 @@ function catOf25(n) {
 }
 const toQs = (raw, cat) => raw.map(([n, q, a, note]) => { const [c, sub] = cat(n); return { n, q, a, note, cat: c, sub }; });
 const BANKS = { "2008": toQs(RAW08, catOf08), "2025": toQs(RAW25, catOf25) };
+// 65/20: applicants 65+ who have been permanent residents for 20+ years study only these.
+const SENIOR25 = new Set([2, 7, 12, 20, 30, 36, 38, 39, 44, 52, 61, 66, 74, 78, 86, 94, 113, 115, 121, 126]);
+BANKS["2025"].forEach((q) => (q.star = SENIOR25.has(q.n)));
+const SENIOR08_PDF = "https://www.uscis.gov/sites/default/files/document/questions-and-answers/65-20q.pdf";
 let QS = BANKS["2025"];
 
 const STATES = {"Alabama":"Montgomery","Alaska":"Juneau","Arizona":"Phoenix","Arkansas":"Little Rock","California":"Sacramento","Colorado":"Denver","Connecticut":"Hartford","Delaware":"Dover","Florida":"Tallahassee","Georgia":"Atlanta","Hawaii":"Honolulu","Idaho":"Boise","Illinois":"Springfield","Indiana":"Indianapolis","Iowa":"Des Moines","Kansas":"Topeka","Kentucky":"Frankfort","Louisiana":"Baton Rouge","Maine":"Augusta","Maryland":"Annapolis","Massachusetts":"Boston","Michigan":"Lansing","Minnesota":"Saint Paul","Mississippi":"Jackson","Missouri":"Jefferson City","Montana":"Helena","Nebraska":"Lincoln","Nevada":"Carson City","New Hampshire":"Concord","New Jersey":"Trenton","New Mexico":"Santa Fe","New York":"Albany","North Carolina":"Raleigh","North Dakota":"Bismarck","Ohio":"Columbus","Oklahoma":"Oklahoma City","Oregon":"Salem","Pennsylvania":"Harrisburg","Rhode Island":"Providence","South Carolina":"Columbia","South Dakota":"Pierre","Tennessee":"Nashville","Texas":"Austin","Utah":"Salt Lake City","Vermont":"Montpelier","Virginia":"Richmond","Washington":"Olympia","West Virginia":"Charleston","Wisconsin":"Madison","Wyoming":"Cheyenne","Washington, D.C.":"(D.C. is not a state and has no capital)","Puerto Rico":"San Juan","Guam":"Hagåtña","U.S. Virgin Islands":"Charlotte Amalie","American Samoa":"Pago Pago","Northern Mariana Islands":"Saipan"};
@@ -746,7 +760,7 @@ const VOCAB = [
 
 /* ---------- Storage (per-browser convenience only) ---------- */
 const KEY = "n400-trainer-v1";
-const blank = () => ({ cards: {}, mocks: [], write: {}, settings: { version: "2025", state: "", senator: "", rep: "", gov: "", capital: "" } });
+const blank = () => ({ cards: {}, mocks: [], write: {}, settings: { version: "2025", senior: false, state: "", senator: "", rep: "", gov: "", capital: "" } });
 let S = blank();
 try { const raw = localStorage.getItem(KEY); if (raw) { const p = JSON.parse(raw); S = Object.assign(blank(), p); S.settings = Object.assign(blank().settings, p.settings || {}); } } catch (e) {}
 Object.keys(S.cards).forEach((k) => { if (!k.includes(":")) { S.cards["2008:" + k] = S.cards[k]; delete S.cards[k]; } });
@@ -818,10 +832,15 @@ document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click"
 /* ---------- Overview ---------- */
 const box = (n) => (card(n) ? card(n).box : 0);
 const mastered = (n) => box(n) >= 3;
-function rules() { return S.settings.version === "2008" ? { ask: 10, pass: 6, fail: 5, label: "2008 civics test" } : { ask: 20, pass: 12, fail: 9, label: "2025 civics test" }; }
+const senior = () => !!S.settings.senior;
+function rules() {
+  if (S.settings.version === "2008") return { ask: 10, pass: 6, fail: 5, label: senior() ? "2008 civics test (65/20)" : "2008 civics test" };
+  return senior() ? { ask: 10, pass: 6, fail: 5, label: "2025 civics test (65/20)" } : { ask: 20, pass: 12, fail: 9, label: "2025 civics test" };
+}
 function renderOverview() {
   const r = rules();
-  $("ov-bank").textContent = S.settings.version === "2025" ? "You are studying the 2025 list of 128 questions." : "You are studying the 2008 list of 100 questions.";
+  $("ov-bank").textContent = S.settings.version === "2025" ? (senior() ? "You are studying the 20 questions for the 65/20 exemption on the 2025 test." : "You are studying the 2025 list of 128 questions.") : "You are studying the 2008 list of 100 questions.";
+  $("ov-senior").hidden = !senior();
   $("ov-civics-rule").textContent = `${r.label}: up to ${r.ask} oral questions; ${r.pass} correct answers to pass.`;
   const groups = [...new Set(QS.map((q) => q.cat))].map((c) => {
     const qs = QS.filter((q) => q.cat === c); const m = qs.filter((q) => mastered(q.n)).length;
@@ -839,6 +858,11 @@ function renderOverview() {
 let cur = null, lastN = null;
 function setBank() {
   QS = BANKS[S.settings.version] || BANKS["2025"];
+  if (senior() && S.settings.version === "2025") QS = QS.filter((q) => q.star);
+  $("cv-senior").hidden = !senior();
+  $("cv-senior").innerHTML = S.settings.version === "2025"
+    ? `<span class="pill">65/20</span> Showing only the 20 questions for the 65/20 exemption. <a href="#setup">Change</a>`
+    : `<span class="pill">65/20</span> The 2008 test has its own list of 20 questions for 65/20 applicants. Study that list from <a href="${SENIOR08_PDF}" target="_blank" rel="noopener">USCIS (PDF)</a>; this trainer shows all 100.`;
   const filters = [["all", `All ${QS.length} questions`]];
   [...new Set(QS.map((q) => q.cat))].forEach((c) => {
     filters.push(["cat:" + c, c]);
@@ -871,7 +895,7 @@ function nextCard() {
   $("cv-no").textContent = "Question " + cur.n;
   $("cv-cat").textContent = cur.cat + " · " + cur.sub;
   const b = box(cur.n);
-  $("cv-box").innerHTML = card(cur.n) ? (b >= 3 ? `<span class="pill ok">Learned</span>` : card(cur.n).wrong ? `<span class="pill bad">Missed before</span>` : `<span class="pill">Seen</span>`) : `<span class="pill">New</span>`;
+  $("cv-box").innerHTML = (cur.star && !senior() ? `<span class="pill" title="Also on the 65/20 list for seniors">65/20</span> ` : "") + (card(cur.n) ? (b >= 3 ? `<span class="pill ok">Learned</span>` : card(cur.n).wrong ? `<span class="pill bad">Missed before</span>` : `<span class="pill">Seen</span>`) : `<span class="pill">New</span>`);
   $("cv-q").textContent = cur.q;
   $("cv-ans").innerHTML = answersHTML(cur); $("cv-ans").hidden = true;
   $("cv-actions-ask").hidden = false; $("cv-actions-grade").hidden = true;
@@ -1021,12 +1045,16 @@ $("vb-find").addEventListener("input", renderVocab);
 $("st-state").innerHTML = `<option value="">Choose…</option>` + Object.keys(STATES).map((s) => `<option>${esc(s)}</option>`).join("");
 function loadSettings() {
   const st = S.settings;
-  $("st-version").value = st.version; $("st-state").value = st.state;
+  $("st-version").value = st.version; $("st-senior").checked = !!st.senior; $("st-state").value = st.state;
   $("st-senator").value = st.senator; $("st-rep").value = st.rep; $("st-gov").value = st.gov; $("st-capital").value = st.capital;
 }
 ["senator", "rep", "gov", "capital"].forEach((k) => $("st-" + k).addEventListener("input", (e) => { S.settings[k] = e.target.value.trim(); save(); }));
 function setVersion(v) { S.settings.version = v; save(); $("st-version").value = v; setBank(); nextCard(); toast("Now studying the " + rules().label + " (" + QS.length + " questions)"); }
 $("st-version").onchange = (e) => setVersion(e.target.value);
+$("st-senior").onchange = (e) => {
+  S.settings.senior = e.target.checked; save(); setBank(); nextCard();
+  toast(e.target.checked ? "65/20 on: 10 questions asked, 6 to pass" : "65/20 off: full question list");
+};
 $("cv-version").onchange = (e) => setVersion(e.target.value);
 $("st-state").onchange = (e) => {
   const s = e.target.value; S.settings.state = s;

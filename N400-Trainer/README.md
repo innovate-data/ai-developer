@@ -9,6 +9,7 @@ Open `index.html` in any browser. No install or server needed; progress is saved
 - **Mock civics test**: the officer's questions are read aloud. Follows the stop rules of the test you take:
   - 2025 test (N-400 filed on or after Oct 20, 2025): up to 20 questions, 12 correct to pass, ends at 9 incorrect.
   - 2008 test (filed before Oct 20, 2025): up to 10 questions, 6 correct to pass, ends at 5 incorrect.
+- **65/20 exemption for seniors**: turn it on under *My answers* if you were 65 or older when you filed and had been a green card holder for 20+ years. On the 2025 test you then study only the 20 starred questions, and the mock test asks up to 10 with 6 correct to pass. For the 2008 test, the app links to the official USCIS 65/20 list.
 - **Reading and writing**: practice sentences built from the official USCIS reading and writing vocabulary. Writing is dictated by speech and checked word by word.
 - **N-400 words**: practice questions the officer asks about your application, plain-English definitions of hard words on the form (genocide, habitual drunkard, noncombatant service, and so on), and the Oath of Allegiance.
 - **My answers**: your state, senators, representative and governor, used for the location-based civics questions.
@@ -18,3 +19,4 @@ Open `index.html` in any browser. No install or server needed; progress is saved
 - Answers about current officials (President, Vice President, Speaker of the House, Chief Justice) are as of October 2026. Edit the `RAW25` and `RAW08` arrays in `index.html` after elections, and check https://www.uscis.gov/citizenship/testupdates.
 - The 2025 list was entered without access to the USCIS PDF. Compare it with the official list at
   https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test
+- The 65/20 questions for the 2025 test are in `SENIOR25`. 18 of them were confirmed from search results; questions 121 and 126 could not be confirmed against the official USCIS PDF.
