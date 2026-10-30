@@ -1,0 +1,886 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>N-400 Interview Trainer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700;900&family=Public+Sans:wght@400;500;600;700&family=Roboto+Mono:wght@500&display=swap">
+<style>
+/* Layout: a federal-form workspace. Sticky header with tabs, one centered working column,
+   each question set like a numbered item on a USCIS form. The stamp is the one bold flourish. */
+:root {
+  --paper: #f3f5f9;
+  --surface: #ffffff;
+  --ink: #14213d;
+  --muted: #586379;
+  --line: #d6dce7;
+  --accent: #1f4e8c;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4ecf7;
+  --seal: #a23b2a;
+  --seal-soft: #f7e6e2;
+  --ok: #24724a;
+  --ok-soft: #e0f1e7;
+  --font-display: "Merriweather", Georgia, "Times New Roman", serif;
+  --font-body: "Public Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1420; --surface: #161e2d; --ink: #e6ebf3; --muted: #9ba6ba; --line: #2a3448;
+    --accent: #86b4f0; --accent-ink: #0e1420; --accent-soft: #1b2a43;
+    --seal: #f08d7b; --seal-soft: #3a211d; --ok: #6fd09a; --ok-soft: #173326;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1420; --surface: #161e2d; --ink: #e6ebf3; --muted: #9ba6ba; --line: #2a3448;
+  --accent: #86b4f0; --accent-ink: #0e1420; --accent-soft: #1b2a43;
+  --seal: #f08d7b; --seal-soft: #3a211d; --ok: #6fd09a; --ok-soft: #173326;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.55;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.wrap { max-width: 860px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding-block: 14px 6px; }
+.brand h1 { font-family: var(--font-display); font-size: 1.3rem; margin: 0; letter-spacing: -0.01em; }
+.brand .form-no { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs a {
+  flex: none; padding: 10px 12px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.92rem;
+  border-bottom: 3px solid transparent;
+}
+nav.tabs a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); }
+nav.tabs a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+main { padding-block: 24px 64px; }
+section.view { display: grid; gap: 20px; }
+h2 { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.25; margin: 0; text-wrap: balance; }
+h3 { font-size: 1.05rem; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 65ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.spacer { flex: 1; }
+button, .btn {
+  font: inherit; font-weight: 600; font-size: 0.95rem; cursor: pointer; border-radius: 4px;
+  padding: 10px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.good { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+button.bad { background: var(--seal-soft); color: var(--seal); border-color: var(--seal); }
+button.ghost { background: transparent; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+select, input[type="text"], textarea {
+  font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 9px 10px; max-width: 100%;
+}
+textarea { width: 100%; min-height: 70px; resize: vertical; }
+label.field { display: grid; gap: 4px; font-size: 0.85rem; font-weight: 600; color: var(--muted); min-width: 0; }
+label.field input, label.field select { width: 100%; }
+.check { display: inline-flex; gap: 8px; align-items: center; font-size: 0.92rem; }
+
+/* Form-item card */
+.item { position: relative; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--accent); border-radius: 4px; padding: 22px 20px; display: grid; gap: 16px; min-width: 0; }
+.item-head { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.item-no { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 3px; }
+.item-q { font-family: var(--font-display); font-size: 1.35rem; line-height: 1.4; text-wrap: balance; }
+.answers { border-top: 1px dashed var(--line); padding-top: 14px; display: grid; gap: 8px; }
+.answers ul { margin: 0; padding-left: 20px; }
+.answers li { margin-block: 2px; }
+.note { font-size: 0.88rem; color: var(--muted); }
+.note a, .lede a, .panel a { color: var(--accent); }
+.pill { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--seal-soft); color: var(--seal); }
+
+/* Progress */
+.meter { height: 8px; background: var(--accent-soft); border-radius: 999px; overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s; }
+.stat { display: grid; gap: 6px; }
+.stat .num { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tally { display: flex; gap: 6px; flex-wrap: wrap; }
+.tally span { width: 26px; height: 26px; border-radius: 3px; border: 1px solid var(--line); display: grid; place-items: center; font-size: 0.75rem; font-family: var(--font-mono); color: var(--muted); }
+.tally span.ok { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.tally span.bad { background: var(--seal-soft); border-color: var(--seal); color: var(--seal); }
+
+/* Stamp */
+.stamp {
+  justify-self: start; font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase;
+  font-size: 1.4rem; padding: 8px 18px; border: 4px double currentColor; border-radius: 6px; transform: rotate(-4deg);
+}
+.stamp.pass { color: var(--ok); }
+.stamp.fail { color: var(--seal); }
+@media (prefers-reduced-motion: no-preference) {
+  .stamp { animation: thump .35s ease-out; }
+  @keyframes thump { from { transform: rotate(-4deg) scale(1.6); opacity: 0; } to { transform: rotate(-4deg) scale(1); opacity: 1; } }
+}
+
+.steps { display: grid; gap: 12px; counter-reset: s; padding: 0; margin: 0; list-style: none; }
+.steps li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+.steps li::before { counter-increment: s; content: counter(s); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 0.9rem; }
+.steps b { display: block; }
+.steps span { color: var(--muted); font-size: 0.93rem; }
+
+.diff { font-size: 1.1rem; line-height: 1.9; }
+.diff .w-ok { color: var(--ok); }
+.diff .w-miss { color: var(--seal); text-decoration: underline wavy; text-underline-offset: 4px; }
+.diff .w-extra { color: var(--muted); text-decoration: line-through; }
+.wordlist { display: flex; flex-wrap: wrap; gap: 6px; }
+.wordlist span { font-size: 0.85rem; padding: 3px 8px; border-radius: 3px; background: var(--paper); border: 1px solid var(--line); }
+dl.vocab { margin: 0; display: grid; gap: 0; }
+dl.vocab div { padding-block: 12px; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+dl.vocab dt { font-weight: 700; }
+dl.vocab dd { margin: 0; color: var(--muted); }
+dl.vocab dd.ex { font-size: 0.88rem; font-style: italic; }
+.oath { font-family: var(--font-display); font-weight: 700; font-size: 1rem; line-height: 1.75; max-width: 65ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 4px; font-size: 0.9rem; z-index: 20; }
+@media (max-width: 520px) {
+  .item-q { font-size: 1.15rem; }
+  h2 { font-size: 1.3rem; }
+  .row > button { flex: 1 1 auto; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>N-400 Interview Trainer</h1>
+      <span class="form-no">Form N-400 · Naturalization interview prep</span>
+    </div>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#overview">Overview</a>
+      <a href="#civics">Civics study</a>
+      <a href="#mock">Mock civics test</a>
+      <a href="#english">Reading &amp; writing</a>
+      <a href="#words">N-400 words</a>
+      <a href="#setup">My answers</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- OVERVIEW -->
+<section class="view" id="v-overview" hidden>
+  <div class="grid2" style="align-items:start">
+    <div class="panel">
+      <span class="eyebrow">Interview day</span>
+      <h2>What the officer will test</h2>
+      <ol class="steps">
+        <li><div><b>Your N-400 application</b><span>The officer goes through your answers and asks the yes/no questions again. This is also your English speaking test.</span></div></li>
+        <li><div><b>Reading</b><span>Read 1 of up to 3 sentences out loud correctly.</span></div></li>
+        <li><div><b>Writing</b><span>Write 1 of up to 3 dictated sentences correctly.</span></div></li>
+        <li><div><b>Civics</b><span id="ov-civics-rule">Answer oral questions about U.S. government and history.</span></div></li>
+      </ol>
+    </div>
+    <div class="panel">
+      <span class="eyebrow">Your progress</span>
+      <div id="ov-progress" style="display:grid;gap:14px"></div>
+      <div class="row">
+        <button class="primary" data-go="civics">Study civics</button>
+        <button data-go="mock">Take a mock test</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <span class="eyebrow">Which civics test do you take?</span>
+    <p class="lede">USCIS uses the <b>2025 civics test</b> if you filed your N-400 on or after October 20, 2025: the officer asks up to 20 questions and you pass with 12 correct. If you filed before that date you take the <b>2008 test</b>: up to 10 questions, 6 correct to pass. Choose yours under <a href="#setup">My answers</a>; the mock test follows that format.</p>
+    <p class="note">The study bank here is the official 100-question 2008 list, with current officials as of October 2026. The 2025 test draws from a 128-question list that covers the same topics with some new and reworded questions. Before your interview, review the official list at <a href="https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test" target="_blank" rel="noopener">uscis.gov</a>. Answers about current officials can change after elections.</p>
+  </div>
+</section>
+
+<!-- CIVICS STUDY -->
+<section class="view" id="v-civics" hidden>
+  <div class="row">
+    <label class="field" style="flex:1 1 220px">Topic
+      <select id="cv-filter"></select>
+    </label>
+    <label class="check"><input type="checkbox" id="cv-weak"> Only questions I missed</label>
+  </div>
+  <div class="item" id="cv-card">
+    <div class="item-head">
+      <span class="item-no" id="cv-no"></span>
+      <span class="eyebrow" id="cv-cat"></span>
+      <span class="spacer"></span>
+      <span id="cv-box"></span>
+    </div>
+    <div class="item-q" id="cv-q"></div>
+    <div class="answers" id="cv-ans" hidden></div>
+    <div class="row" id="cv-actions-ask">
+      <button class="primary" id="cv-show">Show answer</button>
+      <button class="ghost speak-btn" id="cv-speak">Hear question</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="cv-skip">Skip</button>
+    </div>
+    <div class="row" id="cv-actions-grade" hidden>
+      <button class="good" id="cv-right">I knew it</button>
+      <button class="bad" id="cv-wrong">I missed it</button>
+    </div>
+  </div>
+  <p class="note" id="cv-pool"></p>
+</section>
+
+<!-- MOCK -->
+<section class="view" id="v-mock" hidden>
+  <div id="mk-intro" class="panel">
+    <span class="eyebrow">Mock civics test</span>
+    <h2 id="mk-title"></h2>
+    <p class="lede" id="mk-rule"></p>
+    <p class="lede">The officer reads each question out loud. Answer out loud or type it, then reveal the accepted answers and mark yourself honestly. The test stops as soon as you pass or can no longer pass, just like the real one.</p>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="mk-audio" checked> Read questions aloud</label>
+      <label class="check"><input type="checkbox" id="mk-hide"> Hide the written question (listening only)</label>
+    </div>
+    <div class="row"><button class="primary" id="mk-start">Start test</button></div>
+    <div id="mk-history"></div>
+  </div>
+  <div id="mk-run" hidden style="display:grid;gap:16px">
+    <div class="row">
+      <span class="eyebrow" id="mk-count"></span>
+      <span class="spacer"></span>
+      <div class="tally" id="mk-tally" aria-label="Score so far"></div>
+    </div>
+    <div class="item">
+      <div class="item-head"><span class="item-no" id="mk-no"></span><span class="eyebrow" id="mk-cat"></span></div>
+      <div class="item-q" id="mk-q"></div>
+      <label class="field">Your answer (optional)
+        <textarea id="mk-typed" placeholder="Type what you would say"></textarea>
+      </label>
+      <div class="answers" id="mk-ans" hidden></div>
+      <div class="row" id="mk-ask">
+        <button class="primary" id="mk-reveal">Check answer</button>
+        <button class="ghost speak-btn" id="mk-repeat">Repeat question</button>
+        <span class="spacer"></span>
+        <button class="ghost" id="mk-quit">End test</button>
+      </div>
+      <div class="row" id="mk-grade" hidden>
+        <button class="good" id="mk-right">Correct</button>
+        <button class="bad" id="mk-wrong">Incorrect</button>
+      </div>
+    </div>
+  </div>
+  <div id="mk-result" class="panel" hidden></div>
+</section>
+
+<!-- ENGLISH -->
+<section class="view" id="v-english" hidden>
+  <div class="grid2" style="align-items:start">
+    <div class="item" style="border-top-color:var(--ok)">
+      <div class="item-head"><span class="item-no">Reading</span><span class="eyebrow">Read this sentence out loud</span></div>
+      <div class="item-q" id="rd-s"></div>
+      <div class="row">
+        <button class="ghost speak-btn" id="rd-hear">Hear it read</button>
+        <span class="spacer"></span>
+        <button class="primary" id="rd-next">Next sentence</button>
+      </div>
+      <p class="note">Read it once on your own, then press "Hear it read" to compare. Long pauses and mispronounced key words can count against you.</p>
+    </div>
+    <div class="item" style="border-top-color:var(--ok)">
+      <div class="item-head"><span class="item-no">Writing</span><span class="eyebrow">Write what you hear</span></div>
+      <div class="row">
+        <button class="primary speak-btn" id="wr-play">Play sentence</button>
+        <button class="ghost speak-btn" id="wr-slow">Play slowly</button>
+        <button class="ghost" id="wr-peek">Show it instead</button>
+      </div>
+      <p class="item-q" id="wr-peeked" hidden></p>
+      <label class="field">Your sentence
+        <input type="text" id="wr-in" autocomplete="off" autocapitalize="sentences" spellcheck="false">
+      </label>
+      <div class="row">
+        <button id="wr-check">Check</button>
+        <span class="spacer"></span>
+        <button class="ghost" id="wr-next">New sentence</button>
+      </div>
+      <div id="wr-out" class="answers" hidden></div>
+    </div>
+  </div>
+  <div class="grid2" style="align-items:start">
+    <div class="panel"><h3>Reading vocabulary</h3><p class="note">Every reading sentence uses these words.</p><div class="wordlist" id="rd-vocab"></div></div>
+    <div class="panel"><h3>Writing vocabulary</h3><p class="note">Every writing sentence uses these words. Practice spelling them.</p><div class="wordlist" id="wr-vocab"></div></div>
+  </div>
+</section>
+
+<!-- N-400 WORDS -->
+<section class="view" id="v-words" hidden>
+  <div class="panel">
+    <span class="eyebrow">Speaking test</span>
+    <h2>Practice the questions about your application</h2>
+    <p class="lede">The officer will ask about your N-400 in English. Answer truthfully and the same way you answered on the form. If you don't understand a question, it is fine to say "Can you please repeat that?" or "What does that word mean?"</p>
+    <div class="item" style="border-top-color:var(--muted)">
+      <div class="item-head"><span class="item-no" id="iv-no"></span><span class="eyebrow" id="iv-part"></span></div>
+      <div class="item-q" id="iv-q"></div>
+      <p class="note" id="iv-tip"></p>
+      <div class="row">
+        <button class="ghost speak-btn" id="iv-hear">Hear question</button>
+        <span class="spacer"></span>
+        <button class="primary" id="iv-next">Next question</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="row"><h3>Hard words from the N-400</h3><span class="spacer"></span>
+      <input type="text" id="vb-find" placeholder="Search words" aria-label="Search words" style="flex:0 1 220px"></div>
+    <dl class="vocab" id="vb-list"></dl>
+  </div>
+  <div class="panel">
+    <span class="eyebrow">At the ceremony</span>
+    <h3>Oath of Allegiance</h3>
+    <p class="oath">I hereby declare, on oath, that I absolutely and entirely renounce and abjure all allegiance and fidelity to any foreign prince, potentate, state, or sovereignty, of whom or which I have heretofore been a subject or citizen; that I will support and defend the Constitution and laws of the United States of America against all enemies, foreign and domestic; that I will bear true faith and allegiance to the same; that I will bear arms on behalf of the United States when required by the law; that I will perform noncombatant service in the Armed Forces of the United States when required by the law; that I will perform work of national importance under civilian direction when required by the law; and that I take this obligation freely, without any mental reservation or purpose of evasion; so help me God.</p>
+    <div class="row"><button class="ghost speak-btn" id="oath-hear">Hear the oath</button></div>
+  </div>
+</section>
+
+<!-- SETUP -->
+<section class="view" id="v-setup" hidden>
+  <div class="panel">
+    <span class="eyebrow">Settings</span>
+    <h2>My test and my local answers</h2>
+    <p class="lede">A few civics answers depend on where you live. Fill these in once and the trainer uses them. They stay in this browser only.</p>
+    <div class="grid2">
+      <label class="field">Civics test version
+        <select id="st-version">
+          <option value="2025">2025 test (filed on or after Oct 20, 2025): 20 asked, 12 to pass</option>
+          <option value="2008">2008 test (filed before Oct 20, 2025): 10 asked, 6 to pass</option>
+        </select>
+      </label>
+      <label class="field">State or territory where you live
+        <select id="st-state"></select>
+      </label>
+      <label class="field">One of your U.S. Senators
+        <input type="text" id="st-senator" placeholder="Look up at senate.gov">
+      </label>
+      <label class="field">Your U.S. Representative
+        <input type="text" id="st-rep" placeholder="Look up at house.gov">
+      </label>
+      <label class="field">Your Governor
+        <input type="text" id="st-gov" placeholder="Look up at usa.gov">
+      </label>
+      <label class="field">Your state capital
+        <input type="text" id="st-capital" placeholder="Filled from your state">
+      </label>
+    </div>
+    <p class="note">Find your officials: <a href="https://www.senate.gov/senators/senators-contact.htm" target="_blank" rel="noopener">senate.gov</a> · <a href="https://www.house.gov/representatives/find-your-representative" target="_blank" rel="noopener">house.gov</a> · <a href="https://www.usa.gov/state-governor" target="_blank" rel="noopener">usa.gov</a></p>
+    <div class="row"><span class="spacer"></span><button class="bad" id="st-reset">Reset all progress</button></div>
+    <p class="note" id="st-reset-confirm" hidden>Press again to erase your study progress and test history.</p>
+  </div>
+</section>
+</main>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(function () {
+"use strict";
+
+/* ---------- Data: 2008 civics test (100 questions), officials current as of Oct 2026 ---------- */
+const RAW = [
+[1,"What is the supreme law of the land?","the Constitution"],
+[2,"What does the Constitution do?","sets up the government|defines the government|protects basic rights of Americans"],
+[3,"The idea of self-government is in the first three words of the Constitution. What are these words?","We the People"],
+[4,"What is an amendment?","a change (to the Constitution)|an addition (to the Constitution)"],
+[5,"What do we call the first ten amendments to the Constitution?","the Bill of Rights"],
+[6,"What is one right or freedom from the First Amendment?","speech|religion|assembly|press|petition the government"],
+[7,"How many amendments does the Constitution have?","twenty-seven (27)"],
+[8,"What did the Declaration of Independence do?","announced our independence (from Great Britain)|declared our independence (from Great Britain)|said that the United States is free (from Great Britain)"],
+[9,"What are two rights in the Declaration of Independence?","life|liberty|pursuit of happiness"],
+[10,"What is freedom of religion?","You can practice any religion, or not practice a religion."],
+[11,"What is the economic system in the United States?","capitalist economy|market economy"],
+[12,"What is the “rule of law”?","Everyone must follow the law.|Leaders must obey the law.|Government must obey the law.|No one is above the law."],
+[13,"Name one branch or part of the government.","Congress|legislative|President|executive|the courts|judicial"],
+[14,"What stops one branch of government from becoming too powerful?","checks and balances|separation of powers"],
+[15,"Who is in charge of the executive branch?","the President"],
+[16,"Who makes federal laws?","Congress|Senate and House (of Representatives)|(U.S. or national) legislature"],
+[17,"What are the two parts of the U.S. Congress?","the Senate and House (of Representatives)"],
+[18,"How many U.S. Senators are there?","one hundred (100)"],
+[19,"We elect a U.S. Senator for how many years?","six (6)"],
+[20,"Who is one of your state’s U.S. Senators now?","@senator","Residents of Washington, D.C. and U.S. territories should say they have no U.S. Senators."],
+[21,"The House of Representatives has how many voting members?","four hundred thirty-five (435)"],
+[22,"We elect a U.S. Representative for how many years?","two (2)"],
+[23,"Name your U.S. Representative.","@rep","Residents of territories with nonvoting Delegates or Resident Commissioners may give that person's name, or say they have no voting Representative."],
+[24,"Who does a U.S. Senator represent?","all people of the state"],
+[25,"Why do some states have more Representatives than other states?","(because of) the state’s population|(because) they have more people|(because) some states have more people"],
+[26,"We elect a President for how many years?","four (4)"],
+[27,"In what month do we vote for President?","November"],
+[28,"What is the name of the President of the United States now?","Donald J. Trump|Donald Trump|Trump","Check uscis.gov/citizenship/testupdates before your interview."],
+[29,"What is the name of the Vice President of the United States now?","JD Vance|Vance","Check uscis.gov/citizenship/testupdates before your interview."],
+[30,"If the President can no longer serve, who becomes President?","the Vice President"],
+[31,"If both the President and the Vice President can no longer serve, who becomes President?","the Speaker of the House"],
+[32,"Who is the Commander in Chief of the military?","the President"],
+[33,"Who signs bills to become laws?","the President"],
+[34,"Who vetoes bills?","the President"],
+[35,"What does the President’s Cabinet do?","advises the President"],
+[36,"What are two Cabinet-level positions?","Secretary of Agriculture|Secretary of Commerce|Secretary of Defense|Secretary of Education|Secretary of Energy|Secretary of Health and Human Services|Secretary of Homeland Security|Secretary of Housing and Urban Development|Secretary of the Interior|Secretary of Labor|Secretary of State|Secretary of Transportation|Secretary of the Treasury|Secretary of Veterans Affairs|Attorney General|Vice President"],
+[37,"What does the judicial branch do?","reviews laws|explains laws|resolves disputes (disagreements)|decides if a law goes against the Constitution"],
+[38,"What is the highest court in the United States?","the Supreme Court"],
+[39,"How many justices are on the Supreme Court?","nine (9)"],
+[40,"Who is the Chief Justice of the United States now?","John Roberts (John G. Roberts, Jr.)"],
+[41,"Under our Constitution, some powers belong to the federal government. What is one power of the federal government?","to print money|to declare war|to create an army|to make treaties"],
+[42,"Under our Constitution, some powers belong to the states. What is one power of the states?","provide schooling and education|provide protection (police)|provide safety (fire departments)|give a driver’s license|approve zoning and land use"],
+[43,"Who is the Governor of your state now?","@gov","Residents of Washington, D.C. should say D.C. does not have a Governor."],
+[44,"What is the capital of your state?","@capital","Washington, D.C. is not a state and has no capital. Territory residents name the capital of the territory."],
+[45,"What are the two major political parties in the United States?","Democratic and Republican"],
+[46,"What is the political party of the President now?","Republican (Party)"],
+[47,"What is the name of the Speaker of the House of Representatives now?","Mike Johnson|Johnson","Check uscis.gov/citizenship/testupdates before your interview."],
+[48,"There are four amendments to the Constitution about who can vote. Describe one of them.","Citizens eighteen (18) and older (can vote).|You don’t have to pay (a poll tax) to vote.|Any citizen can vote. (Women and men can vote.)|A male citizen of any race (can vote)."],
+[49,"What is one responsibility that is only for United States citizens?","serve on a jury|vote in a federal election"],
+[50,"Name one right only for United States citizens.","vote in a federal election|run for federal office"],
+[51,"What are two rights of everyone living in the United States?","freedom of expression|freedom of speech|freedom of assembly|freedom to petition the government|freedom of religion|the right to bear arms"],
+[52,"What do we show loyalty to when we say the Pledge of Allegiance?","the United States|the flag"],
+[53,"What is one promise you make when you become a United States citizen?","give up loyalty to other countries|defend the Constitution and laws of the United States|obey the laws of the United States|serve in the U.S. military (if needed)|serve (do important work for) the nation (if needed)|be loyal to the United States"],
+[54,"How old do citizens have to be to vote for President?","eighteen (18) and older"],
+[55,"What are two ways that Americans can participate in their democracy?","vote|join a political party|help with a campaign|join a civic group|join a community group|give an elected official your opinion on an issue|call Senators and Representatives|publicly support or oppose an issue or policy|run for office|write to a newspaper"],
+[56,"When is the last day you can send in federal income tax forms?","April 15"],
+[57,"When must all men register for the Selective Service?","at age eighteen (18)|between eighteen (18) and twenty-six (26)"],
+[58,"What is one reason colonists came to America?","freedom|political liberty|religious freedom|economic opportunity|practice their religion|escape persecution"],
+[59,"Who lived in America before the Europeans arrived?","American Indians|Native Americans"],
+[60,"What group of people was taken to America and sold as slaves?","Africans|people from Africa"],
+[61,"Why did the colonists fight the British?","because of high taxes (taxation without representation)|because the British army stayed in their houses (boarding, quartering)|because they didn’t have self-government"],
+[62,"Who wrote the Declaration of Independence?","(Thomas) Jefferson"],
+[63,"When was the Declaration of Independence adopted?","July 4, 1776"],
+[64,"There were 13 original states. Name three.","New Hampshire|Massachusetts|Rhode Island|Connecticut|New York|New Jersey|Pennsylvania|Delaware|Maryland|Virginia|North Carolina|South Carolina|Georgia"],
+[65,"What happened at the Constitutional Convention?","The Constitution was written.|The Founding Fathers wrote the Constitution."],
+[66,"When was the Constitution written?","1787"],
+[67,"The Federalist Papers supported the passage of the U.S. Constitution. Name one of the writers.","(James) Madison|(Alexander) Hamilton|(John) Jay|Publius"],
+[68,"What is one thing Benjamin Franklin is famous for?","U.S. diplomat|oldest member of the Constitutional Convention|first Postmaster General of the United States|writer of “Poor Richard’s Almanac”|started the first free libraries"],
+[69,"Who is the “Father of Our Country”?","(George) Washington"],
+[70,"Who was the first President?","(George) Washington"],
+[71,"What territory did the United States buy from France in 1803?","the Louisiana Territory|Louisiana"],
+[72,"Name one war fought by the United States in the 1800s.","War of 1812|Mexican-American War|Civil War|Spanish-American War"],
+[73,"Name the U.S. war between the North and the South.","the Civil War|the War between the States"],
+[74,"Name one problem that led to the Civil War.","slavery|economic reasons|states’ rights"],
+[75,"What was one important thing that Abraham Lincoln did?","freed the slaves (Emancipation Proclamation)|saved (or preserved) the Union|led the United States during the Civil War"],
+[76,"What did the Emancipation Proclamation do?","freed the slaves|freed slaves in the Confederacy|freed slaves in the Confederate states|freed slaves in most Southern states"],
+[77,"What did Susan B. Anthony do?","fought for women’s rights|fought for civil rights"],
+[78,"Name one war fought by the United States in the 1900s.","World War I|World War II|Korean War|Vietnam War|(Persian) Gulf War"],
+[79,"Who was President during World War I?","(Woodrow) Wilson"],
+[80,"Who was President during the Great Depression and World War II?","(Franklin) Roosevelt"],
+[81,"Who did the United States fight in World War II?","Japan, Germany, and Italy"],
+[82,"Before he was President, Eisenhower was a general. What war was he in?","World War II"],
+[83,"During the Cold War, what was the main concern of the United States?","Communism"],
+[84,"What movement tried to end racial discrimination?","civil rights (movement)"],
+[85,"What did Martin Luther King, Jr. do?","fought for civil rights|worked for equality for all Americans"],
+[86,"What major event happened on September 11, 2001, in the United States?","Terrorists attacked the United States."],
+[87,"Name one American Indian tribe in the United States.","Cherokee|Navajo|Sioux|Chippewa|Choctaw|Pueblo|Apache|Iroquois|Creek|Blackfeet|Seminole|Cheyenne|Arawak|Shawnee|Mohegan|Huron|Oneida|Lakota|Crow|Teton|Hopi|Inuit"],
+[88,"Name one of the two longest rivers in the United States.","Missouri (River)|Mississippi (River)"],
+[89,"What ocean is on the West Coast of the United States?","Pacific (Ocean)"],
+[90,"What ocean is on the East Coast of the United States?","Atlantic (Ocean)"],
+[91,"Name one U.S. territory.","Puerto Rico|U.S. Virgin Islands|American Samoa|Northern Mariana Islands|Guam"],
+[92,"Name one state that borders Canada.","Maine|New Hampshire|Vermont|New York|Pennsylvania|Ohio|Michigan|Minnesota|North Dakota|Montana|Idaho|Washington|Alaska"],
+[93,"Name one state that borders Mexico.","California|Arizona|New Mexico|Texas"],
+[94,"What is the capital of the United States?","Washington, D.C."],
+[95,"Where is the Statue of Liberty?","New York (Harbor)|Liberty Island","Also accepted: New Jersey, near New York City, and on the Hudson (River)."],
+[96,"Why does the flag have 13 stripes?","because there were 13 original colonies|because the stripes represent the original colonies"],
+[97,"Why does the flag have 50 stars?","because there is one star for each state|because each star represents a state|because there are 50 states"],
+[98,"What is the name of the national anthem?","The Star-Spangled Banner"],
+[99,"When do we celebrate Independence Day?","July 4"],
+[100,"Name two national U.S. holidays.","New Year’s Day|Martin Luther King, Jr. Day|Presidents’ Day|Memorial Day|Juneteenth|Independence Day|Labor Day|Columbus Day|Veterans Day|Thanksgiving|Christmas"]
+];
+function catOf(n) {
+  if (n <= 12) return ["American Government", "Principles of American Democracy"];
+  if (n <= 47) return ["American Government", "System of Government"];
+  if (n <= 57) return ["American Government", "Rights and Responsibilities"];
+  if (n <= 70) return ["American History", "Colonial Period and Independence"];
+  if (n <= 77) return ["American History", "1800s"];
+  if (n <= 87) return ["American History", "Recent American History"];
+  if (n <= 95) return ["Integrated Civics", "Geography"];
+  if (n <= 98) return ["Integrated Civics", "Symbols"];
+  return ["Integrated Civics", "Holidays"];
+}
+const QS = RAW.map(([n, q, a, note]) => { const [cat, sub] = catOf(n); return { n, q, a, note, cat, sub }; });
+
+const STATES = {"Alabama":"Montgomery","Alaska":"Juneau","Arizona":"Phoenix","Arkansas":"Little Rock","California":"Sacramento","Colorado":"Denver","Connecticut":"Hartford","Delaware":"Dover","Florida":"Tallahassee","Georgia":"Atlanta","Hawaii":"Honolulu","Idaho":"Boise","Illinois":"Springfield","Indiana":"Indianapolis","Iowa":"Des Moines","Kansas":"Topeka","Kentucky":"Frankfort","Louisiana":"Baton Rouge","Maine":"Augusta","Maryland":"Annapolis","Massachusetts":"Boston","Michigan":"Lansing","Minnesota":"Saint Paul","Mississippi":"Jackson","Missouri":"Jefferson City","Montana":"Helena","Nebraska":"Lincoln","Nevada":"Carson City","New Hampshire":"Concord","New Jersey":"Trenton","New Mexico":"Santa Fe","New York":"Albany","North Carolina":"Raleigh","North Dakota":"Bismarck","Ohio":"Columbus","Oklahoma":"Oklahoma City","Oregon":"Salem","Pennsylvania":"Harrisburg","Rhode Island":"Providence","South Carolina":"Columbia","South Dakota":"Pierre","Tennessee":"Nashville","Texas":"Austin","Utah":"Salt Lake City","Vermont":"Montpelier","Virginia":"Richmond","Washington":"Olympia","West Virginia":"Charleston","Wisconsin":"Madison","Wyoming":"Cheyenne","Washington, D.C.":"(D.C. is not a state and has no capital)","Puerto Rico":"San Juan","Guam":"Hagåtña","U.S. Virgin Islands":"Charlotte Amalie","American Samoa":"Pago Pago","Northern Mariana Islands":"Saipan"};
+
+const READ_VOCAB = ["Abraham Lincoln","George Washington","American flag","Bill of Rights","capital","citizen","city","Congress","country","Father of Our Country","government","President","right","Senators","state/states","White House","America","United States","U.S.","Presidents’ Day","Memorial Day","Flag Day","Independence Day","Labor Day","Columbus Day","Thanksgiving","How","What","When","Where","Who","Why","can","come","do/does","elects","have/has","is/are/was/be","lives/lived","meet","name","pay","vote","want","a","for","here","in","of","on","the","to","we","colors","dollar bill","first","largest","many","most","north","one","people","second","south"];
+const WRITE_VOCAB = ["Adams","Lincoln","Washington","American Indians","capital","citizens","Civil War","Congress","Father of Our Country","flag","free","freedom of speech","President","right","Senators","state/states","White House","Alaska","California","Canada","Delaware","Mexico","New York City","United States","Washington, D.C.","February","May","June","July","September","October","November","Presidents’ Day","Memorial Day","Flag Day","Independence Day","Labor Day","Columbus Day","Thanksgiving","can","come","elect","have/has","is/was/be","lives/lived","meets","pay","vote","want","and","during","for","here","in","of","on","the","to","we","blue","dollar bill","fifty/50","first","largest","most","north","one","one hundred/100","people","red","second","south","taxes","white"];
+const READ_SENT = ["Who was the first President?","Who is the Father of Our Country?","What is the capital of the United States?","Where does the President live?","When is Independence Day?","What is the largest state?","Who lived in the White House?","Why do people come to America?","When do people vote for President?","Who can vote?","What are the colors of the American flag?","Who elects Congress?","Where do Senators meet?","Who is on the dollar bill?","How many Senators does Congress have?","What country is north of the United States?","When is Thanksgiving?","What state has the most people?","Name one right in the Bill of Rights.","When is Labor Day?","Who was the second President?","When is Flag Day?","Why do we have a Memorial Day?","What do people want to have?"];
+const WRITE_SENT = ["Washington was the first President.","Adams was the second President.","Lincoln was President during the Civil War.","The President lives in the White House.","Washington is the Father of Our Country.","Washington, D.C. is the capital of the United States.","Congress meets in Washington, D.C.","The flag is red, white, and blue.","Citizens have the right to vote.","Citizens elect the President.","People pay taxes.","Alaska is the largest state.","California has the most people.","Canada is north of the United States.","Mexico is south of the United States.","American Indians lived here first.","Independence Day is in July.","Thanksgiving is in November.","Labor Day is in September.","Memorial Day is in May.","Presidents’ Day is in February.","Flag Day is in June.","Columbus Day is in October.","Citizens have freedom of speech.","Congress has one hundred Senators.","The United States has fifty states.","Washington is on the dollar bill.","New York City was the first capital.","Delaware was the first state.","People want to be free."];
+
+const INTERVIEW = [
+["Before we start","Do you promise to tell the truth and nothing but the truth?","Say “Yes, I do.” The officer will ask you to stand and raise your right hand."],
+["Before we start","Do you understand what it means to take an oath?","“Yes. It means I promise to tell the truth.”"],
+["Before we start","May I see your green card, passport, and appointment letter?","Bring every document listed on your interview notice."],
+["Part 2. Information about you","What is your full name?",""],
+["Part 2. Information about you","Have you used any other names since you were born?","Include maiden names, nicknames on official records, and spelling changes."],
+["Part 2. Information about you","Do you want to legally change your name?",""],
+["Part 2. Information about you","What is your date of birth?",""],
+["Part 2. Information about you","What is your country of birth? What is your nationality?",""],
+["Part 2. Information about you","When did you become a lawful permanent resident?","The date on your green card (“Resident since”)."],
+["Part 4. Addresses","What is your current home address? How long have you lived there?",""],
+["Part 4. Addresses","Where did you live before that?","Know your addresses for the last 5 years (3 if you apply through marriage to a U.S. citizen)."],
+["Part 6. Marital history","What is your current marital status?","Married, single, divorced, widowed, separated, or marriage annulled."],
+["Part 6. Marital history","How many times have you been married?",""],
+["Part 6. Marital history","What is your spouse’s name and date of birth? Is your spouse a U.S. citizen?",""],
+["Part 7. Children","How many children do you have? Where do they live?","Include all your sons and daughters, of any age, living or not."],
+["Part 8. Employment and schools","Where do you work? What do you do there? How long have you worked there?","List employers and schools for the last 5 years."],
+["Part 9. Time outside the U.S.","How many trips outside the United States did you take in the last five years?","Know your dates. A trip longer than 6 months may cause more questions."],
+["Part 9. Time outside the U.S.","Did you take any trips that lasted six months or more?",""],
+["Part 9. Additional information","Have you ever claimed to be a U.S. citizen, in writing or any other way?","“Claimed” means said or wrote that you are a citizen."],
+["Part 9. Additional information","Have you ever registered to vote or voted in any federal, state, or local election in the United States?",""],
+["Part 9. Additional information","Do you owe any overdue federal, state, or local taxes?","“Overdue” means late; you owed and did not pay on time."],
+["Part 9. Additional information","Have you ever been a member of, or in any way associated with, the Communist Party or any other totalitarian party?",""],
+["Part 9. Additional information","Have you ever been a member of a terrorist organization?",""],
+["Part 9. Additional information","Have you ever been arrested, cited, or detained by any law enforcement officer for any reason?","Include traffic tickets over $500 or any arrest, even if charges were dropped."],
+["Part 9. Additional information","Have you ever been a habitual drunkard?","Someone who is drunk very often."],
+["Part 9. Additional information","Have you ever given false or misleading information to any U.S. government official?",""],
+["Part 9. Additional information","Have you ever been removed or deported from the United States?",""],
+["Part 9. Additional information","If you are a man, did you register for the Selective Service between ages 18 and 26?","If you were in the U.S. as a man between 18 and 26, you were required to register."],
+["Part 9. Additional information","Do you support the Constitution and form of government of the United States?","“Yes.”"],
+["Part 9. Additional information","Do you understand the full Oath of Allegiance to the United States?",""],
+["Part 9. Additional information","Are you willing to take the full Oath of Allegiance to the United States?",""],
+["Part 9. Additional information","If the law requires it, are you willing to bear arms on behalf of the United States?",""],
+["Part 9. Additional information","If the law requires it, are you willing to perform noncombatant services in the U.S. armed forces?",""],
+["Part 9. Additional information","If the law requires it, are you willing to perform work of national importance under civilian direction?",""],
+["Wrap-up","Why do you want to become a U.S. citizen?","Short, honest answers are best: to vote, to bring family, to belong."],
+["Wrap-up","Is there anything you want to change on your application?","Tell the officer about anything new since you filed: a move, a trip, a new job, a marriage, an arrest."]
+];
+
+const VOCAB = [
+["Allegiance","Loyalty to a country.","Are you willing to take the full Oath of Allegiance?"],
+["Oath","A serious, formal promise.","Do you understand what it means to take an oath?"],
+["Renounce","To formally give up something, like loyalty to another country.","…absolutely and entirely renounce and abjure all allegiance…"],
+["Bear arms","To carry weapons and fight for the United States.","Are you willing to bear arms on behalf of the United States?"],
+["Noncombatant service","Work for the military that is not fighting, such as driving or medical work.","Are you willing to perform noncombatant services in the U.S. armed forces?"],
+["Work of national importance","Important work for the country under civilian (non-military) direction, if the law requires it.",""],
+["Constitution","The supreme law of the United States.","Do you support the Constitution and form of government?"],
+["Claim","To say or write that something is true.","Have you ever claimed to be a U.S. citizen?"],
+["Register to vote","To sign up so you can vote in elections.","Have you ever registered to vote?"],
+["Overdue taxes","Taxes you owed and did not pay on time.","Do you owe any overdue taxes?"],
+["Nonresident","On tax forms: saying you did not live in the United States, so you did not file as a U.S. resident.","Have you called yourself a “nonresident” on a tax return?"],
+["Title of nobility","A title passed down in a family, such as king, queen, duke, or lord.","Have you ever had any hereditary title or order of nobility?"],
+["Legally incompetent","A court decided that a person cannot make decisions or take care of themselves.","Have you ever been declared legally incompetent?"],
+["Communist Party","A political party that believes the government should own all property and control the economy.","Have you ever been a member of the Communist Party?"],
+["Totalitarian party","A party that wants total control of the country and allows no other parties.",""],
+["Terrorist organization","A group that uses violence against people to reach political or religious goals.","Have you ever been a member of a terrorist organization?"],
+["Genocide","Killing or harming people because of their race, religion, nationality, or ethnic group.","Have you ever been involved in genocide?"],
+["Torture","Causing someone very bad pain or suffering on purpose.","Have you ever been involved in torture?"],
+["Persecute","To hurt or treat people badly because of their race, religion, nationality, political opinion, or social group.","Have you ever persecuted any person?"],
+["Militia","A group of armed people who are not part of a country’s regular army.",""],
+["Paramilitary unit","An armed group organized like an army, but not the official military.",""],
+["Rebel group / Guerrilla group / Insurgent organization","Armed groups that fight against a government.","Have you ever been a member of a rebel group?"],
+["Vigilante unit","People who act as police without legal authority.",""],
+["Detention facility / Labor camp","A place where people are held against their will; a labor camp forces them to work.","Have you ever worked in a prison, jail, labor camp, or detention facility?"],
+["Child soldier","A person under 15 used to fight in an armed group.","Have you ever recruited or used anyone under age 15 to serve in an armed group?"],
+["Habitual drunkard","A person who is drunk very often.","Have you ever been a habitual drunkard?"],
+["Prostitution","Selling sex for money.","Have you ever been a prostitute or procured anyone for prostitution?"],
+["Controlled substance","Illegal drugs, or legal drugs used without a doctor’s permission.","Have you ever sold or smuggled controlled substances?"],
+["Smuggle","To bring something or someone into a country illegally.","Have you ever helped anyone enter the United States illegally?"],
+["Polygamy","Being married to more than one person at the same time.","Have you ever been married to more than one person at the same time?"],
+["Illegal gambling","Betting money in a way that breaks the law.","Have you ever received income from illegal gambling?"],
+["Alimony / Child support","Money a court orders you to pay to a former spouse (alimony) or for your children (child support).","Have you ever failed to pay alimony or child support?"],
+["Misrepresentation / Fraud","Giving false information or lying to get a benefit.","Have you ever lied to any U.S. government official to gain entry or immigration benefits?"],
+["Arrested / Cited / Detained","Arrested: police took you into custody. Cited: you got a ticket or notice. Detained: you were held by police.",""],
+["Charged / Convicted","Charged: officially accused of a crime. Convicted: a court found you guilty.",""],
+["Probation / Parole","Probation: a sentence served outside jail with rules. Parole: early release from prison with rules.",""],
+["Pardon / Amnesty / Expunged","Forgiveness for a crime, or a record that was erased or sealed. You still must tell USCIS about it.",""],
+["Removal / Deportation","Being ordered to leave the United States.","Have you ever been removed or deported?"],
+["Selective Service","The U.S. system that registers men ages 18 to 26 in case of a military draft.","Did you register for the Selective Service?"],
+["Desert","To leave the military without permission.","Have you ever deserted from the U.S. armed forces?"],
+["Exemption","Permission not to do something; here, being excused from military service.","Have you ever applied for an exemption from military service?"],
+["Lawful permanent resident","A person with a green card who can live and work in the U.S. permanently.",""],
+["Good moral character","Living honestly and obeying the law; USCIS checks this for the past 5 years.",""]
+];
+
+/* ---------- Storage (per-browser convenience only) ---------- */
+const KEY = "n400-trainer-v1";
+const blank = () => ({ cards: {}, mocks: [], write: {}, settings: { version: "2025", state: "", senator: "", rep: "", gov: "", capital: "" } });
+let S = blank();
+try { const raw = localStorage.getItem(KEY); if (raw) { const p = JSON.parse(raw); S = Object.assign(blank(), p); S.settings = Object.assign(blank().settings, p.settings || {}); } } catch (e) {}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2200); }
+
+/* ---------- Speech ---------- */
+const canSpeak = "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined";
+let voice = null;
+function pickVoice() {
+  if (!canSpeak) return;
+  const vs = speechSynthesis.getVoices();
+  voice = vs.find((v) => v.lang === "en-US" && /natural|google|samantha|aria|jenny/i.test(v.name)) || vs.find((v) => v.lang === "en-US") || vs.find((v) => /^en/.test(v.lang)) || null;
+}
+if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function speak(text, rate) {
+  if (!canSpeak) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.replace(/“|”/g, ""));
+    if (voice) u.voice = voice;
+    u.lang = "en-US"; u.rate = rate || 0.92;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+if (!canSpeak) document.querySelectorAll(".speak-btn").forEach((b) => (b.hidden = true));
+
+/* ---------- Answers (local ones from settings) ---------- */
+function answersFor(q) {
+  const st = S.settings;
+  const local = { "@senator": [st.senator, "Find yours at senate.gov"], "@rep": [st.rep, "Find yours at house.gov"], "@gov": [st.gov, "Find yours at usa.gov/state-governor"], "@capital": [st.capital, "Choose your state under My answers"] };
+  if (local[q.a]) { const [val, hint] = local[q.a]; return val ? [val] : ["Answers vary by where you live. " + hint + "."]; }
+  return q.a.split("|");
+}
+function answersHTML(q) {
+  const list = answersFor(q);
+  const need = /\b(what are|name) two\b/i.test(q.q) && list.length > 1 ? "Give two answers. " : /Name three/i.test(q.q) ? "Give three answers. " : list.length > 1 ? "Any one of these is correct. " : "";
+  let h = `<span class="eyebrow">Accepted answers</span>`;
+  if (need) h += `<p class="note">${need}</p>`;
+  h += `<ul>${list.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`;
+  if (q.note) h += `<p class="note">${esc(q.note)}</p>`;
+  if (/^@/.test(q.a) && list[0].startsWith("Answers vary")) h += `<p class="note"><a href="#setup">Add your answer</a></p>`;
+  return h;
+}
+
+/* ---------- Routing ---------- */
+const VIEWS = ["overview", "civics", "mock", "english", "words", "setup"];
+function route() {
+  const h = (location.hash || "").slice(1);
+  const v = VIEWS.includes(h) ? h : "overview";
+  VIEWS.forEach((x) => ($("v-" + x).hidden = x !== v));
+  document.querySelectorAll("nav.tabs a").forEach((a) => a.setAttribute("aria-current", a.getAttribute("href") === "#" + v ? "page" : "false"));
+  if (canSpeak) speechSynthesis.cancel();
+  if (v === "overview") renderOverview();
+  if (v === "mock" && !mock.active) renderMockIntro();
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => (location.hash = b.dataset.go)));
+
+/* ---------- Overview ---------- */
+const box = (n) => (S.cards[n] ? S.cards[n].box : 0);
+const mastered = (n) => box(n) >= 3;
+function rules() { return S.settings.version === "2008" ? { ask: 10, pass: 6, fail: 5, label: "2008 civics test" } : { ask: 20, pass: 12, fail: 9, label: "2025 civics test" }; }
+function renderOverview() {
+  const r = rules();
+  $("ov-civics-rule").textContent = `${r.label}: up to ${r.ask} oral questions; ${r.pass} correct answers to pass.`;
+  const groups = ["American Government", "American History", "Integrated Civics"].map((c) => {
+    const qs = QS.filter((q) => q.cat === c); const m = qs.filter((q) => mastered(q.n)).length;
+    return { label: c, m, t: qs.length };
+  });
+  const wDone = Object.keys(S.write).length;
+  groups.push({ label: "Writing sentences", m: wDone, t: WRITE_SENT.length });
+  let h = groups.map((g) => `<div class="stat"><div class="row"><span>${esc(g.label)}</span><span class="spacer"></span><span class="num">${g.m} / ${g.t}</span></div><div class="meter"><span style="width:${Math.round((g.m / g.t) * 100)}%"></span></div></div>`).join("");
+  const last = S.mocks.slice(-1)[0];
+  h += `<p class="note">${last ? `Last mock test: ${last.right} of ${last.asked} correct, <b>${last.pass ? "passed" : "not passed"}</b> (${esc(last.version)} format).` : "Questions count as learned after you get them right 3 times in a row."}</p>`;
+  $("ov-progress").innerHTML = h;
+}
+
+/* ---------- Civics study ---------- */
+const FILTERS = [["all", "All 100 questions"], ["cat:American Government", "American Government"], ["cat:American History", "American History"], ["cat:Integrated Civics", "Integrated Civics"]];
+[...new Set(QS.map((q) => q.sub))].forEach((s) => FILTERS.push(["sub:" + s, " " + s]));
+$("cv-filter").innerHTML = FILTERS.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+let cur = null, lastN = null;
+function pool() {
+  const f = $("cv-filter").value;
+  let p = QS.filter((q) => f === "all" || (f.startsWith("cat:") && q.cat === f.slice(4)) || (f.startsWith("sub:") && q.sub === f.slice(4)));
+  if ($("cv-weak").checked) p = p.filter((q) => S.cards[q.n] && S.cards[q.n].wrong > 0 && !mastered(q.n));
+  return p;
+}
+function nextCard() {
+  const p = pool();
+  const learned = p.filter((q) => mastered(q.n)).length;
+  $("cv-pool").textContent = p.length ? `${p.length} questions in this set, ${learned} learned. Questions you miss come back sooner.` : "";
+  if (!p.length) {
+    cur = null;
+    $("cv-no").textContent = ""; $("cv-cat").textContent = ""; $("cv-box").innerHTML = "";
+    $("cv-q").textContent = $("cv-weak").checked ? "No missed questions left in this set. Turn off the filter to keep studying." : "No questions in this set.";
+    $("cv-ans").hidden = true; $("cv-actions-ask").hidden = true; $("cv-actions-grade").hidden = true;
+    return;
+  }
+  const cands = p.length > 1 ? p.filter((q) => q.n !== lastN) : p;
+  const scored = cands.map((q) => ({ q, s: box(q.n) + Math.random() * 1.5 })).sort((a, b) => a.s - b.s);
+  cur = scored[0].q; lastN = cur.n;
+  $("cv-no").textContent = "Question " + cur.n;
+  $("cv-cat").textContent = cur.cat + " · " + cur.sub;
+  const b = box(cur.n);
+  $("cv-box").innerHTML = S.cards[cur.n] ? (b >= 3 ? `<span class="pill ok">Learned</span>` : S.cards[cur.n].wrong ? `<span class="pill bad">Missed before</span>` : `<span class="pill">Seen</span>`) : `<span class="pill">New</span>`;
+  $("cv-q").textContent = cur.q;
+  $("cv-ans").innerHTML = answersHTML(cur); $("cv-ans").hidden = true;
+  $("cv-actions-ask").hidden = false; $("cv-actions-grade").hidden = true;
+}
+function grade(n, ok) {
+  const c = S.cards[n] || { box: 0, right: 0, wrong: 0 };
+  if (ok) { c.right++; c.box = Math.min(c.box + 1, 5); } else { c.wrong++; c.box = 0; }
+  S.cards[n] = c; save();
+}
+$("cv-show").onclick = () => { $("cv-ans").hidden = false; $("cv-actions-ask").hidden = true; $("cv-actions-grade").hidden = false; $("cv-right").focus(); };
+$("cv-speak").onclick = () => cur && speak(cur.q);
+$("cv-skip").onclick = nextCard;
+$("cv-right").onclick = () => { grade(cur.n, true); nextCard(); };
+$("cv-wrong").onclick = () => { grade(cur.n, false); nextCard(); };
+$("cv-filter").onchange = nextCard; $("cv-weak").onchange = nextCard;
+
+/* ---------- Mock test ---------- */
+const mock = { active: false, list: [], i: 0, right: 0, wrong: 0, results: [] };
+function renderMockIntro() {
+  const r = rules();
+  $("mk-intro").hidden = false; $("mk-run").hidden = true; $("mk-result").hidden = true;
+  $("mk-title").textContent = r.label;
+  $("mk-rule").textContent = `Up to ${r.ask} questions. You pass with ${r.pass} correct. The test ends early at ${r.pass} correct or ${r.fail} incorrect.`;
+  if (!canSpeak) { $("mk-audio").closest("label").hidden = true; $("mk-hide").closest("label").hidden = true; }
+  const hist = S.mocks.slice(-5).reverse();
+  $("mk-history").innerHTML = hist.length ? `<span class="eyebrow">Recent tests</span><div style="display:grid;gap:6px;margin-top:8px">${hist.map((m) => `<div class="row"><span class="pill ${m.pass ? "ok" : "bad"}">${m.pass ? "Passed" : "Not passed"}</span><span class="num" style="font-variant-numeric:tabular-nums">${m.right} / ${m.asked} correct</span><span class="note">${esc(m.version)} · ${new Date(m.at).toLocaleDateString()}</span></div>`).join("")}</div>` : "";
+}
+function startMock() {
+  const r = rules();
+  Object.assign(mock, { active: true, list: shuffle(QS).slice(0, r.ask), i: 0, right: 0, wrong: 0, results: [] });
+  $("mk-intro").hidden = true; $("mk-result").hidden = true; $("mk-run").hidden = false;
+  showMockQ();
+}
+function showMockQ() {
+  const r = rules(), q = mock.list[mock.i];
+  $("mk-count").textContent = `Question ${mock.i + 1} of up to ${r.ask} · ${mock.right} correct, ${mock.wrong} incorrect`;
+  $("mk-tally").innerHTML = Array.from({ length: r.pass }, (_, k) => `<span class="${k < mock.right ? "ok" : ""}">${k + 1}</span>`).join("") + `<span class="sr">Need ${r.pass} correct</span>`;
+  $("mk-no").textContent = "Question " + q.n; $("mk-cat").textContent = q.cat;
+  const hide = $("mk-hide").checked && canSpeak;
+  $("mk-q").textContent = hide ? "Listen to the officer’s question." : q.q;
+  $("mk-typed").value = "";
+  $("mk-ans").hidden = true; $("mk-ask").hidden = false; $("mk-grade").hidden = true;
+  if ($("mk-audio").checked || hide) setTimeout(() => speak(q.q), 150);
+}
+$("mk-start").onclick = startMock;
+$("mk-repeat").onclick = () => speak(mock.list[mock.i].q);
+$("mk-reveal").onclick = () => {
+  const q = mock.list[mock.i], typed = $("mk-typed").value.trim();
+  $("mk-q").textContent = q.q;
+  $("mk-ans").innerHTML = (typed ? `<span class="eyebrow">You said</span><p>${esc(typed)}</p>` : "") + answersHTML(q);
+  $("mk-ans").hidden = false; $("mk-ask").hidden = true; $("mk-grade").hidden = false;
+};
+function mockGrade(ok) {
+  const r = rules(), q = mock.list[mock.i];
+  ok ? mock.right++ : mock.wrong++;
+  mock.results.push({ n: q.n, ok }); grade(q.n, ok);
+  mock.i++;
+  if (mock.right >= r.pass || mock.wrong >= r.fail || mock.i >= mock.list.length) finishMock(); else showMockQ();
+}
+$("mk-right").onclick = () => mockGrade(true);
+$("mk-wrong").onclick = () => mockGrade(false);
+$("mk-quit").onclick = () => { mock.active = false; if (canSpeak) speechSynthesis.cancel(); renderMockIntro(); };
+function finishMock() {
+  const r = rules(), pass = mock.right >= r.pass;
+  mock.active = false;
+  S.mocks.push({ at: Date.now(), right: mock.right, asked: mock.results.length, pass, version: S.settings.version }); S.mocks = S.mocks.slice(-30); save();
+  const missed = mock.results.filter((x) => !x.ok).map((x) => QS.find((q) => q.n === x.n));
+  $("mk-run").hidden = true;
+  const el = $("mk-result"); el.hidden = false;
+  el.innerHTML = `<div class="stamp ${pass ? "pass" : "fail"}">${pass ? "Passed" : "Not passed"}</div>
+    <h2>${mock.right} correct out of ${mock.results.length} questions</h2>
+    <p class="lede">${pass ? `You reached ${r.pass} correct answers, so the officer would stop here.` : `You needed ${r.pass} correct answers. Study the questions below and try again.`}</p>
+    ${missed.length ? `<div><span class="eyebrow">Review what you missed</span><dl class="vocab">${missed.map((q) => `<div><dt>${q.n}. ${esc(q.q)}</dt><dd>${esc(answersFor(q).join(" · "))}</dd></div>`).join("")}</dl></div>` : ""}
+    <div class="row"><button class="primary" id="mk-again">Take another test</button><button id="mk-study">Study missed questions</button></div>`;
+  $("mk-again").onclick = startMock;
+  $("mk-study").onclick = () => { $("cv-filter").value = "all"; $("cv-weak").checked = true; nextCard(); location.hash = "civics"; };
+  if (canSpeak && $("mk-audio").checked) speak(pass ? "Congratulations. You passed the civics test." : "You did not pass this time.");
+}
+
+/* ---------- Reading & writing ---------- */
+$("rd-vocab").innerHTML = READ_VOCAB.map((w) => `<span>${esc(w)}</span>`).join("");
+$("wr-vocab").innerHTML = WRITE_VOCAB.map((w) => `<span>${esc(w)}</span>`).join("");
+let rdOrder = shuffle(READ_SENT), rdI = 0;
+function nextRead() { if (rdI >= rdOrder.length) { rdOrder = shuffle(READ_SENT); rdI = 0; } $("rd-s").textContent = rdOrder[rdI++]; }
+$("rd-next").onclick = nextRead;
+$("rd-hear").onclick = () => speak($("rd-s").textContent, 0.85);
+
+let wrOrder = shuffle(WRITE_SENT), wrI = 0, wrCur = "";
+function nextWrite() {
+  if (wrI >= wrOrder.length) { wrOrder = shuffle(WRITE_SENT); wrI = 0; }
+  wrCur = wrOrder[wrI++];
+  $("wr-in").value = ""; $("wr-out").hidden = true; $("wr-peeked").hidden = true;
+  $("wr-peeked").textContent = wrCur;
+  if (!canSpeak) $("wr-peeked").hidden = false;
+}
+const norm = (s) => s.toLowerCase().replace(/[’']/g, "'").replace(/\bd\.\s?c\.?/g, "dc").replace(/\b100\b/g, "one hundred").replace(/\b50\b/g, "fifty").replace(/[^a-z' ]+/g, " ").split(/\s+/).filter(Boolean);
+function diffWords(a, b) { // a = expected, b = typed; LCS alignment
+  const m = a.length, n = b.length, d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) for (let j = n - 1; j >= 0; j--) d[i][j] = a[i] === b[j] ? d[i + 1][j + 1] + 1 : Math.max(d[i + 1][j], d[i][j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < m || j < n) {
+    if (i < m && j < n && a[i] === b[j]) { out.push(["ok", b[j]]); i++; j++; }
+    else if (j < n && (i >= m || d[i][j + 1] >= d[i + 1][j])) { out.push(["extra", b[j]]); j++; }
+    else { out.push(["miss", a[i]]); i++; }
+  }
+  return out;
+}
+function checkWrite() {
+  const typed = $("wr-in").value.trim();
+  if (!typed) { toast("Type the sentence first."); return; }
+  const exp = norm(wrCur), got = norm(typed), parts = diffWords(exp, got);
+  const ok = parts.every((p) => p[0] === "ok");
+  const capOk = /^[A-Z]/.test(typed);
+  const out = $("wr-out"); out.hidden = false;
+  if (ok) { S.write[wrCur] = true; save(); }
+  out.innerHTML = `<span class="pill ${ok ? "ok" : "bad"}">${ok ? "Correct" : "Not quite"}</span>
+    ${ok ? "" : `<p class="diff">${parts.map(([k, w]) => `<span class="w-${k}">${esc(w)}</span>`).join(" ")}</p><p class="note">Red underline: missing or misspelled word. Crossed out: extra word.</p>`}
+    <p><span class="eyebrow">Sentence</span><br>${esc(wrCur)}</p>
+    ${ok && !capOk ? `<p class="note">Start the sentence with a capital letter. Officers accept small punctuation mistakes but the meaning must be clear.</p>` : ""}`;
+}
+$("wr-play").onclick = () => speak(wrCur, 0.9);
+$("wr-slow").onclick = () => speak(wrCur, 0.6);
+$("wr-peek").onclick = () => ($("wr-peeked").hidden = !$("wr-peeked").hidden);
+$("wr-check").onclick = checkWrite;
+$("wr-in").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); checkWrite(); } });
+$("wr-next").onclick = nextWrite;
+
+/* ---------- Interview & vocab ---------- */
+let ivI = -1;
+function nextIv() {
+  ivI = (ivI + 1) % INTERVIEW.length;
+  const [part, q, tip] = INTERVIEW[ivI];
+  $("iv-no").textContent = `${ivI + 1} of ${INTERVIEW.length}`; $("iv-part").textContent = part;
+  $("iv-q").textContent = q; $("iv-tip").textContent = tip; $("iv-tip").hidden = !tip;
+}
+$("iv-next").onclick = nextIv;
+$("iv-hear").onclick = () => speak(INTERVIEW[ivI][1]);
+$("oath-hear").onclick = () => speak(document.querySelector(".oath").textContent, 0.85);
+function renderVocab() {
+  const f = $("vb-find").value.trim().toLowerCase();
+  const list = VOCAB.filter(([t, d]) => !f || t.toLowerCase().includes(f) || d.toLowerCase().includes(f));
+  $("vb-list").innerHTML = list.length ? list.map(([t, d, ex]) => `<div><dt>${esc(t)}</dt><dd>${esc(d)}</dd>${ex ? `<dd class="ex">${esc(ex)}</dd>` : ""}</div>`).join("") : `<div><dd>No words match “${esc(f)}”.</dd></div>`;
+}
+$("vb-find").addEventListener("input", renderVocab);
+
+/* ---------- Settings ---------- */
+$("st-state").innerHTML = `<option value="">Choose…</option>` + Object.keys(STATES).map((s) => `<option>${esc(s)}</option>`).join("");
+function loadSettings() {
+  const st = S.settings;
+  $("st-version").value = st.version; $("st-state").value = st.state;
+  $("st-senator").value = st.senator; $("st-rep").value = st.rep; $("st-gov").value = st.gov; $("st-capital").value = st.capital;
+}
+["senator", "rep", "gov", "capital"].forEach((k) => $("st-" + k).addEventListener("input", (e) => { S.settings[k] = e.target.value.trim(); save(); }));
+$("st-version").onchange = (e) => { S.settings.version = e.target.value; save(); toast("Mock test now uses the " + rules().label + " format"); };
+$("st-state").onchange = (e) => {
+  const s = e.target.value; S.settings.state = s;
+  if (s && STATES[s]) { S.settings.capital = STATES[s]; $("st-capital").value = STATES[s]; }
+  if (s === "Washington, D.C.") { S.settings.senator = S.settings.senator || "D.C. has no U.S. Senators"; S.settings.gov = S.settings.gov || "D.C. does not have a Governor"; loadSettings(); }
+  save();
+};
+let resetArmed = false;
+$("st-reset").onclick = () => {
+  if (!resetArmed) { resetArmed = true; $("st-reset-confirm").hidden = false; $("st-reset").textContent = "Yes, erase progress"; setTimeout(() => { resetArmed = false; $("st-reset-confirm").hidden = true; $("st-reset").textContent = "Reset all progress"; }, 5000); return; }
+  const keep = S.settings; S = blank(); S.settings = keep; save();
+  resetArmed = false; $("st-reset-confirm").hidden = true; $("st-reset").textContent = "Reset all progress";
+  nextCard(); toast("Progress erased. Your local answers were kept.");
+};
+
+/* ---------- Boot ---------- */
+loadSettings(); nextCard(); nextRead(); nextWrite(); nextIv(); renderVocab(); route();
+})();
+</script>
+</body>
+</html>
