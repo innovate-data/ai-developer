@@ -19,6 +19,8 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
   answers a times-table question on a keypad.
 
 ### Changed
+- **Contact address** is now support@iralearningllc.com everywhere: the Privacy, Licence
+  and COPPA Review pages, `LICENSE`, the hosted pages and the App Store guide.
 - **Privacy page.** New sections "If you write to us" (mailbox protected with a strong
   password and two-step verification; a child gets one reply and is deleted within 7 days)
   and "How long we keep information"; Children's privacy links to the COPPA Review.
@@ -33,7 +35,7 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 - App Store update check with a switch and Check Now; hosted privacy and support pages;
   App Store release script, kit and screenshots; Reset Cube in lessons (September).
 - Wording for a general audience of all ages; licence terms, safety and supervision; a
-  liability cap; contact address iralearningllc@gmail.com (September).
+  liability cap; a contact address (September).
 - iOS app for iPhone and iPad (iOS 17): launch screen, iOS wording and controls, haptics,
   Text Size, offline font, no network requests from the page.
 - Speedcubing timer with best times, averages and a chart; Help Me Solve This Mix.

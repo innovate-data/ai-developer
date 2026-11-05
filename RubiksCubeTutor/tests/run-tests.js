@@ -811,7 +811,7 @@ test('privacy: every thing the app stores is on the Privacy page, and it can be 
   assert(/iCloud Backup/.test(privacy) && /sends none of it anywhere/.test(privacy), 'the backup exception is not stated');
   assert(!/Nothing is sent off the/.test(privacy), 'the old absolute claim is back');
   // who runs it, and how to reach them: in the app, and in the licence file
-  const email = 'iralearningllc@gmail.com';
+  const email = 'support@iralearningllc.com';
   assert(privacy.includes('Ira Learning LLC') && privacy.includes(email), 'no contact on the Privacy page');
   assert(read('LICENSE').includes(email), 'no contact in LICENSE');
   // a child is asked to have a grown-up send the email, not to send it themselves
@@ -886,7 +886,7 @@ test('release: the Xcode project, export options, script and store pages are rea
     assert.strictEqual(read('ios/app-store/' + name), text, name + ' is out of date: run npm run build:store-pages');
     assert(!/https?:\/\//.test(text.replace(/http:\/\/www\.w3\.org[^"]*/g, '')), name + ' loads or links something off the page');
   }
-  assert(pages['privacy-policy.html'].includes('iralearningllc@gmail.com') && pages['support.html'].includes('iralearningllc@gmail.com'), 'contact');
+  assert(pages['privacy-policy.html'].includes('support@iralearningllc.com') && pages['support.html'].includes('support@iralearningllc.com'), 'contact');
 
   // the listing fits App Store Connect's limits and keeps other companies' marks out
   const md = read('ios/app-store/APP-STORE.md');
@@ -1124,7 +1124,7 @@ test('COPPA review: one source for the app page and the web page, matching COPPA
   // the publisher's email only, never a person's
   for (const f of ['COPPA-REVIEW.md', 'js/coppa.js', 'index.html', 'ios/app-store/coppa.html', 'ios/app-store/privacy-policy.html', 'CHANGELOG.md']) {
     const emails = [...new Set((read(f).match(/[\w.+-]+@[\w-]+\.[\w.]+/g) || []).map((e) => e.replace(/\.+$/, '')))].filter((e) => !/example\.com$/.test(e));
-    assert(emails.every((e) => e === 'iralearningllc@gmail.com'), f + ' has an address other than the company one: ' + emails.join(', '));
+    assert(emails.every((e) => e === 'support@iralearningllc.com'), f + ' has an address other than the company one: ' + emails.join(', '));
   }
   // the retention promises are on the Privacy page
   const privacy = /<article id="privacy"[\s\S]*?<\/article>/.exec(read('index.html'))[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');

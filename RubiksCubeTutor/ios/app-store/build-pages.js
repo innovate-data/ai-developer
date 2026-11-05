@@ -64,7 +64,7 @@ function build() {
       free, needs no account and works without an internet connection.</p>
 
     <h2>Contact us</h2>
-    <p>Email Ira Learning LLC at <b>iralearningllc@gmail.com</b>. We read every message. Please tell us
+    <p>Email Ira Learning LLC at <b>support@iralearningllc.com</b>. We read every message. Please tell us
       which device you use (iPhone or iPad) and what you were doing when the problem happened.</p>
     <p class="note">A note for children: please ask your parent or guardian to send the email for you,
       from their own email address.</p>

@@ -99,7 +99,7 @@ disclose, and the `AD_ID` permission must be removed.
 
 These are commitments outside the code. The Privacy page promises them.
 
-- Keep the support mailbox, iralearningllc@gmail.com, working, and check it at least weekly.
+- Keep the support mailbox, support@iralearningllc.com, working, and check it at least weekly.
 - Protect it with a strong, unique password and two-step verification. Review who has
   access once a year; today only Ira Learning LLC.
 - Answer a child once, asking a grown-up to write, and delete the child's message and

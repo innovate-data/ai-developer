@@ -149,7 +149,7 @@
     ],
 
     duties: [
-      'Keep the support mailbox, iralearningllc@gmail.com, working, and check it at least once a week.',
+      'Keep the support mailbox, support@iralearningllc.com, working, and check it at least once a week.',
       'Protect it with a strong, unique password and two-step verification.',
       'Answer a child once, asking a grown-up to write, and delete the child’s message within 7 days.',
       'Delete a grown-up’s messages once we have finished helping, and no later than 12 months after the last one.',
@@ -193,7 +193,7 @@
       + '<h3>About this review</h3><p class="coppa-about">An engineering review of Cube Clubhouse version '
       + '<b class="coppa-version">' + version + '</b>, done on ' + esc(review.reviewed) + ' and repeated '
       + 'every year. It is not legal advice. The <a href="' + privacy + '">Privacy</a> page says exactly '
-      + 'what the app keeps. Questions: Ira Learning LLC, iralearningllc@gmail.com.</p>';
+      + 'what the app keeps. Questions: Ira Learning LLC, support@iralearningllc.com.</p>';
   }
 
   return { STATUS, review, toHTML };

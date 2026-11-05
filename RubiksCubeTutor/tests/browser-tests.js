@@ -1428,12 +1428,12 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the page names every one of those', ['🧠 badge', 'cube size last chosen on the Play screen', 'speed chosen for the guided solve',
       'cube size last chosen there', '15 Seconds to Look First', 'No dates, no names'].every((x) => privacy.includes(x)));
     ck('it says a copy can leave only in your own backup', /The one way a copy leaves this device is inside your own backup/.test(privacy) && /we never see it/.test(privacy));
-    ck('it says who we are and how to reach us', /made by Ira Learning LLC/.test(privacy) && privacy.includes('iralearningllc@gmail.com'));
+    ck('it says who we are and how to reach us', /made by Ira Learning LLC/.test(privacy) && privacy.includes('support@iralearningllc.com'));
     ck('a child is told to ask a grown-up to send the email', /ask your parent or guardian to send the email/.test(privacy));
     ck('the address is text a parent can copy, not a link out of the app', (await p.locator('a[href^="mailto:"]').count()) === 0
       && (await p.locator('#privacy .contact-email').evaluate((e) => getComputedStyle(e).userSelect)) !== 'none');
     const licenceInner = await p.locator('#licence').innerText();
-    ck('the licence page has it too', licenceInner.includes('iralearningllc@gmail.com') && /ask a parent or guardian to send the email/.test(licenceInner));
+    ck('the licence page has it too', licenceInner.includes('support@iralearningllc.com') && /ask a parent or guardian to send the email/.test(licenceInner));
     await p.close();
     const q = await iosPage('iPhone', { width: 390, height: 844 });
     await q.locator('.foot-links [data-info="privacy"]').click(); await q.waitForTimeout(150);

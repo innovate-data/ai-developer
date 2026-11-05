@@ -207,7 +207,7 @@ for everyone", not "made for children". Leave **Made for Kids** off.
   = NO`); App Store Connect will not ask.
 - **Pricing and Availability**: Free, all countries or the ones you choose.
 - **Sign-in required**: No.
-- **App Review contact**: your name, phone and `iralearningllc@gmail.com`.
+- **App Review contact**: your name, phone and `support@iralearningllc.com`.
 - **Notes for App Review**:
 
 > Cube Clubhouse teaches how to solve a puzzle cube. No account or sign-in is needed. The

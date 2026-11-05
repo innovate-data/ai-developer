@@ -133,7 +133,7 @@ Two things to settle before you submit:
   addresses in. `npm run build:store-pages` rebuilds them after the Privacy section
   changes, and the unit tests fail until you do.
 * **Who to contact.** The Privacy page names Ira Learning LLC and gives
-  iralearningllc@gmail.com; the licence page and `LICENSE` give it too. It is plain text,
+  support@iralearningllc.com; the licence page and `LICENSE` give it too. It is plain text,
   not a mail link, on purpose: children use the app too, and a link out of it would need
   a parental gate. Use the same address as the support and privacy contact in App Store
   Connect.
