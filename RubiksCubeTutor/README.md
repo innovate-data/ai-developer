@@ -131,6 +131,13 @@ Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" bu
 with "Cube Clubhouse®", on the app's own background colour in light or dark. The same
 picture stays up until the page has loaded and then fades, so there is no white flash.
 
+**Loading page** – the first thing painted: the launch screen's logo, at its size and in
+its place, with the stickers rippling and "Getting your cube ready…". It is drawn by CSS
+alone, so it shows before any script has run, and it fades away once every screen is
+built. If starting fails it says so; if a script never arrives, after 8 seconds it says
+to close and reopen the app. On iPhone and iPad the native launch screen hands over to it
+without a jump.
+
 **Learn** – a grid of lesson cards with stars, then a two-column lesson page: sticky 3D
 cube with a move pad and a **Reset Cube** button (back to how the lesson set the cube
 up) on the left, text, tricks, interactive widgets, practice area and
@@ -504,7 +511,7 @@ every navigation off its own bundle. An engineering review, not legal advice.
 
 57 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 386 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 399 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -561,6 +568,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R52 | The Updates section: none in a browser (whose Privacy page still says the page asks for nothing); in the iOS app it shows the version, a switch that starts as the app says and tells the app when flipped, and Check Now, which asks the app, waits, reports up to date / newer / unreachable, ignores answers nobody asked for, shows a version only as its leading number, and gives up after twelve seconds with no answer. The app's Privacy page and footer say what the check sends. |
 | R53 | The tour sits at the top of Learn, above the lessons and no longer on the About page: controls, playing in place, never starting on its own, its poster until played, loaded from inside the app, named and written out in full, small enough to leave the lessons in view, put away and paused when a lesson opens, back with the list, paused on leaving Learn, and fitting the narrowest phone. |
 | R54 | The COPPA Review page: opened from the footer, the section links, the About page's button and a link to `#coppa`; every check with its rule and a status chip coloured by status; whether COPPA applies, the duties and what would change the answer; the app's version; Privacy and COPPA linking to each other in the app; Back to the App and the browser's back button; and on a small and a large phone, light and dark, nothing spills sideways and every chip reads at 4.5:1 or better. R24 now also walks the Timer and the COPPA page and checks that only the app's own files are requested. |
+| R55 | The loading page: painted first, over the whole screen, with the launch screen's logo at its size (300 × 196, face 124) and place and the launch screen's background, light and dark; saying what is happening (a status for screen readers, the page behind marked busy); stickers that ripple, and stay still with Reduce Motion; gone once the app is built; saying so if starting fails; after 8 s, if the app's script never arrives, telling you to close and reopen the app; and fitting the smallest iPhone. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in

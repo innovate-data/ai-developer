@@ -242,6 +242,48 @@ main {
 .info-card li { margin: 4px 0; }
 .info-strong { font-weight: 600; }
 .info-note { color: var(--muted); font-size: 0.92rem; }
+/* ---- the loading page
+   The launch screen's logo, at its size and in its place: a 300 x 196 block in the middle of
+   the screen, the face 124 pt with 7 pt of frame and 6 pt gaps, and the name 18 pt below. */
+.loading { position: fixed; inset: 0; z-index: 1000; background: var(--bg); color: var(--ink);
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s; }
+.loading.done { opacity: 0; visibility: hidden; pointer-events: none; }
+.loading-logo { position: absolute; left: 50%; top: 50%; width: 300px; height: 196px; margin: -98px 0 0 -150px;
+  display: flex; flex-direction: column; align-items: center; padding-top: 8px; }
+.loading-face { width: 124px; height: 124px; border-radius: 28px; background: #1a1b23; padding: 7px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; box-shadow: 0 6px 16px rgba(20, 20, 40, 0.18); }
+.loading-face i { border-radius: 9px; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.13);
+  animation: loading-ripple 1.6s ease-in-out infinite; }
+/* a ripple across the face, corner to corner */
+.loading-face i:nth-child(2), .loading-face i:nth-child(4) { animation-delay: 0.12s; }
+.loading-face i:nth-child(3), .loading-face i:nth-child(5), .loading-face i:nth-child(7) { animation-delay: 0.24s; }
+.loading-face i:nth-child(6), .loading-face i:nth-child(8) { animation-delay: 0.36s; }
+.loading-face i:nth-child(9) { animation-delay: 0.48s; }
+@keyframes loading-ripple { 0%, 60%, 100% { transform: scale(1); filter: brightness(1); } 30% { transform: scale(0.84); filter: brightness(1.18); } }
+.lf-Y { background: #ffd500; } .lf-G { background: #00a651; } .lf-R { background: #d3202b; }
+.lf-B { background: #0055d4; } .lf-W { background: #ffffff; } .lf-O { background: #ff7a00; }
+.loading-word { margin-top: 18px; font: 700 33px/1 'Fredoka', system-ui, sans-serif; letter-spacing: 0.2px; white-space: nowrap; }
+.loading-word sup { font-size: 0.45em; font-weight: 600; vertical-align: top; position: relative; top: 1px; margin-left: 1px; }
+.loading p { position: absolute; left: 16px; right: 16px; top: calc(50% + 116px); margin: 0; text-align: center;
+  color: var(--muted); font-size: 1.05rem; line-height: 1.4; }
+/* the words wait a moment, so a quick start never flashes them */
+.loading-text { opacity: 0; animation: loading-appear 0.4s ease 0.6s forwards; }
+/* and if it is slow, say so; this needs no script, so it shows even if a script never loads */
+.loading-slow { opacity: 0; animation: loading-appear 0.4s ease 8s forwards; }
+.loading .loading-slow { top: calc(50% + 150px); }
+.loading-failed { display: none; }
+.loading.failed .loading-failed { display: block; color: var(--ink); }
+.loading.failed .loading-text, .loading.failed .loading-slow { display: none; }
+.loading.failed .loading-face i { animation: none; }
+@keyframes loading-appear { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-face i { animation: none; }
+  .loading { transition: none; }
+}
+/* in the dark, a faint rim so the black frame does not vanish, as on the dark launch screen */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .loading-face { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22), 0 6px 16px rgba(20, 20, 40, 0.45); } }
+:root[data-theme="dark"] .loading-face { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22), 0 6px 16px rgba(20, 20, 40, 0.45); }
+
 /* the COPPA Review: one card per requirement, with a status chip */
 /* a link inside a sentence: padding makes a 44pt target without moving a word (it does not
    change the line box of an inline element) */

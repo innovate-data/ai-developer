@@ -22,6 +22,21 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- The loading page: drawn by style.css alone, so it is the very first thing painted.
+       Its logo is the iOS launch screen's (ios/launch-art/logo.html), the same size and in
+       the same place, so the launch screen hands over to it without a jump. app.js fades it
+       out once every screen is built. -->
+  <div id="loading" class="loading" role="status" aria-live="polite">
+    <div class="loading-logo" aria-hidden="true">
+      <div class="loading-face"><i class="lf-Y"></i><i class="lf-G"></i><i class="lf-R"></i><i class="lf-B"></i><i class="lf-W"></i><i class="lf-O"></i><i class="lf-O"></i><i class="lf-R"></i><i class="lf-Y"></i></div>
+      <div class="loading-word">Cube Clubhouse<sup>®</sup></div>
+    </div>
+    <p class="loading-text">Getting your cube ready…</p>
+    <p class="loading-slow">Still getting ready. If this lasts, close the app and open it again.</p>
+    <p class="loading-failed">Something went wrong while starting. Close the app and open it again.</p>
+    <noscript><p class="loading-noscript">Cube Clubhouse needs JavaScript, which is switched off.</p></noscript>
+  </div>
+
   <header class="topbar">
     <div class="brand"><span class="brand-cube" aria-hidden="true"></span> <span class="brand-name">Cube Clubhouse<sup class="reg">®</sup></span></div>
     <nav aria-label="Main">
@@ -32,7 +47,7 @@
     </nav>
   </header>
 
-  <main>
+  <main aria-busy="true">
     <!-- ============================================================ LEARN -->
     <section id="screen-learn" class="screen">
       <figure id="learn-tour" class="intro-video" aria-labelledby="learn-tour-title">

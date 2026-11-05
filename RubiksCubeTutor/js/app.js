@@ -28,6 +28,24 @@
   // whether it is on an iPad or an iPhone (WebAppView.swift). In a browser there is no
   // such note, and the words fall back to the browser's.
   const HOST = root.CubeClubhouseHost || null;
+
+  // ---- the loading page (index.html, styled by style.css)
+  // It goes once every screen is built. If starting fails, it says so instead of
+  // spinning for ever; if a script never arrives at all, its own CSS says so after 8 s.
+  function finishLoading() {
+    const loading = document.getElementById('loading');
+    const main = document.querySelector('main');
+    if (main) main.removeAttribute('aria-busy');
+    if (!loading) return;
+    loading.classList.add('done');
+    const gone = () => { if (loading.parentNode) loading.remove(); };
+    loading.addEventListener('transitionend', gone, { once: true });
+    setTimeout(gone, 600);                    // Reduce Motion has no transition to end
+  }
+  root.addEventListener('error', () => {
+    const loading = document.getElementById('loading');
+    if (loading && !loading.classList.contains('done')) loading.classList.add('failed');
+  });
   const IOS_APP = !!HOST && HOST.platform === 'ios';
   const DEVICE = IOS_APP && (HOST.device === 'iPad' || HOST.device === 'iPhone') ? HOST.device : null;
   // "this iPad", "this iPhone", or "this browser"
@@ -2001,5 +2019,6 @@
     // screen at once; anything unknown lands on the lessons rather than nowhere.
     window.addEventListener('hashchange', () => { if (!go(location.hash.replace('#', ''))) showScreen('learn'); });
     if (!go(location.hash.replace('#', ''))) showScreen('learn');
+    finishLoading();
   });
 })(window);

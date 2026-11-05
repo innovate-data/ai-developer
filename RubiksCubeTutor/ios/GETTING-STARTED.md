@@ -80,6 +80,13 @@ result fits every iPhone and matches the background.
 If the launch screen does not update on a device, delete the app and run again: iOS
 caches launch screens per install.
 
+The web app has a loading page of its own (`#loading` in `index.html`) with the same logo,
+at the same size and in the same place, on the same background. On iOS the native cover
+usually outlasts it; if a slow device shows it, the hand-over cannot be seen, and its
+stickers ripple until the app is ready. If you change the launch logo, change the
+loading page's (`.loading-*` in `css/style.css`) to match: test R55 checks its size and
+place.
+
 ## Changing the app's name
 
 The name under the icon comes from `INFOPLIST_KEY_CFBundleDisplayName` in the target's

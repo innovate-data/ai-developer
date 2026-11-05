@@ -1704,6 +1704,69 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       }
     } }
 
+  console.log('R55 the loading page: the launch screen\'s logo first, gone once the app is built, and honest when starting fails');
+  { // hold the app's script back, as a slow device would, to see the loading page
+    const held = async (opts, how) => {
+      const ctx = await b.newContext(Object.assign({ viewport: { width: 390, height: 844 } }, opts || {}));
+      const p = await ctx.newPage();
+      let release;
+      const gate = new Promise((ok) => { release = ok; });
+      await p.route('**/js/app.js', async (r) => {
+        if (how === 'abort') { r.abort(); return; }
+        if (how === 'break') {
+          const body = require('fs').readFileSync(path.resolve(__dirname, '..', 'js', 'app.js'), 'utf8')
+            .replace('    buildPlay();\n', '    buildPlay();\n    throw new Error(\'planted start-up failure\');\n');
+          r.fulfill({ status: 200, contentType: 'text/javascript', body });
+          return;
+        }
+        await gate; r.continue();
+      });
+      p.goto(URL).catch(() => {});
+      await p.waitForSelector('#loading', { state: 'attached' });
+      return { p, ctx, release };
+    };
+    const { p, ctx, release } = await held();
+    await p.waitForTimeout(900);
+    const box = await p.locator('.loading-logo').boundingBox();
+    const face = await p.locator('.loading-face').boundingBox();
+    ck('it is the first thing painted, over the whole screen', await p.locator('#loading').isVisible()
+      && await p.evaluate(() => document.body.firstElementChild.id === 'loading' && getComputedStyle(document.getElementById('loading')).position === 'fixed'));
+    ck('the launch screen\'s logo, at its size and in its place', box && Math.abs(box.width - 300) < 1 && Math.abs(box.height - 196) < 1
+      && Math.abs(box.x + box.width / 2 - 195) < 1 && Math.abs(box.y + box.height / 2 - 422) < 1 && Math.abs(face.width - 124) < 1,
+      box && JSON.stringify([box.x, box.y, box.width, box.height, face.width]));
+    ck('the same background as the launch screen', await p.evaluate(() => getComputedStyle(document.getElementById('loading')).backgroundColor) === 'rgb(246, 243, 234)');
+    ck('it says what is happening, to a screen reader too', (await p.locator('#loading').getAttribute('role')) === 'status'
+      && /Getting your cube ready/.test(await p.locator('.loading-text').textContent()) && await p.locator('.loading-logo').getAttribute('aria-hidden') === 'true');
+    ck('and the page behind it is marked busy', (await p.locator('main').getAttribute('aria-busy')) === 'true');
+    ck('the stickers ripple', await p.evaluate(() => getComputedStyle(document.querySelector('.loading-face i')).animationName) === 'loading-ripple');
+    release();
+    await p.waitForSelector('.lesson-card');
+    await p.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 3000 });
+    ck('once the app is built it fades away and is gone', !(await p.evaluate(() => !!document.getElementById('loading')))
+      && (await p.locator('main').getAttribute('aria-busy')) === null && await p.locator('#screen-learn').isVisible());
+    await ctx.close();
+    const quiet = await held({ reducedMotion: 'reduce' });
+    ck('with Reduce Motion the stickers stay still', await quiet.p.evaluate(() => getComputedStyle(document.querySelector('.loading-face i')).animationName) === 'none');
+    quiet.release(); await quiet.ctx.close();
+    const dark = await held({ colorScheme: 'dark' });
+    ck('in Dark Mode it matches the dark launch screen', await dark.p.evaluate(() => getComputedStyle(document.getElementById('loading')).backgroundColor) === 'rgb(31, 32, 36)');
+    dark.release(); await dark.ctx.close();
+    const broken = await held({}, 'break');
+    await broken.p.waitForTimeout(800);
+    ck('if starting fails, it says so instead of spinning for ever', await broken.p.locator('.loading-failed').isVisible()
+      && !(await broken.p.locator('.loading-text').isVisible()) && await broken.p.evaluate(() => getComputedStyle(document.querySelector('.loading-face i')).animationName) === 'none');
+    await broken.ctx.close();
+    const lost = await held({}, 'abort');
+    ck('if the app\'s script never arrives, nothing is said at first', (await lost.p.evaluate(() => getComputedStyle(document.querySelector('.loading-slow')).opacity)) === '0');
+    await lost.p.waitForTimeout(8700);
+    ck('but after 8 seconds it says to close and reopen the app', (await lost.p.evaluate(() => getComputedStyle(document.querySelector('.loading-slow')).opacity)) === '1');
+    await lost.ctx.close();
+    const small = await held({ viewport: { width: 320, height: 568 } });
+    await small.p.waitForTimeout(700);
+    ck('it fits the smallest iPhone', await small.p.evaluate(() => [...document.querySelectorAll('#loading .loading-logo, #loading .loading-text')]
+      .every((e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= 320 && r.bottom <= 568; })));
+    small.release(); await small.ctx.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

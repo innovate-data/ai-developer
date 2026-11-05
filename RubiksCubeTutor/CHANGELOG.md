@@ -5,6 +5,12 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 ## 5 November 2026
 
 ### Added
+- **Loading page.** The app now opens on a loading page drawn by CSS alone: the launch
+  screen's logo at its size and in its place, stickers rippling (still with Reduce
+  Motion), and "Getting your cube ready…". It fades away once every screen is built, says
+  so if starting fails, and after 8 seconds without the app's script asks you to close
+  and reopen the app. Screen readers hear it as a status, and the page behind is marked
+  busy until it is ready.
 - **COPPA Review.** `COPPA-REVIEW.md` reviews the app requirement by requirement against
   the COPPA Rule as amended in 2025, with the technical evidence, the publisher's duties,
   and what would change the answer. The same review is a page in the app (About › COPPA
