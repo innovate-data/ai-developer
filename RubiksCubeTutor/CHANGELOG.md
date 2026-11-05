@@ -4,6 +4,21 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 
 ## 5 November 2026
 
+### Fixed (an iPad review)
+- **The tour no longer pushes the lessons off a landscape iPad's first screen.** On a wide
+  window it is a card, the video on the left and its words beside it.
+- **No more two-row sticky header.** An iPad mini upright, Split View and Stage Manager windows
+  (621 to 779 px wide) got a 123 px pinned bar with the tabs stranded on a second row. Up to 779
+  px the tabs are now the bottom tab bar, and above it the capsule stays at the top in one row.
+  Scrolling to the guide, or tabbing with a keyboard, no longer parks a control under that bar.
+- **Slide Over at the largest Text Size (256 px) is usable.** The cube column grew to 280 px and the
+  tab bar to 288, so text and buttons were cut off at the right and the fourth tab was lost. Columns
+  now shrink, the size selector wraps, and long words and addresses break.
+- **A cube column taller than the window scrolls instead of sticking.** Pinned, its lower controls
+  (the rest of the move pad, the timer) could not be reached until the page ended. A lesson's column
+  now fits an iPad mini in landscape, and My Real Cube or a 6×6 scrolls; it follows the iPad as it turns.
+- The ® is never smaller than 10 px (it was 7 px in the footer).
+
 ### Added
 - **Loading page.** The app now opens on a loading page drawn by CSS alone: the launch
   screen's logo at its size and in its place, stickers rippling (still with Reduce

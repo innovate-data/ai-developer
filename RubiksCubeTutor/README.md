@@ -378,7 +378,7 @@ rather than a website's:
   the iOS app and whether it is on an iPad or an iPhone. The page then says "on this
   iPad" where a browser would say "in this browser's storage" (`.w-ios` / `.w-web` in
   `index.html`); in a browser nothing changes.
-* **Tabs.** A capsule at the top on iPad, as iPadOS draws it; on iPhone a translucent tab
+* **Tabs.** A capsule at the top on a wide iPad window (780 px and up, one row), as iPadOS draws it; on iPhone, and on an iPad window narrower than that (upright mini, Split View, Slide Over, Stage Manager), a translucent tab
   bar along the bottom, in reach of a thumb and clear of the home indicator, with the
   title scrolling away like a large title.
 * **Controls.** Filled, tinted and gray buttons without borders, dimming while touched;
@@ -511,7 +511,7 @@ every navigation off its own bundle. An engineering review, not legal advice.
 
 57 groups in all.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 399 checks.
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 428 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -569,6 +569,9 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R53 | The tour sits at the top of Learn, above the lessons and no longer on the About page: controls, playing in place, never starting on its own, its poster until played, loaded from inside the app, named and written out in full, small enough to leave the lessons in view, put away and paused when a lesson opens, back with the list, paused on leaving Learn, and fitting the narrowest phone. |
 | R54 | The COPPA Review page: opened from the footer, the section links, the About page's button and a link to `#coppa`; every check with its rule and a status chip coloured by status; whether COPPA applies, the duties and what would change the answer; the app's version; Privacy and COPPA linking to each other in the app; Back to the App and the browser's back button; and on a small and a large phone, light and dark, nothing spills sideways and every chip reads at 4.5:1 or better. R24 now also walks the Timer and the COPPA page and checks that only the app's own files are requested. |
 | R55 | The loading page: painted first, over the whole screen, with the launch screen's logo at its size (300 × 196, face 124) and place and the launch screen's background, light and dark; saying what is happening (a status for screen readers, the page behind marked busy); stickers that ripple, and stay still with Reduce Motion; gone once the app is built; saying so if starting fails; after 8 s, if the app's script never arrives, telling you to close and reopen the app; and fitting the smallest iPhone. |
+| R56 | On an iPad: the first row of lessons is on the first screen in every orientation, the tour a card with its words beside the video (it once stood 427 px tall above the lessons, and on a landscape iPad they began below the fold); the header is one row at every width from 320 to 1376 pt and at the largest Text Size, with the tabs along the bottom up to 779 px (an iPad mini upright, Split View and Stage Manager windows used to get a sticky two-row 123 px bar that ate a quarter of a short window); the guide lands below the pinned bar; and tabbing with a keyboard never leaves a control behind it. |
+| R57 | Slide Over at the largest Text Size (256 px) and at 300: no screen (Learn, a lesson, Play with its guide and a 6×6, Timer, My Real Cube, About, Privacy, COPPA, Licence) scrolls sideways or is cut off at the right, and all four tabs fit the bar. The cube column used to grow to 280 px and the tab bar to 288, clipping the guide's text and buttons; a long address now breaks instead of widening the page. |
+| R58 | A pinned cube column fits the window or scrolls with the page: a lesson's cube, move pad and Reset Cube message fit an iPad mini in landscape; a column taller than the window (My Real Cube, a 6×6) is never pinned, because its lower controls could not be reached until the page ended; turned upright and back, the pinning follows the layout; and every ® is at least 10 px. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in

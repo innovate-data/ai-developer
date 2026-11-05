@@ -171,7 +171,8 @@ html.ios-app .w-web { display: none; }
 }
 .brand { font-weight: 700; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
 /* the registered-trademark sign: small and raised, and never pushing the line apart */
-.reg { font-size: 0.5em; font-weight: 600; vertical-align: super; line-height: 0; margin-left: 0.06em; }
+.reg { font-size: max(0.5em, 10px);   /* never smaller than 10 px: in the 14 px footer half size is 7 */
+   font-weight: 600; vertical-align: super; line-height: 0; margin-left: 0.06em; }
 .brand-cube {
   width: 30px; height: 30px; border-radius: 7px; display: inline-block;
   background: conic-gradient(var(--R) 0 25%, var(--Y) 0 50%, var(--G) 0 75%, var(--B) 0);
@@ -186,8 +187,12 @@ html.ios-app .w-web { display: none; }
 .topbar nav button.active { background: var(--seg-on); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 1px 1px rgba(0, 0, 0, 0.06); }
 /* On a phone, as on iPhone: a tab bar along the bottom, in reach of a thumb, translucent
    over the page, clear of the home indicator. The title scrolls away, like an iOS large
-   title, instead of holding a sticky strip at the top. */
-@media (max-width: 620px) {
+   title, instead of holding a sticky strip at the top.
+   Up to 779 px, not 620: the brand and four tabs need about 780 px in one row, so between 621
+   and 779 (an iPad mini upright, Split View, a Stage Manager window) the header wrapped to
+   two rows and a sticky 123 px bar ate a quarter of a short window. iPadOS gives a narrow
+   window a bottom tab bar too. */
+@media (max-width: 779px) {
   .topbar { position: static; }
   .topbar nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
@@ -205,6 +210,9 @@ html.ios-app .w-web { display: none; }
   body { padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
   html { scroll-padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 }
+/* with the capsule pinned at the top, scrolling to something (the guide, a focused control)
+   must not park it under the bar */
+@media (min-width: 780px) { html { scroll-padding-top: 84px; } }
 
 main {
   max-width: 1180px; margin: 0 auto;
@@ -241,6 +249,8 @@ main {
 .info-card ul { margin: 6px 0; padding-left: 22px; }
 .info-card li { margin: 4px 0; }
 .info-strong { font-weight: 600; }
+/* a long address or word must break, not push the page wider */
+.info-card, .contact-email { overflow-wrap: anywhere; }
 .info-note { color: var(--muted); font-size: 0.92rem; }
 /* ---- the loading page
    The launch screen's logo, at its size and in its place: a 300 x 196 block in the middle of
@@ -305,6 +315,18 @@ main {
 .intro-video video { display: block; width: 100%; max-width: 240px; aspect-ratio: 9 / 16; margin: 0 auto;
   border-radius: 20px; background: var(--fill); box-shadow: var(--shadow); }
 .intro-video figcaption { text-align: center; color: var(--muted); font-size: 0.92rem; margin: 10px auto 0; max-width: 460px; }
+/* on an iPad the tour is a card, the video on the left and its words beside it, so the lessons
+   stay on the first screen (a tall portrait video above them filled a landscape window) */
+@media (min-width: 640px) {
+  .intro-video { display: grid; grid-template-columns: 200px 1fr; grid-template-areas: "video ." "video title" "video about" "video words" "video .";
+    grid-template-rows: 1fr auto auto auto 1fr; column-gap: 28px; align-items: start; max-width: 780px; background: var(--card);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 24px 18px 18px; margin: 4px auto 22px; }
+  .intro-video video { grid-area: video; max-width: 200px; margin: 0; }
+  .intro-video .tour-title { grid-area: title; text-align: left; margin: 0 0 6px; font-size: 1.35rem; }
+  .intro-video figcaption { grid-area: about; text-align: left; margin: 0; max-width: none; font-size: 1rem; }
+  .intro-video .intro-video-words { grid-area: words; margin: 8px 0 0; max-width: none; }
+  .intro-video .intro-video-words summary { text-align: left; }
+}
 .intro-video-words { max-width: 460px; margin: 8px auto 0; font-size: 0.92rem; color: var(--muted); }
 .intro-video-words summary { cursor: pointer; text-align: center; font-weight: 600; color: var(--accent); min-height: 44px; line-height: 44px; }
 .info-card a { color: var(--accent); font-weight: 600; }
@@ -317,9 +339,16 @@ main {
 
 /* ---- layout */
 .two-col { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 24px; align-items: start; }
-@media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
+/* minmax(0, 1fr), not 1fr: a plain 1fr will not shrink below its widest child, so in a narrow
+   window (iPad Slide Over, at the largest Text Size) the whole column grew wider than the
+   screen and every button and line in it was clipped at the right edge */
+@media (max-width: 860px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
+.col-cube, .col-text { min-width: 0; }
 .col-cube { position: sticky; top: 84px; }
 @media (max-width: 860px) { .col-cube { position: static; } }
+/* app.js adds .unstuck when the column is taller than the window: pinned, its lower part (the
+   rest of the move pad, the timer) could not be reached until the page ended, so it scrolls */
+.col-cube.unstuck { position: static; }
 .cube-actions { justify-content: center; margin-top: 10px; }
 #lesson-reset-msg { text-align: center; margin: 6px 0 0; min-height: 1.5em; }
 .cube-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; position: relative; }
@@ -360,6 +389,8 @@ main {
 /* ---- 3D cube */
 /* Short screens (iPhone SE, any phone in landscape) must still show the whole cube. */
 .cube-box { height: clamp(210px, 46vh, 340px); }
+/* a lesson's column (cube, pad, Reset Cube) must fit a short landscape window, so it can stay pinned */
+@media (min-width: 861px) { .col-cube .cube-box:not(.tall):not(.short) { height: clamp(210px, calc(100vh - 440px), 340px); } }
 .cube-box.tall { height: clamp(220px, 50vh, 380px); }
 .cube-box.short { height: clamp(190px, 34vh, 260px); }
 .cube-scene {
@@ -409,7 +440,9 @@ main {
 .pad-btn.inner { background: var(--accent-soft); border-color: var(--accent-line); font-size: 1.05rem; }
 .pad-label { color: var(--muted); font-size: 0.8rem; font-weight: 600; margin-top: 4px; }
 /* iOS segmented controls: one rounded track, the chosen segment raised out of it */
-.size-pick, .segmented { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 12px; width: fit-content; max-width: 100%; }
+/* wrap rather than spill: five 44pt segments need 228 px, and iPad Slide Over at the largest
+   Text Size gives 224 */
+.size-pick, .segmented { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; background: var(--fill); border-radius: 12px; width: fit-content; max-width: 100%; }
 .size-pick { margin: 6px 0 2px; }
 .size-btn, .speed-btn {
   flex: 1 1 0; min-width: 52px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent;

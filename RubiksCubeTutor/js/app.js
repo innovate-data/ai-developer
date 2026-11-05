@@ -1814,6 +1814,29 @@
     });
   }
 
+  // ---- a pinned column must fit the window
+  // Beside the text, the cube column is pinned (position: sticky) so the cube stays in view
+  // while you read. If it is taller than the window, its lower part (the rest of the move
+  // pad, the timer) cannot be seen until the page ends, so it is let go and scrolls normally.
+  // Watched as the window turns or resizes (iPad rotation, Split View, Stage Manager) and as
+  // its own content grows (the guide opens, a bigger cube).
+  function fitSticky() {
+    for (const col of document.querySelectorAll('.col-cube')) {
+      if (col.offsetParent === null) continue;               // not shown: it measures nothing
+      const top = parseFloat(getComputedStyle(col).top) || 0;
+      col.classList.toggle('unstuck', col.offsetHeight > window.innerHeight - top - 8);
+    }
+  }
+  function watchSticky() {
+    root.addEventListener('resize', fitSticky);
+    root.addEventListener('orientationchange', fitSticky);
+    if (typeof ResizeObserver === 'function') {
+      const seen = new ResizeObserver(fitSticky);
+      document.querySelectorAll('.col-cube').forEach((col) => seen.observe(col));
+    }
+    fitSticky();
+  }
+
   // The COPPA Review page, drawn from js/coppa.js: the same function draws the hosted
   // ios/app-store/coppa.html, so the two cannot disagree.
   function buildCoppa() {
@@ -2000,6 +2023,7 @@
     buildGrownUps();
     buildUpdates();
     buildCoppa();
+    watchSticky();
     keyboard();
     stopSpeakingWhenHidden();
     document.querySelectorAll('nav button[data-screen]').forEach((b) => b.addEventListener('click', () => showScreen(b.dataset.screen)));

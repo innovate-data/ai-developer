@@ -1271,6 +1271,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
 
   // ---- R42-R46: the app speaks and feels like iOS ----
   // A page that believes it is the iOS app, as WebAppView.swift tells it before any script runs.
+  const innerHeightOf = (w, h) => h;      // the window height of a test page, for checks made from Node
   const iosPage = async (device, viewport, extra) => {
     const ctx = await b.newContext({ viewport, hasTouch: true, isMobile: device === 'iPhone' });
     await ctx.addInitScript((d) => { window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: d }); }, device);
@@ -1766,6 +1767,123 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('it fits the smallest iPhone', await small.p.evaluate(() => [...document.querySelectorAll('#loading .loading-logo, #loading .loading-text')]
       .every((e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= 320 && r.bottom <= 568; })));
     small.release(); await small.ctx.close(); }
+
+  console.log('R56 on an iPad: the lessons are on the first screen, the header is one row, nothing is hidden behind it');
+  { // the tour once stood 427 px tall above the lessons: on a landscape iPad they began below the fold
+    for (const [w, h, label] of [[1133, 744, 'iPad mini landscape'], [1194, 834, 'iPad Pro 11 landscape'], [744, 1133, 'iPad mini upright'], [834, 1194, 'iPad Pro 11 upright'], [1376, 1032, 'iPad Pro 13 landscape']]) {
+      const p = await iosPage('iPad', { width: w, height: h });
+      const g = await p.evaluate(() => { const c = document.querySelector('.lesson-card').getBoundingClientRect(); const v = document.querySelector('#screen-learn video').getBoundingClientRect(); const t = document.querySelector('#learn-tour .tour-title').getBoundingClientRect();
+        return { cardTop: c.top, vh: window.innerHeight, videoRight: v.right, titleLeft: t.left, videoW: v.width }; });
+      ck(label + ': the first row of lessons shows on the first screen (at least 120 px of it)', g.vh - g.cardTop >= 120, 'card starts ' + Math.round(g.cardTop) + ' of ' + g.vh);
+      if (w >= 780) ck(label + ': the tour is a card, its words beside the video', g.titleLeft >= g.videoRight && g.videoW <= 201, Math.round(g.videoW) + ' wide');
+      await p.close();
+    }
+    // the header: one row at every width, the tabs along the bottom up to 779 px, and the same with a larger Text Size
+    for (const zoom of [1, 1.25]) {
+      const bad = [];
+      for (const w of [320, 450, 621, 660, 678, 694, 744, 760, 779, 780, 820, 834, 1024, 1180, 1376]) {   // 320 pt is Slide Over, the narrowest window
+        const p = await b.newPage({ viewport: { width: Math.round(w / zoom), height: 900 } });
+        await p.goto(URL); await p.waitForTimeout(120);
+        const m = await p.evaluate(() => { const bar = document.querySelector('.topbar'); const nav = document.querySelector('.topbar nav');
+          return { h: Math.round(bar.getBoundingClientRect().height), bar: getComputedStyle(bar).position, nav: getComputedStyle(nav).position, vw: document.documentElement.clientWidth }; });
+        const bottom = m.vw <= 779;
+        // at the bottom the bar is static (it scrolls away) and may wrap the name to two lines; pinned at the top it must be one row
+        if (bottom ? !(m.nav === 'fixed' && m.bar === 'static' && m.h <= 100) : !(m.nav !== 'fixed' && m.bar === 'sticky' && m.h <= 80)) bad.push(m.vw + 'px: ' + JSON.stringify(m));
+        await p.close();
+      }
+      ck('at ' + (zoom === 1 ? 'the standard' : 'the largest') + ' Text Size the header is one row, and the tabs are at the bottom in a narrow window', bad.length === 0, bad.join(' | '));
+    }
+    // scrolling to the guide must not park it under the sticky bar
+    const q = await iosPage('iPad', { width: 1194, height: 834 });
+    await q.locator('nav button[data-screen="play"]').click(); await q.locator('#play-scramble').click(); await q.waitForTimeout(2800);
+    await q.locator('#play-help').click(); await q.waitForSelector('#play-guide .speed-btn'); await q.waitForTimeout(1400);
+    const place = await q.evaluate(() => ({ guide: document.querySelector('#play-guide').getBoundingClientRect().top, bar: document.querySelector('.topbar').getBoundingClientRect().bottom }));
+    ck('the guide lands below the pinned bar, not under it', place.guide >= place.bar - 1, Math.round(place.guide) + ' vs bar ' + Math.round(place.bar));
+    const keys = [];
+    await q.evaluate(() => { window.scrollTo(0, 0); document.activeElement.blur(); });
+    for (let i = 0; i < 60; i++) {
+      await q.keyboard.press('Tab'); await q.waitForTimeout(40);
+      const f = await q.evaluate(() => { const e = document.activeElement; if (!e || e === document.body || e.closest('.topbar')) return null; const r = e.getBoundingClientRect(); return { n: (e.innerText || e.id || e.tagName).trim().slice(0, 20), t: r.top, b: r.bottom, bar: document.querySelector('.topbar').getBoundingClientRect().bottom }; });
+      if (f && (f.t < f.bar - 1 || f.b > innerHeightOf(1194, 834) + 1)) keys.push(f.n + ' ' + Math.round(f.t));
+    }
+    ck('tabbing with a keyboard never leaves a control behind the bar', keys.length === 0, keys.slice(0, 3).join(' | '));
+    await q.close(); }
+
+  console.log('R57 Slide Over at the largest Text Size (256 px): nothing is cut off at the right, nothing scrolls sideways');
+  { // 320 pt of Slide Over at 125% is 256 CSS px: the cube column grew to 280 and the tab bar to 288
+    for (const width of [256, 300]) {
+      const p = await iosPage('iPad', { width, height: 700 });
+      const wide = [];
+      const measure = async (label) => {
+        await p.waitForTimeout(220);
+        const m = await p.evaluate((vw) => {
+          const over = document.documentElement.scrollWidth > vw + 0.5;
+          const out = [...document.querySelectorAll('body *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > vw + 0.5 && e.offsetParent !== null && !e.closest('.cube, .face, #loading, video, svg, pre, .intro-video, .chart-wrap'); }).map((e) => (e.id || e.className || e.tagName) + '').slice(0, 3);
+          const text = []; const w = document.createTreeWalker(document.body, 4 /* NodeFilter.SHOW_TEXT */); let n;
+          while ((n = w.nextNode())) { if (!n.textContent.trim() || n.parentElement.closest('[hidden], script, style, pre, svg')) continue; const rg = document.createRange(); rg.selectNodeContents(n); if ([...rg.getClientRects()].some((r) => r.right > vw + 0.5)) text.push(n.textContent.trim().slice(0, 20)); }
+          return { over, out, text: text.slice(0, 3) };
+        }, width);
+        if (m.over || m.out.length || m.text.length) wide.push(label + ' ' + JSON.stringify(m));
+      };
+      const tab = (s) => p.locator('nav button[data-screen="' + s + '"]').evaluate((e) => e.click()).then(() => p.waitForTimeout(200));
+      await measure('learn');
+      await p.locator('.lesson-card').nth(4).click(); await p.waitForTimeout(400); await measure('lesson'); await p.locator('#lesson-back').click();
+      await tab('play'); await measure('play');
+      await p.locator('#play-scramble').click(); await p.waitForTimeout(2600); await p.locator('#play-help').click(); await p.waitForSelector('#play-guide .speed-btn'); await p.waitForTimeout(400); await measure('play guide');
+      await p.locator('#play-size .size-btn', { hasText: '6×6' }).evaluate((e) => e.click()); await p.waitForTimeout(300);
+      const swap = p.locator('.ios-alert button:has-text("Swap Cubes")'); if (await swap.count()) { await swap.evaluate((e) => e.click()); await p.waitForTimeout(500); }
+      await measure('play 6x6');
+      await tab('timer'); await measure('timer');
+      await tab('solve'); await measure('my real cube');
+      for (const part of ['parents', 'privacy', 'coppa', 'licence']) { await p.locator('.foot-links [data-info="' + part + '"]').evaluate((e) => e.click()); await p.waitForTimeout(250); await measure(part); }
+      const tabs = await p.evaluate(() => { const nav = document.querySelector('.topbar nav').getBoundingClientRect(); return [...document.querySelectorAll('.topbar nav button')].every((b) => { const r = b.getBoundingClientRect(); return r.left >= nav.left - 1 && r.right <= nav.right + 1; }); });
+      ck(width + ' px: no screen scrolls sideways or is cut off at the right', wide.length === 0, wide.slice(0, 2).join(' || '));
+      ck(width + ' px: all four tabs fit inside the tab bar', tabs);
+      await p.close();
+    }
+    const e = await iosPage('iPad', { width: 256, height: 700 });
+    await e.locator('.foot-links [data-info="coppa"]').evaluate((x) => x.click()); await e.waitForTimeout(250);
+    ck('a long word or address breaks instead of widening the page', await e.evaluate(() => getComputedStyle(document.querySelector('#coppa')).overflowWrap) === 'anywhere');
+    await e.close(); }
+
+  console.log('R58 a pinned cube column fits the window, or scrolls with the page, and follows the iPad as it turns');
+  { for (const [w, h, label] of [[1133, 744, 'iPad mini'], [1194, 834, 'iPad Pro 11'], [1376, 1032, 'iPad Pro 13']]) {
+      const p = await iosPage('iPad', { width: w, height: h });
+      const state = () => p.evaluate(() => { const c = document.querySelector('.screen:not([hidden]) .col-cube'); if (!c) return null;
+        const top = parseFloat(getComputedStyle(c).top) || 0; const pinned = getComputedStyle(c).position === 'sticky';
+        return { pinned, fits: c.offsetHeight <= window.innerHeight - top - 8, h: c.offsetHeight, room: window.innerHeight - top - 8 }; });
+      const bad = [];
+      const look = async (name) => { const s = await state(); if (s && s.pinned && !s.fits) bad.push(name + ' pinned at ' + s.h + ' in ' + s.room); };
+      await p.locator('.lesson-card').nth(2).click(); await p.waitForTimeout(400); await look('lesson');
+      const reset = await p.evaluate(() => { document.querySelector('#lesson-reset-cube').click(); return document.querySelector('#lesson-reset-msg').getBoundingClientRect().bottom <= window.innerHeight; });
+      ck(label + ': a lesson\'s cube, pad and Reset Cube message all fit the window', reset);
+      await p.locator('#lesson-back').click();
+      for (const s of ['play', 'timer', 'solve']) { await p.locator('nav button[data-screen="' + s + '"]').evaluate((e) => e.click()); await p.waitForTimeout(350); await look(s); }
+      await p.locator('nav button[data-screen="play"]').evaluate((e) => e.click()); await p.locator('#play-size .size-btn', { hasText: '6×6' }).evaluate((e) => e.click()); await p.waitForTimeout(300);
+      const sw = p.locator('.ios-alert button:has-text("Swap Cubes")'); if (await sw.count()) await sw.evaluate((e) => e.click()); await p.waitForTimeout(500); await look('6x6');
+      ck(label + ': the column is never pinned when it is taller than the window', bad.length === 0, bad.join(' | '));
+      // turn the iPad upright and back: the pinning follows
+      await p.locator('nav button[data-screen="learn"]').evaluate((e) => e.click()); await p.locator('.lesson-card').nth(2).click(); await p.waitForTimeout(300);
+      await p.setViewportSize({ width: h, height: w }); await p.waitForTimeout(350);
+      const upright = await state();
+      await p.setViewportSize({ width: w, height: h }); await p.waitForTimeout(350);
+      const back = await state();
+      // upright, anything 860 px or narrower is one column (not pinned); the 13-inch iPad is 1032 and stays two columns
+      const oneColumn = h <= 860;
+      ck(label + ': turned upright it follows the layout (' + (oneColumn ? 'one column, not pinned' : 'still two columns, pinned and fitting') + '), turned back it is pinned again',
+        upright && (oneColumn ? !upright.pinned : upright.pinned && upright.fits) && back && back.pinned && back.fits, JSON.stringify([upright, back]));
+      await p.close(); }
+    // a window that cannot hold the column lets it scroll; the pad stays within reach
+    const s = await iosPage('iPad', { width: 1133, height: 744 });
+    await s.locator('nav button[data-screen="solve"]').evaluate((e) => e.click()); await s.waitForTimeout(400);
+    ck('My Real Cube (a tall column) is let go on a short landscape window', await s.evaluate(() => document.querySelector('.screen:not([hidden]) .col-cube').classList.contains('unstuck')
+      && getComputedStyle(document.querySelector('.screen:not([hidden]) .col-cube')).position === 'static'));
+    await s.close();
+    // the registered mark never gets too small to read
+    const m = await b.newPage({ viewport: { width: 1280, height: 900 } });
+    await m.goto(URL); await m.waitForTimeout(200);
+    ck('every ® is at least 10 px', await m.evaluate(() => [...document.querySelectorAll('.reg')].every((e) => parseFloat(getComputedStyle(e).fontSize) >= 10)));
+    await m.close(); }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
