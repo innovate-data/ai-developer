@@ -990,6 +990,151 @@ test('the About page tour: one local video, ready to stream, allowed by the poli
 });
 
 
+/* ------------------------------------------------------------------ COPPA ----
+ * The app meets COPPA by collecting nothing. tests/preflight.js refuses any change
+ * that would end that; these prove it does, rule by rule.
+ */
+const Preflight = require('./preflight.js');
+
+test('COPPA preflight: the app as it stands passes the build guard', () => {
+  const problems = Preflight.scan(Preflight.collect());
+  assert.deepStrictEqual(problems, [], problems.map((p) => p.file + ': ' + p.why + ' [' + p.found + ']').join('\n'));
+});
+
+test('COPPA preflight: a planted problem of every kind is caught, and harmless words are not (negative control)', () => {
+  const real = Preflight.collect();
+  const plant = (file, snippet) => {
+    const files = Object.assign({}, real);
+    const text = files[file] || '';
+    files[file] = /\.html$/.test(file) ? text.replace('</body>', snippet + '\n</body>') : text + '\n' + snippet + '\n';
+    return Preflight.scan(files);
+  };
+  const PLANTED = [
+    ['js/app.js', "fetch('/score');", 'network'],
+    ['js/app.js', 'const x = new XMLHttpRequest();', 'network'],
+    ['js/app.js', "navigator.sendBeacon('/beacon', data);", 'network'],
+    ['js/app.js', "const s = new WebSocket('wss://example.com');", 'network'],
+    ['js/view.js', "img.src = 'https://example.com/pixel.gif';", 'network'],
+    ['index.html', '<script src="https://example.com/x.js"></script>', 'network'],
+    ['css/style.css', 'body { background: url(https://example.com/x.png); }', 'network'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'let s = URLSession.shared', 'network'],
+    ['ios/CubeClubhouse/UpdateChecker.swift', 'let other = "https://example.com/collect"', 'network'],
+    ['index.html', '<input type="text" name="childName">', 'free-text'],
+    ['index.html', '<input placeholder="Your email">', 'free-text'],
+    ['index.html', '<textarea></textarea>', 'free-text'],
+    ['js/app.js', "box.contentEditable = 'true';", 'free-text'],
+    ['js/app.js', "const i = document.createElement('input');", 'free-text'],
+    ['js/app.js', "const name = prompt('What is your name?');", 'free-text'],
+    ['ios/CubeClubhouse/GrownUpGate.swift', 'let f = TextField("Name", text: $name)', 'free-text'],
+    ['index.html', '<a href="https://example.com">our site</a>', 'links-out'],
+    ['index.html', '<a href="mailto:hello@example.com">write</a>', 'links-out'],
+    ['js/app.js', "window.open('https://example.com');", 'links-out'],
+    ['js/app.js', "location.href = 'https://example.com';", 'links-out'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'UIApplication.shared.open(url)', 'links-out'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'let s = SKStoreProductViewController()', 'links-out'],
+    ['js/app.js', 'navigator.mediaDevices.getUserMedia({ video: true });', 'sensors'],
+    ['js/app.js', 'navigator.geolocation.getCurrentPosition(f);', 'sensors'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'let m = CLLocationManager()', 'sensors'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'let c = CNContactStore()', 'sensors'],
+    ['ios/CubeClubhouse.xcodeproj/project.pbxproj', 'INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo";', 'sensors'],
+    ['js/app.js', "document.cookie = 'id=1';", 'identifiers'],
+    ['js/view.js', 'const fp = canvas.toDataURL();', 'identifiers'],
+    ['js/app.js', 'const cores = navigator.hardwareConcurrency;', 'identifiers'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'let id = UIDevice.current.identifierForVendor', 'identifiers'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'let ad = ASIdentifierManager.shared().advertisingIdentifier', 'identifiers'],
+    ['js/app.js', "gtag('event', 'solve');", 'sdk'],
+    ['js/app.js', "amplitude.getInstance().logEvent('solve');", 'sdk'],
+    ['js/app.js', "mixpanel.track('solve');", 'sdk'],
+    ['index.html', '<script src="js/firebase-app.js"></script>', 'sdk'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'import AppTrackingTransparency', 'sdk'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'GADMobileAds.sharedInstance().start()', 'sdk'],
+    ['ios/CubeClubhouse/WebAppView.swift', 'SentrySDK.start { _ in }', 'sdk'],
+  ];
+  for (const [file, snippet, rule] of PLANTED) {
+    const caught = plant(file, snippet).filter((p) => p.rule === rule && p.file === file);
+    assert(caught.length, 'not caught (' + rule + ') in ' + file + ': ' + snippet);
+  }
+  // a dependency nobody has reviewed, a Swift package, a pod
+  const withDep = Object.assign({}, real, { 'package.json': JSON.stringify({ name: 'x', dependencies: { 'some-analytics': '1.0.0' } }) });
+  assert(Preflight.scan(withDep).some((p) => p.rule === 'packages'), 'an unreviewed dependency got through');
+  assert(Preflight.scan(Object.assign({}, real, { Podfile: "pod 'Firebase'" })).some((p) => p.rule === 'packages'), 'a pod got through');
+  const pbxPkg = Object.assign({}, real);
+  pbxPkg['ios/CubeClubhouse.xcodeproj/project.pbxproj'] += '\n/* x */ XCRemoteSwiftPackageReference "analytics" */\n';
+  assert(Preflight.scan(pbxPkg).some((p) => p.rule === 'packages'), 'a Swift package got through');
+  // the store opened without the grown-up gate
+  const bypass = Object.assign({}, real);
+  bypass['ios/CubeClubhouse/UpdateChecker.swift'] = bypass['ios/CubeClubhouse/UpdateChecker.swift']
+    .replace('DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.gate = release }', 'openStore(release)');
+  assert(bypass['ios/CubeClubhouse/UpdateChecker.swift'] !== real['ios/CubeClubhouse/UpdateChecker.swift'], 'the bypass was not planted');
+  assert(Preflight.scan(bypass).some((p) => p.rule === 'links-out'), 'the store opened without the gate, unnoticed');
+  const noGate = Object.assign({}, real);
+  noGate['ios/CubeClubhouse/CubeClubhouseApp.swift'] = noGate['ios/CubeClubhouse/CubeClubhouseApp.swift'].replace('GrownUpGate(onPass:', 'EmptyView(onPass:');
+  assert(Preflight.scan(noGate).some((p) => p.rule === 'links-out'), 'a missing gate went unnoticed');
+  // the COPPA Review taken away, a piece at a time
+  for (const [file, from, to] of [
+    ['js/coppa.js', null, null],
+    ['ios/app-store/coppa.html', null, null],
+    ['index.html', '<article id="coppa"', '<article id="gone"'],
+    ['index.html', 'class="linkish" data-info="coppa"', 'class="linkish" data-info="x"'],
+    ['js/app.js', "'licence', 'coppa']", "'licence']"],
+  ]) {
+    const files = Object.assign({}, real);
+    if (from === null) delete files[file]; else files[file] = files[file].replace(from, to);
+    assert(Preflight.scan(files).some((p) => p.rule === 'coppa-page'), 'the review could go missing unnoticed: ' + file + ' ' + (from || 'deleted'));
+  }
+  // harmless: ordinary words, and the same code in comments
+  const harmless = Object.assign({}, real);
+  harmless['js/lessons.js'] += "\nconst WORDS = 'The amplitude of a turn; a sentry stands guard; adjust the cube; fetch the yellow edge; "
+    + "open the window; the camera angle; a cookie jar; a link in the chain; type the answer';\n"
+    + "// fetch('/x'); window.open('https://example.com'); document.cookie = 1;\n"
+    + "/* gtag('event'); navigator.geolocation; <textarea> */\n";
+  harmless['index.html'] = harmless['index.html'].replace('</body>', '<!-- <a href="https://example.com">x</a> --><input type="range" min="1" max="3"><input type="number"><input type="checkbox"><input inputmode="numeric">\n</body>');
+  harmless['ios/CubeClubhouse/GrownUpGate.swift'] += '\n// UIApplication.shared.open(url) is never used: see COPPA-REVIEW.md\n';
+  const false_ = Preflight.scan(harmless);
+  assert.deepStrictEqual(false_, [], 'harmless words were refused: ' + false_.map((p) => p.found).join(', '));
+});
+
+test('COPPA review: one source for the app page and the web page, matching COPPA-REVIEW.md', () => {
+  const COPPA = require('../js/coppa.js');
+  const { review } = COPPA;
+  assert(review.checks.length >= 13, 'checks: ' + review.checks.length);
+  for (const c of review.checks) {
+    assert(c.heading && c.rule && c.text && COPPA.STATUS[c.status], 'incomplete check: ' + JSON.stringify(c).slice(0, 80));
+  }
+  for (const rule of ['312.3', '312.5(c)(7)', '312.5(a)(2)', '312.4(d)', '312.4(b)', '312.5(c)(3)', '312.6', '312.7', '312.8', '312.10', '312.11']) {
+    assert(review.checks.some((c) => c.rule.includes(rule)), 'no check for § ' + rule);
+  }
+  // the version it names is the app's
+  const version = /MARKETING_VERSION = ([\d.]+);/.exec(read('ios/CubeClubhouse.xcodeproj/project.pbxproj'))[1];
+  assert.strictEqual(review.appVersion, version, 'js/coppa.js names version ' + review.appVersion + ', the project ' + version);
+  // the written review has the same rows, with the same statuses
+  const md = read('COPPA-REVIEW.md');
+  for (const c of review.checks) {
+    const row = md.split('\n').find((l) => l.startsWith('| ' + c.heading + ' |'));
+    assert(row, 'COPPA-REVIEW.md has no row for: ' + c.heading);
+    assert(row.includes('| ' + COPPA.STATUS[c.status] + ' |'), 'COPPA-REVIEW.md gives a different status for: ' + c.heading);
+  }
+  assert(/not legal advice/i.test(md) && /lawyer/i.test(md), 'the review must say it is not legal advice');
+  // the app page and the web page are the same drawing
+  const page = COPPA.toHTML({ version: '1.0', privacyHref: '#privacy' });
+  const hosted = read('ios/app-store/coppa.html');
+  const strip = (s) => s.replace(/href="[^"]*"/g, '').replace(/\s+/g, ' ');
+  assert(strip(hosted).includes(strip(page)), 'ios/app-store/coppa.html is not drawn from js/coppa.js (run npm run build:store-pages)');
+  assert(/<b class="coppa-version">1\.0<\/b>/.test(page), 'About this review shows the version');
+  // the publisher's email only, never a person's
+  for (const f of ['COPPA-REVIEW.md', 'js/coppa.js', 'index.html', 'ios/app-store/coppa.html', 'ios/app-store/privacy-policy.html', 'CHANGELOG.md']) {
+    const emails = [...new Set((read(f).match(/[\w.+-]+@[\w-]+\.[\w.]+/g) || []).map((e) => e.replace(/\.+$/, '')))].filter((e) => !/example\.com$/.test(e));
+    assert(emails.every((e) => e === 'iralearningllc@gmail.com'), f + ' has an address other than the company one: ' + emails.join(', '));
+  }
+  // the retention promises are on the Privacy page
+  const privacy = /<article id="privacy"[\s\S]*?<\/article>/.exec(read('index.html'))[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  for (const said of ['How long we keep information', 'no later than 12 months after your last message', 'no later than 7 days after it arrives',
+    'strong password and two-step verification', 'COPPA Review']) {
+    assert(privacy.includes(said), 'the Privacy page does not say: ' + said);
+  }
+});
+
+
 Promise.all(waiting).then(() => {
   console.log('\n' + passed + ' test group(s) passed' + (process.exitCode ? ', some FAILED' : ''));
 });

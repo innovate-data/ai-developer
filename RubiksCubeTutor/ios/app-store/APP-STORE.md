@@ -153,7 +153,29 @@ no device frame, at Apple's preview sizes. Use it for social posts and your webs
 To make it again after the app changes: `npm i --no-save playwright-core`, then
 `FFMPEG=/path/to/ffmpeg npm run build:promo`. It needs Chrome or Chromium and ffmpeg
 with libx264. The stage is `promo/promo.html`; the timeline is in `promo/record.js`.
-The same file plays on the app's About page, so remaking it updates both.
+The same file plays at the top of the app's Learn screen, so remaking it updates both.
+
+## Children's privacy (COPPA)
+
+The app is reviewed against COPPA in `COPPA-REVIEW.md`, and `npm run preflight` (run by
+`release.sh`) refuses a build that collects, sends, links out or tracks. Host
+`coppa.html` next to `privacy-policy.html` and `support.html`; it is linked from both.
+The answers below stay true only while that review does. Have a lawyer read the review,
+the Privacy page and `LICENSE` before the first release.
+
+**iOS:** no `AdSupport`, no `AppTrackingTransparency`, no `NS…UsageDescription`
+permissions; answer **No** to tracking in App Privacy. The App Store sheet opens only
+after the grown-up gate.
+
+**Android (if a version is ever made):** remove the advertising-ID permission in
+`AndroidManifest.xml` with
+`<uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove"/>`,
+then check the Merged Manifest in Android Studio that no library adds it back. In Play
+Console answer **No** to "Does your app use advertising ID?", choose the 5–8 / 9–12 /
+13+ target ages honestly (Families policy applies), and in Data safety declare no data
+collected or shared, with a note that Google Play's own services (for example Play
+Billing diagnostics, if purchases are ever added) are collected by Google, not by us.
+Run the review again first.
 
 ## 5. App Privacy
 

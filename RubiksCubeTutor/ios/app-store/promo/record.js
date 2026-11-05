@@ -3,7 +3,7 @@
  * record.js - films the 20-second promo: promo.html with the real app running inside
  * its phone frame, driven on a fixed timeline, captured through Chrome's screencast at
  * 1080 x 1920, then encoded with the music from music.js into media/intro.mp4, where
- * the app's About page plays it and the App Store kit points at it.
+ * the app's Learn screen plays it and the App Store kit points at it.
  *
  *     npm i --no-save playwright-core
  *     FFMPEG=/path/to/ffmpeg node ios/app-store/promo/record.js
@@ -25,6 +25,7 @@ const OUT = process.env.OUT || path.join(HERE, '..', '..', '..', 'media', 'intro
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const LENGTH = 20;                                  // seconds
 const EXE = process.env.CHROME || [
+  '/opt/pw-browsers/chromium',
   '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -73,6 +74,8 @@ const TIMES = [95.4, 88.1, 91.7, 79.3, 82.6, 74.9, 77.2, 70.4, 72.8, 66.1, 69.5,
   await frame.waitForSelector('.lesson-card');
   await page.evaluate(() => document.fonts.ready);
   await frame.evaluate(() => document.fonts.ready);
+  // the promo films the lessons, not the tour (which is this very video)
+  await frame.evaluate(() => { const t = document.getElementById('learn-tour'); if (t) t.hidden = true; });
   await page.waitForTimeout(800);
 
   // ---- helpers

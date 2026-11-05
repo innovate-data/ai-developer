@@ -206,15 +206,23 @@ Things the audit changed:
   load inside the web view. The web page makes no network requests at all; the only
   request is the optional App Store update check, made by the Swift side.
 
+## The grown-up gate
+
+"Update" in the new-version alert does not open the App Store straight away: the App
+Store is a shop, so `GrownUpGate.swift` asks for the answer to a times-table sum (6 × 6 to
+9 × 9) on its own keypad first. A wrong answer brings a new sum; Cancel opens nothing.
+`npm run preflight` fails the build if the store sheet can be reached any other way, and
+`WebAppView` refuses every navigation off the bundle, so there are no links to Safari.
+
 ## The tour video
 
-The About page opens with a 20-second tour, `media/intro.mp4` (3.8 MB, so the app is
+The Learn screen opens with a 20-second tour, `media/intro.mp4` (3.8 MB, so the app is
 that much bigger). The copy phase bundles it with its poster. WebKit plays a video
 from the app's own `cubeclubhouse://` scheme only if the loader answers byte-range
 requests, so `BundleSchemeHandler` does: `Range: bytes=0-1` gets `206 Partial Content`
 with a `Content-Range`, and the file is memory-mapped, so a slice does not load it all.
-It never plays by itself, it plays in place (`playsinline`), and leaving the About
-screen pauses it. `npm run build:promo` remakes it.
+It never plays by itself, it plays in place (`playsinline`), and opening a lesson or
+leaving Learn pauses it. `npm run build:promo` remakes it.
 
 ## Offering updates
 

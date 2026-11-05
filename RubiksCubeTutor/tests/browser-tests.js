@@ -20,6 +20,7 @@ try {
 }
 const path = require('path');
 const EXE = process.env.CHROME || [
+  '/opt/pw-browsers/chromium',
   '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -586,7 +587,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
 
   console.log('R22 the grown-ups pages are reachable, readable and honest');
   { const p = await newPage();
-    ck('the footer offers all three pages', await p.locator('.foot-links .linkish').count() === 3);
+    ck('the footer offers all four pages', await p.locator('.foot-links .linkish').count() === 4);
     await p.locator('.foot-links [data-info="privacy"]').click();
     await p.waitForTimeout(300);
     ck('a footer link opens the grown-ups screen', !(await p.locator('#screen-grownups').isHidden()));
@@ -690,7 +691,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.goto(URL);
     await p.waitForTimeout(400);
     // walk the whole app, since a stray request could hide behind any screen
-    for (const screen of ['play', 'solve', 'learn']) {
+    for (const screen of ['play', 'solve', 'timer', 'learn']) {
       await p.locator(`nav button[data-screen="${screen}"]`).click();
       await p.waitForTimeout(250);
     }
@@ -698,6 +699,12 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.waitForTimeout(400);
     await p.locator('.foot-links [data-info="privacy"]').click();
     await p.waitForTimeout(300);
+    await p.locator('.foot-links [data-info="coppa"]').click();
+    await p.waitForTimeout(300);
+    // only the app's own files, from the app's own folder
+    const appDir = 'file://' + path.resolve(__dirname, '..') + '/';
+    const foreign = asked.filter((u) => /^file:/.test(u) && !decodeURI(u).startsWith(appDir));
+    ck('only the app\'s own files are asked for', foreign.length === 0 && asked.some((u) => /\/js\/coppa\.js$/.test(u)), foreign.join(' | ') || asked.length + ' files');
 
     const remote = asked.filter((u) => !/^(file|data|blob):/.test(u));
     ck('not one request leaves the device', remote.length === 0, remote.join(' | ') || 'none of ' + asked.length);
@@ -1445,7 +1452,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('no "for as long as you like" or "nothing held back"', !/for as long as you like|held back/.test(licence + parents));
     await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(150);
     const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
-    ck('Privacy speaks for this version, with a date', /This version of Cube Clubhouse \(1\.0\)/.test(privacy) && /Last updated: 26 September 2026/.test(privacy) && !/made them impossible/.test(privacy));
+    ck('Privacy speaks for this version, with a date', /This version of Cube Clubhouse \(1\.0\)/.test(privacy) && /Last updated: 5 November 2026/.test(privacy) && !/made them impossible/.test(privacy));
     await p.close(); }
 
   console.log('R49 the app speaks to learners of every age, not to children only');
@@ -1603,30 +1610,99 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       && !(await off.locator('#update-check-now').isDisabled()));
     await off.context().close(); }
 
-  console.log('R53 the About page has the tour, which waits to be played and stops when you leave');
+  console.log('R53 the tour sits at the top of Learn, waits to be played, and stops when it goes out of sight');
   { const p = await newPage();
-    await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(200);
-    const v = p.locator('#parents video');
-    ck('the tour is at the top of What this is', await v.count() === 1
-      && await p.evaluate(() => document.querySelector('#parents h3').nextElementSibling.matches('figure.intro-video')));
+    const v = p.locator('#screen-learn video');
+    ck('the tour is the first thing on Learn, above the lessons', await v.count() === 1
+      && await p.evaluate(() => document.querySelector('#screen-learn').firstElementChild.id === 'learn-tour'
+        && !!(document.getElementById('learn-tour').compareDocumentPosition(document.getElementById('lesson-list')) & window.Node.DOCUMENT_POSITION_FOLLOWING)));
+    ck('it is no longer on the About page', await p.locator('#parents video').count() === 0);
     ck('it has controls, plays in place, and does not start on its own', await v.evaluate((e) => e.controls && e.playsInline && !e.autoplay && !e.muted && !e.loop && e.paused));
     ck('its poster is shown until then', await p.evaluate(() => new Promise((ok) => { const i = document.createElement('img'); i.onload = () => ok(i.naturalWidth === 540); i.onerror = () => ok(false); i.src = document.getElementById('intro-video').poster; })));
-    ck('it comes from inside the app', /\/media\/intro\.mp4$/.test(await v.evaluate((e) => e.querySelector('source').src)) && /^file:/.test(await v.evaluate((e) => e.querySelector('source').src)));
-    ck('it is described in words, and in full for anyone who cannot watch it', /20-second tour/.test(await p.locator('#intro-video-about').textContent())
+    ck('it comes from inside the app', /^file:.*\/media\/intro\.mp4$/.test(await v.evaluate((e) => e.querySelector('source').src)));
+    ck('it is named, described, and written out in full', (await p.locator('#learn-tour-title').textContent()).includes('Take the 20-Second Tour')
       && (await v.getAttribute('aria-describedby')) === 'intro-video-about' && await p.locator('.intro-video-words li').count() === 6);
     const box = await v.boundingBox();
-    ck('portrait and phone-sized on a wide screen', box && box.width <= 301 && Math.abs(box.height / box.width - 16 / 9) < 0.02, box && Math.round(box.width) + 'x' + Math.round(box.height));
+    ck('portrait and small enough to leave the lessons in view', box && box.width <= 241 && Math.abs(box.height / box.width - 16 / 9) < 0.02, box && Math.round(box.width) + 'x' + Math.round(box.height));
     // this Chromium cannot decode H.264 (Safari and WKWebView can), so stand in for a playing video
-    await v.evaluate((e) => { Object.defineProperty(e, 'paused', { configurable: true, get: () => !!window.__stopped }); e.pause = () => { window.__stopped = true; }; });
-    await p.locator('nav button[data-screen="learn"]').click(); await p.waitForTimeout(150);
-    ck('leaving the About screen stops it', await p.evaluate(() => window.__stopped === true));
+    const fakePlay = () => v.evaluate((e) => { window.__stopped = 0; Object.defineProperty(e, 'paused', { configurable: true, get: () => false }); e.pause = () => { window.__stopped++; Object.defineProperty(e, 'paused', { configurable: true, get: () => true }); }; });
+    await fakePlay();
+    await p.locator('.lesson-card').nth(0).click(); await p.waitForTimeout(200);
+    ck('opening a lesson stops the tour and puts it away', await p.evaluate(() => window.__stopped === 1) && await p.locator('#learn-tour').isHidden());
+    await p.locator('#lesson-back').click(); await p.waitForTimeout(150);
+    ck('back on the lesson list, it is there again', await p.locator('#learn-tour').isVisible());
+    await fakePlay();
+    await p.locator('nav button[data-screen="play"]').click(); await p.waitForTimeout(150);
+    ck('leaving Learn stops it', await p.evaluate(() => window.__stopped === 1));
     await p.close();
     const q = await b.newPage({ viewport: { width: 320, height: 640 } });
     await q.goto(URL); await q.waitForTimeout(250);
-    await q.locator('.foot-links [data-info="parents"]').click(); await q.waitForTimeout(200);
-    const w = await q.locator('#parents video').boundingBox();
+    const w = await q.locator('#screen-learn video').boundingBox();
     ck('on the narrowest phone it fits', w && w.x >= 0 && w.x + w.width <= 320 && await q.evaluate(() => document.documentElement.scrollWidth <= 320));
     await q.close(); }
+
+  console.log('R54 the COPPA Review: reachable from About, the footer and its own link, drawn from the review, and readable everywhere');
+  { const p = await newPage();
+    await p.locator('.foot-links [data-info="coppa"]').click(); await p.waitForTimeout(250);
+    ck('the footer opens it', !(await p.locator('#screen-grownups').isHidden())
+      && await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
+    const page = (await p.locator('#coppa').innerText()).replace(/\s+/g, ' ');
+    const review = await p.evaluate(() => window.RC.COPPA.review);
+    ck('it shows every check, each with its rule and a status chip', await p.locator('#coppa .coppa-check').count() === review.checks.length
+      && await p.locator('#coppa .coppa-check .coppa-chip').count() === review.checks.length
+      && review.checks.every((c) => page.includes(c.heading) && page.includes(c.rule)));
+    ck('it says whether COPPA applies, the duties, and what would change the answer', /Does COPPA apply\?/.test(page) && /What we do, as the publisher/.test(page)
+      && /What would change the answer/.test(page) && /About this review/.test(page) && /not legal advice/.test(page));
+    ck('the chips are coloured by status', await p.evaluate(() => {
+      const bg = (s) => getComputedStyle(document.querySelector('#coppa .coppa-' + s)).backgroundColor;
+      return new Set([bg('meets'), bg('not-needed'), bg('optional')]).size === 3;
+    }));
+    ck('About this review names the version', (await p.locator('#coppa .coppa-version').textContent()) === review.appVersion);
+    await p.locator('#coppa a[href="#privacy"]').click(); await p.waitForTimeout(250);
+    ck('its Privacy link stays in the app', await p.evaluate(() => Math.abs(document.getElementById('privacy').getBoundingClientRect().top) < 140));
+    await p.locator('#privacy a[href="#coppa"]').click(); await p.waitForTimeout(250);
+    ck('and Children\'s privacy links back to it', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
+    await p.locator('.info-nav a[href="#coppa"]').click(); await p.waitForTimeout(150);
+    ck('the section links include it', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
+    await p.locator('#screen-grownups .back-to-app').first().click(); await p.waitForTimeout(200);
+    ck('Back to the App works from it', !(await p.locator('#screen-learn').isHidden()));
+    await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(200);
+    await p.locator('#parents [data-info="coppa"]').click(); await p.waitForTimeout(250);
+    ck('the About page has a COPPA Review button', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
+    await p.goBack(); await p.waitForTimeout(250);
+    ck('the browser\'s back button returns to where you were', !(await p.locator('#screen-learn').isHidden()) && (await p.evaluate(() => location.hash)) === '#learn');
+    await p.close();
+    const q = await b.newPage({ viewport: { width: 1280, height: 950 } });
+    await q.goto(URL + '#coppa'); await q.waitForTimeout(300);
+    ck('a link straight to #coppa opens it', !(await q.locator('#screen-grownups').isHidden()) && await q.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 160));
+    await q.close();
+    // a small and a large phone, light and dark: nothing spills sideways, chips stay readable
+    for (const [w, h] of [[320, 640], [430, 932]]) {
+      for (const scheme of ['light', 'dark']) {
+        const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, hasTouch: true, isMobile: true });
+        await ctx.addInitScript(() => { window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: 'iPhone', version: '1.0' }); });
+        const r = await ctx.newPage();
+        r.on('pageerror', (e) => errs.push(e.message));
+        await r.goto(URL); await r.waitForTimeout(250);
+        await r.locator('.foot-links [data-info="coppa"]').click(); await r.waitForTimeout(250);
+        const fit = await r.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth
+          && [...document.querySelectorAll('#coppa .coppa-chip')].every((c) => c.getBoundingClientRect().right <= window.innerWidth));
+        // contrast of each chip's text on its background, WCAG AA for normal text
+        const worst = await r.evaluate(() => {
+          const rgb = (s) => s.match(/[\d.]+/g).slice(0, 3).map(Number);
+          const lum = ([R, G, B]) => [R, G, B].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
+            .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+          return Math.min(...['meets', 'not-needed', 'optional'].map((s) => {
+            const st = getComputedStyle(document.querySelector('#coppa .coppa-' + s));
+            const [x, y] = [lum(rgb(st.color)), lum(rgb(st.backgroundColor))];
+            return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+          }));
+        });
+        ck(w + 'px ' + scheme + ': it fits, and every chip reads at 4.5:1 or better', fit && worst >= 4.5, worst.toFixed(2));
+        if (w === 320 && scheme === 'light') ck('on the iOS app it shows the app\'s version', (await r.locator('#coppa .coppa-version').textContent()) === '1.0');
+        await ctx.close();
+      }
+    } }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');

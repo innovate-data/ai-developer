@@ -28,7 +28,7 @@ the same JavaScript the browser version runs.
   page until the page has loaded, then fades it out, so the hand-over never flashes.
 - **`WebAppView.swift`** wraps `WKWebView`. It turns off bounce scrolling and pinch zoom,
   so a second finger cannot zoom the page while a child is dragging the cube around, and
-  it sends real links out to Safari.
+  it refuses anything outside the bundle, links included: nothing is opened in Safari.
 - **`BundleSchemeHandler.swift`** serves the bundled files over a `cubeclubhouse://`
   scheme. Loading them from a `file://` URL also works, but WKWebView gives file URLs an
   opaque origin, so `localStorage` is unavailable and a child's stars would vanish on

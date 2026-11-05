@@ -21,8 +21,8 @@ import UIKit
 /// - At most once a day, at launch, and never at all when the switch on the About page
 ///   is off. "Check Now" on that page asks straight away.
 /// - A newer version is offered with an ordinary alert. "Not Now" keeps quiet about that
-///   version for a week. "Update" opens the App Store's own sheet inside the app, so a
-///   child is not sent out of it.
+///   version for a week. "Update" first asks a grown-up a quick sum (GrownUpGate), because
+///   the App Store is a shop; only then does the App Store's own sheet open, inside the app.
 ///
 /// All it keeps, in UserDefaults, is whether the check is on, when it last worked, and a
 /// version someone said "Not Now" to. The Privacy page and PrivacyInfo.xcprivacy say so.
@@ -44,6 +44,8 @@ final class UpdateChecker: NSObject, ObservableObject, SKStoreProductViewControl
 
     /// The release to offer. RootView shows the alert while this is set.
     @Published private(set) var offer: Release?
+    /// The release a grown-up is being asked to open. RootView shows GrownUpGate while set.
+    @Published var gate: Release?
 
     static let lookupURL = "https://itunes.apple.com/lookup"
     static let checkEvery: TimeInterval = 24 * 60 * 60           // a day
@@ -175,12 +177,25 @@ final class UpdateChecker: NSObject, ObservableObject, SKStoreProductViewControl
         return Date().timeIntervalSince(when) < Self.quietAfterNotNow
     }
 
-    /// "Update": the App Store's own page for the app, as a sheet over the app.
-    func openStore() {
+    /// "Update": a grown-up answers GrownUpGate before the App Store opens. The gate waits
+    /// for the alert to finish going away, since one cannot be presented over the other.
+    func askGrownUp() {
         guard let release = offer else { return }
         offer = nil
-        // Let the alert finish going away first; UIKit will not present over it.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.gate = release }
+    }
+
+    /// The grown-up answered: open the App Store's own page for the app, as a sheet over it.
+    /// This is the only way the store is ever opened.
+    func passGate() {
+        guard let release = gate else { return }
+        gate = nil
+        openStore(release)
+    }
+
+    private func openStore(_ release: Release) {
+        // Let the gate finish going away first; UIKit will not present over it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self = self, let top = Self.topViewController() else { return }
             let store = SKStoreProductViewController()
             store.delegate = self

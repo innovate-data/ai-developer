@@ -17,6 +17,7 @@ const HERE = __dirname;
 const OUT = path.join(HERE, '..', 'CubeClubhouse', 'Assets.xcassets', 'LaunchLogo.imageset');
 const W = 300, H = 196;
 const EXE = process.env.CHROME || [
+  '/opt/pw-browsers/chromium',
   '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',

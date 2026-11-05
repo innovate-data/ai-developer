@@ -8,8 +8,10 @@
 <meta name="referrer" content="no-referrer">
 <title>Cube Clubhouse Privacy Policy</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f6f3ec; --ink: #2b3040; --muted: #5d6272; --accent: #3a5a86; --card: #fffdf8; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #1d2029; --ink: #ebe7dc; --muted: #b4b0a6; --accent: #9fb9dd; --card: #262a35; } }
+  :root { color-scheme: light dark; --bg: #f6f3ec; --ink: #2b3040; --muted: #5d6272; --accent: #3a5a86; --card: #fffdf8;
+    --line: #e4dfd2; --good: #2a7a4b; --good-bg: #e6f5ea; --accent-soft: #e6eef8; --warm-bg: #fbf2dc; --star: #835c00; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1d2029; --ink: #ebe7dc; --muted: #b4b0a6; --accent: #9fb9dd; --card: #262a35;
+    --line: #3a3c45; --good: #86d4a0; --good-bg: #243a2c; --accent-soft: #33404f; --warm-bg: #3b3626; --star: #f2c85c; } }
   body { margin: 0; background: var(--bg); color: var(--ink);
     font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
@@ -22,6 +24,16 @@
   .strong, .info-strong { font-weight: 600; }
   a { color: var(--accent); }
   sup { font-size: 0.55em; }
+  .coppa-checks { list-style: none; padding: 0; display: grid; gap: 10px; }
+  .coppa-check { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--bg); }
+  .coppa-check p { margin: 4px 0; }
+  .coppa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .coppa-head h3 { margin: 2px 0; font-size: 1rem; color: var(--ink); }
+  .coppa-rule { color: var(--muted); font-size: 0.88rem; }
+  .coppa-chip { border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+  .coppa-meets { background: var(--good-bg); color: var(--good); }
+  .coppa-not-needed { background: var(--accent-soft); color: var(--accent); }
+  .coppa-optional { background: var(--warm-bg); color: var(--star); }
 </style>
 </head>
 <body><main><article>
@@ -95,12 +107,31 @@
             your parent or guardian to send the email for you, from their own email address, rather
             than sending it yourself.</p>
 
+          <h3>If you write to us</h3>
+          <p>An email is the one thing that ever reaches us, and only if you choose to send one. Only Ira
+            Learning LLC reads the mailbox, which is protected with a strong password and two-step
+            verification. We use your message only to answer it. We never add your address, or anyone's,
+            to a mailing list or any other list, and we never share it.</p>
+          <p>If a child writes to us, we reply once, asking a grown-up to write instead, and then delete
+            the message and the address.</p>
+
+          <h3>How long we keep information</h3>
+          <ul>
+            <li><b>On your device</b>: the stars, choices and times listed above stay until you tap
+              <b>Clear Saved Progress</b> or delete the app; the update check's settings
+              stay until you delete the app. We never receive any of it.</li>
+            <li><b>A grown-up's email</b>: kept while we help, in case you write back, then deleted no later
+              than 12 months after your last message. Ask us and we will delete it sooner.</li>
+            <li><b>A child's email</b>: answered once, then deleted no later than 7 days after it arrives.</li>
+          </ul>
+
           <h3>Children's privacy</h3>
           <p>Cube Clubhouse is made for a general audience of all ages, and some of the people who use
-            it will be children. Because nothing is collected from anyone, there is nothing to consent to, nothing to request and
+            it will be children, so we treat everyone as possibly a child. Because nothing is collected from anyone, there is nothing to consent to, nothing to request and
             nothing for us to delete — it is all on your device, and in your own backup of it if you
-            make one, under your control.</p>
-          <p class="info-note">Last updated: 26 September 2026.</p>
-    <p class="note"><a href="support.html">Support</a></p>
+            make one, under your control. Our <a href="coppa.html">COPPA Review</a> checks this against the
+            US children's privacy law, rule by rule.</p>
+          <p class="info-note">Last updated: 5 November 2026.</p>
+    <p class="note"><a href="support.html">Support</a> · <a href="coppa.html">COPPA Review</a></p>
 </article></main></body>
 </html>

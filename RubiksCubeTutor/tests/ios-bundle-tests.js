@@ -29,6 +29,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const EXE = process.env.CHROME || [
+  '/opt/pw-browsers/chromium',
   '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -185,7 +186,7 @@ function runCopyPhase() {
 
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
-  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/timer.js', 'js/app.js',
+  for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/timer.js', 'js/coppa.js', 'js/app.js',
                    'fonts/fredoka-latin-var.woff2', 'fonts/OFL.txt', 'media/intro.mp4', 'media/intro-poster.jpg']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));
   }

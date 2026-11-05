@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "test": "node tests/run-tests.js",
+    "preflight": "node tests/preflight.js",
     "lint": "npx --yes eslint@9 --no-config-lookup -c eslint.config.mjs js tests build-artifact.js ios/app-store",
     "build": "node build-artifact.js",
     "test:browser": "node tests/browser-tests.js",

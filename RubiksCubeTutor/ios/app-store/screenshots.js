@@ -21,6 +21,7 @@ const HERE = __dirname;
 const OUT = path.join(HERE, 'screenshots');
 const URL = 'file://' + path.join(HERE, '..', '..', 'index.html');
 const EXE = process.env.CHROME || [
+  '/opt/pw-browsers/chromium',
   '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -86,6 +87,8 @@ const SHOTS = [
       p.on('pageerror', (e) => errors.push(e.message));
       await p.goto(URL);
       await p.evaluate(() => document.fonts.ready);
+      // the store shots show the lessons themselves; the tour is the promo video
+      await p.evaluate(() => { const t = document.getElementById('learn-tour'); if (t) t.hidden = true; });
       await p.waitForTimeout(400);
       await act(p);
       await p.evaluate((sel) => {

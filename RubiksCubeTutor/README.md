@@ -24,6 +24,8 @@ RubiksCubeTutor/
 ├── js/lessons.js         the course content (plain data, easy to edit or translate)
 ├── js/app.js             screens, move pad, guided walkthrough, practice, quiz
 ├── media/                the About page's 20-second tour (intro.mp4) and its poster
+├── COPPA-REVIEW.md       the COPPA review: requirements, evidence, duties (also js/coppa.js)
+├── CHANGELOG.md          what changed, and when
 ├── build-artifact.js     bundles index.html + css into a single publishable page
 ├── ios/                  Xcode project: the same web app as a native iPhone/iPad app
 │   ├── release.sh        one-step archive + App Store upload (on a Mac with Xcode)
@@ -421,6 +423,17 @@ switch to turn it off and a Check Now button, and the Privacy page says all of t
 
 ---
 
+### Children's privacy (COPPA)
+
+The app meets COPPA by collecting nothing from anyone. `COPPA-REVIEW.md` is the review,
+requirement by requirement, with the technical evidence and the publisher's duties; the
+app shows it at About › COPPA Review (and COPPA in the footer), and
+`ios/app-store/coppa.html` publishes it, both drawn from `js/coppa.js`. `npm run
+preflight` fails the build on anything that would collect, send, link out or track, and
+`ios/release.sh` runs it before every archive. The App Store sheet opens only after a
+grown-up answers a times-table question (`GrownUpGate.swift`), and the iOS app refuses
+every navigation off its own bundle. An engineering review, not legal advice.
+
 ## 5. Testing
 
 `npm test` (`tests/run-tests.js`) covers the logic, with no browser and no packages:
@@ -476,14 +489,22 @@ switch to turn it off and a Check Now button, and the Privacy page says all of t
   Now, never when switched off, offered in the store sheet inside the app, and nothing in
   the page itself makes a request; and the Privacy page says all of that.
 
-* that the About page's tour is one local video, stored so it starts at once (its index
+* that the Learn screen's tour is one local video, stored so it starts at once (its index
   before its data), allowed by the page's policy as media from the app itself and nothing
   else, never starting on its own, bundled by the Xcode copy phase, and streamable by the
   iOS scheme handler, which answers byte-range requests with 206.
 
-54 groups in all.
+* COPPA: the build guard (`tests/preflight.js`) passes on the app as it stands, and a
+  negative control plants a problem of every kind it guards against (network requests,
+  boxes for typing words, links out, the store without the grown-up gate, sensors,
+  cookies and fingerprinting, analytics and ad kits, unreviewed packages, a missing
+  review) and checks each is caught, while ordinary words and commented-out code pass;
+  and the COPPA Review in `js/coppa.js` agrees with `COPPA-REVIEW.md`, the hosted
+  `coppa.html` and the app's version, and names only the company's address.
 
-`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 365 checks.
+57 groups in all.
+
+`npm run test:browser` (`tests/browser-tests.js`) drives the real page in Chromium: 386 checks.
 Every case is a bug that was found and fixed, kept so it cannot come back:
 
 | Case | The bug it guards against |
@@ -538,7 +559,8 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R50 | In the guide's two-column list of move words, a list with a single move split that one item across both columns ("…the side ··· left." / "facing you, so its top goes to the"). Found in the iPad App Store screenshot. Each item now stays whole. |
 | R51 | Reset Cube in a lesson: it brings back the same practice puzzle (not a new one), clears Undo so a reset cannot be undone, puts an open hint and its highlight away, and after a win starts the puzzle again while keeping the stars (hints already seen for that puzzle still mean no 🧠); after Another Puzzle it returns to the new puzzle; pressed halfway through a trick's Watch it still lands on the start; in a lesson without a puzzle it makes the cube solved. |
 | R52 | The Updates section: none in a browser (whose Privacy page still says the page asks for nothing); in the iOS app it shows the version, a switch that starts as the app says and tells the app when flipped, and Check Now, which asks the app, waits, reports up to date / newer / unreachable, ignores answers nobody asked for, shows a version only as its leading number, and gives up after twelve seconds with no answer. The app's Privacy page and footer say what the check sends. |
-| R53 | The About page's tour: at the top of What this is, with controls, playing in place, never starting on its own, showing its poster until played, loaded from inside the app, described in words with a full transcript, portrait and phone-sized on a wide screen, fitting the narrowest phone, and paused on leaving the About screen. |
+| R53 | The tour sits at the top of Learn, above the lessons and no longer on the About page: controls, playing in place, never starting on its own, its poster until played, loaded from inside the app, named and written out in full, small enough to leave the lessons in view, put away and paused when a lesson opens, back with the list, paused on leaving Learn, and fitting the narrowest phone. |
+| R54 | The COPPA Review page: opened from the footer, the section links, the About page's button and a link to `#coppa`; every check with its rule and a status chip coloured by status; whether COPPA applies, the duties and what would change the answer; the app's version; Privacy and COPPA linking to each other in the app; Back to the App and the browser's back button; and on a small and a large phone, light and dark, nothing spills sideways and every chip reads at 4.5:1 or better. R24 now also walks the Timer and the COPPA page and checks that only the app's own files are requested. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in
@@ -546,7 +568,7 @@ the build phases, both configurations on iOS 17.0, no `#available` check the tar
 already guarantees, and the shell's own network blocker), checks `PrivacyInfo.xcprivacy`
 says what the app's Privacy page says, then drives the bundle the build phase
 produces, by touch, on an iPhone and an iPad profile (each told it is the iOS app, as the
-real one is): 138 checks, including every screen at the largest Text Size on the narrowest
+real one is): 139 checks, including every screen at the largest Text Size on the narrowest
 iPhone, the tab bar at the bottom on iPhone and the top on iPad, the launch
 screen (Info.plist wired into both configurations, a background colour identical to the
 page's in light and dark, the logo at every scale and appearance and narrow enough for

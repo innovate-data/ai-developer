@@ -35,8 +35,9 @@ function build() {
     .replace(/<span class="w-ios">([\s\S]*?)<\/span>/g, '$1')        // the app's wording
     .replace(/<li class="w-ios">/g, '<li>')
     .replace('<b>Clear Saved Progress</b> above', '<b>Clear Saved Progress</b> on the app\'s About page')
-    .replace(/<h2>Privacy<\/h2>/, '');
-  for (const left of ['device-name', 'w-ios', 'w-web', '<button', ' above,']) {
+    .replace(/<h2>Privacy<\/h2>/, '')
+    .replace(/href="#coppa"/g, 'href="coppa.html"');
+  for (const left of ['device-name', 'w-ios', 'w-web', '<button', ' above,', 'href="#']) {
     if (body.includes(left)) throw new Error('the privacy policy still contains "' + left + '"');
   }
   if ((body.match(/<span\b/g) || []).length !== (body.match(/<\/span>/g) || []).length) {
@@ -48,7 +49,14 @@ function build() {
     <p class="note">For Cube Clubhouse on iPhone and iPad, version ${version}. This is the same text the app
       shows on its Privacy page.</p>
     ${body.trim()}
-    <p class="note"><a href="support.html">Support</a></p>`);
+    <p class="note"><a href="support.html">Support</a> · <a href="coppa.html">COPPA Review</a></p>`);
+
+  // The COPPA Review, drawn by the same function as the app's own COPPA Review page.
+  const COPPA = require('../../js/coppa.js');
+  const coppa = page('Cube Clubhouse COPPA Review', `
+    <h1>Cube Clubhouse<sup>®</sup> COPPA Review</h1>
+    ${COPPA.toHTML({ version, privacyHref: 'privacy-policy.html' })}
+    <p class="note"><a href="privacy-policy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>`);
 
   const support = page('Cube Clubhouse Support', `
     <h1>Cube Clubhouse<sup>®</sup> Support</h1>
@@ -81,7 +89,7 @@ function build() {
     <p class="note"><a href="privacy-policy.html">Privacy Policy</a> · © 2026 Ira Learning LLC. All rights
       reserved. Cube Clubhouse® is a registered trademark of Ira Learning LLC.</p>`);
 
-  return { 'privacy-policy.html': privacy, 'support.html': support };
+  return { 'privacy-policy.html': privacy, 'support.html': support, 'coppa.html': coppa };
 }
 
 function page(title, content) {
@@ -95,8 +103,10 @@ function page(title, content) {
 <meta name="referrer" content="no-referrer">
 <title>${title}</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f6f3ec; --ink: #2b3040; --muted: #5d6272; --accent: #3a5a86; --card: #fffdf8; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #1d2029; --ink: #ebe7dc; --muted: #b4b0a6; --accent: #9fb9dd; --card: #262a35; } }
+  :root { color-scheme: light dark; --bg: #f6f3ec; --ink: #2b3040; --muted: #5d6272; --accent: #3a5a86; --card: #fffdf8;
+    --line: #e4dfd2; --good: #2a7a4b; --good-bg: #e6f5ea; --accent-soft: #e6eef8; --warm-bg: #fbf2dc; --star: #835c00; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1d2029; --ink: #ebe7dc; --muted: #b4b0a6; --accent: #9fb9dd; --card: #262a35;
+    --line: #3a3c45; --good: #86d4a0; --good-bg: #243a2c; --accent-soft: #33404f; --warm-bg: #3b3626; --star: #f2c85c; } }
   body { margin: 0; background: var(--bg); color: var(--ink);
     font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
@@ -109,6 +119,16 @@ function page(title, content) {
   .strong, .info-strong { font-weight: 600; }
   a { color: var(--accent); }
   sup { font-size: 0.55em; }
+  .coppa-checks { list-style: none; padding: 0; display: grid; gap: 10px; }
+  .coppa-check { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--bg); }
+  .coppa-check p { margin: 4px 0; }
+  .coppa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .coppa-head h3 { margin: 2px 0; font-size: 1rem; color: var(--ink); }
+  .coppa-rule { color: var(--muted); font-size: 0.88rem; }
+  .coppa-chip { border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+  .coppa-meets { background: var(--good-bg); color: var(--good); }
+  .coppa-not-needed { background: var(--accent-soft); color: var(--accent); }
+  .coppa-optional { background: var(--warm-bg); color: var(--star); }
 </style>
 </head>
 <body><main><article>

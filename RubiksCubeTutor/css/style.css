@@ -28,6 +28,7 @@
   --rot-bg: #fdeedd;
   --rot-line: #efd1a9;
   --star: #9a6b00;      /* a symbol needs 3:1 on the card; this manages 4.6 */
+  --chip-amber: #835c00; /* small bold text on --warm-bg needs 4.5:1; this manages 5.4 */
   --scene-1: #fcfaf4;
   --scene-2: #ece6d6;
   --plastic: #1a1a1a;
@@ -66,6 +67,7 @@
     --rot-bg: #3d3327;
     --rot-line: #6b5637;
     --star: #f2c85c;
+    --chip-amber: #f2c85c;
     --scene-1: #34363d;
     --scene-2: #25262b;
     --plastic: #0d0d12;
@@ -101,6 +103,7 @@
   --rot-bg: #3d3327;
   --rot-line: #6b5637;
   --star: #f2c85c;
+  --chip-amber: #f2c85c;
   --scene-1: #34363d;
   --scene-2: #25262b;
   --plastic: #0d0d12;
@@ -239,9 +242,25 @@ main {
 .info-card li { margin: 4px 0; }
 .info-strong { font-weight: 600; }
 .info-note { color: var(--muted); font-size: 0.92rem; }
-/* the tour on the About page: portrait, so it stays phone-sized even on a wide screen */
-.intro-video { margin: 8px 0 16px; }
-.intro-video video { display: block; width: 100%; max-width: 300px; aspect-ratio: 9 / 16; margin: 0 auto;
+/* the COPPA Review: one card per requirement, with a status chip */
+/* a link inside a sentence: padding makes a 44pt target without moving a word (it does not
+   change the line box of an inline element) */
+.info-card p a { padding-block: 13px; }
+.info-card .coppa-checks { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 10px; }
+.info-card .coppa-check { margin: 0; }
+.coppa-check { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--bg); }
+.coppa-check p { margin: 4px 0; }
+.coppa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.coppa-head h3 { margin: 2px 0; font-size: 1rem; color: var(--ink); }
+.coppa-rule { color: var(--muted); font-size: 0.88rem; }
+.coppa-chip { flex: 0 0 auto; border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+.coppa-meets { background: var(--good-bg); color: var(--good); }
+.coppa-not-needed { background: var(--accent-soft); color: var(--accent); }
+.coppa-optional { background: var(--warm-bg); color: var(--chip-amber); }
+/* the tour at the top of Learn: portrait, so it stays phone-sized even on a wide screen */
+.intro-video { margin: 4px auto 22px; max-width: 520px; }
+.tour-title { text-align: center; font-size: 1.2rem; margin: 0 0 10px; }
+.intro-video video { display: block; width: 100%; max-width: 240px; aspect-ratio: 9 / 16; margin: 0 auto;
   border-radius: 20px; background: var(--fill); box-shadow: var(--shadow); }
 .intro-video figcaption { text-align: center; color: var(--muted); font-size: 0.92rem; margin: 10px auto 0; max-width: 460px; }
 .intro-video-words { max-width: 460px; margin: 8px auto 0; font-size: 0.92rem; color: var(--muted); }

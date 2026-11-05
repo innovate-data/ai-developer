@@ -50,9 +50,13 @@ struct RootView: View {
                isPresented: Binding(get: { ready && updates.offer != nil }, set: { _ in }),
                presenting: updates.offer) { _ in
             Button("Not Now", role: .cancel) { updates.notNow() }
-            Button("Update") { updates.openStore() }
+            Button("Update") { updates.askGrownUp() }
         } message: { release in
             Text("Cube Clubhouse \(release.version) is in the App Store. Stars and times stay on this device when you update.")
+        }
+        // The App Store is a shop, so a grown-up opens it.
+        .sheet(isPresented: Binding(get: { updates.gate != nil }, set: { if !$0 { updates.gate = nil } })) {
+            GrownUpGate(onPass: { updates.passGate() }, onCancel: { updates.gate = nil })
         }
         .onAppear {
             // The page always reports back, but a child must never be left looking at

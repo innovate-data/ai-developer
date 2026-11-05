@@ -47,6 +47,15 @@ if [ -n "${BUNDLE_ID:-}" ] && [[ "$BUNDLE_ID" == com.example.* ]]; then
 fi
 echo "Xcode: $(xcodebuild -version | head -1)"
 
+# The COPPA build guard runs whatever --skip-tests says: a build that collects, sends, links
+# out or tracks must never reach the App Store (COPPA-REVIEW.md).
+if command -v node >/dev/null; then
+  echo "==> COPPA preflight"
+  node "$ROOT/tests/preflight.js" || fail "the COPPA preflight failed; see above and COPPA-REVIEW.md"
+else
+  fail "node is needed for the COPPA preflight (tests/preflight.js); install Node.js"
+fi
+
 if [ "$SKIP_TESTS" = 0 ]; then
   if command -v node >/dev/null; then
     echo "==> unit tests"

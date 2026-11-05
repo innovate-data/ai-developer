@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES, Timer } = root.RC;
+  const { Cube, Solver, BigSolver, CubeView, NetView, NCube, LESSONS, MOVE_WORDS, STAGE_TITLES, Timer, COPPA } = root.RC;
   // The biggest cube knows every move token the app can show, so it does the describing.
   const ANY = NCube.make(NCube.SIZES[NCube.SIZES.length - 1]);
 
@@ -668,6 +668,12 @@
     const viewWrap = $('#lesson-view', section);
     const station = Station($('#lesson-cube', section));
     let current = null;
+    // The tour sits above the lesson list. It goes when a lesson opens and stops whenever
+    // it is out of sight, as a video on any iOS screen does when you leave it.
+    const tourBox = $('#learn-tour', section);
+    const tour = $('#intro-video', section);
+    const stopTour = () => { if (tour && !tour.paused) tour.pause(); };
+    const showList = () => { viewWrap.hidden = true; list.hidden = false; if (tourBox) tourBox.hidden = false; renderList(); };
 
     // Never let a solver failure strand the learner on a half-built lesson.
     function practiceCube(stage) {
@@ -691,6 +697,8 @@
       current = n;
       const L = LESSONS[n];
       list.hidden = true;
+      stopTour();
+      if (tourBox) tourBox.hidden = true;
       viewWrap.hidden = false;
       hush();
       $('#lesson-title').textContent = L.emoji + ' ' + L.title;
@@ -975,16 +983,16 @@
 
     MovePad($('#lesson-controls', section), (m) => station.move(m));
     explainChipsIn(section, station);
-    $('#lesson-back').addEventListener('click', () => { viewWrap.hidden = true; list.hidden = false; renderList(); });
+    $('#lesson-back').addEventListener('click', showList);
     $('#lesson-prev').addEventListener('click', () => openLesson(Math.max(0, current - 1)));
     $('#lesson-next').addEventListener('click', () => {
-      if (current === LESSONS.length - 1) { viewWrap.hidden = true; list.hidden = false; renderList(); }
+      if (current === LESSONS.length - 1) showList();
       else openLesson(current + 1);
     });
     $('#lesson-reset-view').addEventListener('click', () => station.view.resetView());
     $('#lesson-reset-cube').addEventListener('click', resetCube);
     renderList();
-    screens.learn = { section, station, openLesson };
+    screens.learn = { section, station, openLesson, onHide: stopTour };
   }
 
   // ================================================================= PLAY
@@ -1788,6 +1796,14 @@
     });
   }
 
+  // The COPPA Review page, drawn from js/coppa.js: the same function draws the hosted
+  // ios/app-store/coppa.html, so the two cannot disagree.
+  function buildCoppa() {
+    const box = $('#coppa-body');
+    if (!box || !COPPA) return;
+    box.innerHTML = COPPA.toHTML({ version: (HOST && HOST.version) || COPPA.review.appVersion, privacyHref: '#privacy' });
+  }
+
   function buildGrownUps() {
     const section = $('#screen-grownups');
     const msg = $('#clear-progress-msg', section);
@@ -1810,9 +1826,7 @@
     });
     section.querySelectorAll('.back-to-app').forEach((b) => b.addEventListener('click', () => showScreen('learn')));
 
-    // Leaving the About screen stops the tour, as leaving any iOS screen stops its video.
-    const tour = $('#intro-video');
-    screens.grownups = { section, onHide: () => { if (tour && !tour.paused) tour.pause(); } };
+    screens.grownups = { section };
   }
   const openGrownUps = (part) => {
     showScreen('grownups');
@@ -1967,16 +1981,17 @@
     buildTimer();
     buildGrownUps();
     buildUpdates();
+    buildCoppa();
     keyboard();
     stopSpeakingWhenHidden();
     document.querySelectorAll('nav button[data-screen]').forEach((b) => b.addEventListener('click', () => showScreen(b.dataset.screen)));
-    document.querySelectorAll('.foot-links [data-info]').forEach((b) => b.addEventListener('click', () => openGrownUps(b.dataset.info)));
+    document.querySelectorAll('.foot-links [data-info], .info-card [data-info]').forEach((b) => b.addEventListener('click', () => openGrownUps(b.dataset.info)));
     document.querySelectorAll('.info-nav a, .info-card a[href^="#"]').forEach((a) => a.addEventListener('click', (e) => {
       e.preventDefault();                       // the hash belongs to the screens, not the sections
       openGrownUps(a.getAttribute('href').slice(1));
     }));
     // A link straight to one of the grown-ups sections opens that screen at it.
-    const INFO_PARTS = ['parents', 'privacy', 'licence'];
+    const INFO_PARTS = ['parents', 'privacy', 'licence', 'coppa'];
     const go = (raw) => {
       if (INFO_PARTS.includes(raw)) { openGrownUps(raw); return true; }
       if (Object.prototype.hasOwnProperty.call(screens, raw)) { showScreen(raw); return true; }

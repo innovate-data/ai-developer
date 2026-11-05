@@ -17,8 +17,8 @@ struct WebAppView: UIViewRepresentable {
     /// The page carries a Content-Security-Policy saying the same thing; this is the
     /// half a web page cannot switch off.
     ///
-    /// Links a child actually taps are unaffected: `decidePolicyFor` below cancels them
-    /// and hands them to Safari before any load begins.
+    /// There are no links out of the app, and `decidePolicyFor` below refuses any that
+    /// appear: a child is never sent to Safari or anywhere else.
     private static let blockAllNetworkLoads = """
     [{"trigger": {"url-filter": "^https?://"}, "action": {"type": "block"}}]
     """
@@ -170,7 +170,8 @@ struct WebAppView: UIViewRepresentable {
             }
         }
 
-        /// Keep in-app navigation inside the bundle; send real links to Safari.
+        /// Keep navigation inside the bundle. Nothing outside it is opened, not even in
+        /// Safari: the app has no links a child can follow out of it (COPPA-REVIEW.md).
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -179,11 +180,6 @@ struct WebAppView: UIViewRepresentable {
             }
             if url.scheme == BundleSchemeHandler.scheme {
                 decisionHandler(.allow)
-            } else if navigationAction.navigationType == .linkActivated {
-                // A link the child deliberately tapped: hand it to Safari, where a
-                // grown-up can see where they are. The app itself still loads nothing.
-                UIApplication.shared.open(url)
-                decisionHandler(.cancel)
             } else {
                 // Everything the app needs is in the bundle, so anything else is either a
                 // mistake or something we did not put there. Refuse it.

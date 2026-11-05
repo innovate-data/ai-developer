@@ -35,6 +35,31 @@
   <main>
     <!-- ============================================================ LEARN -->
     <section id="screen-learn" class="screen">
+      <figure id="learn-tour" class="intro-video" aria-labelledby="learn-tour-title">
+        <h2 id="learn-tour-title" class="tour-title">🎬 Take the 20-Second Tour</h2>
+        <video id="intro-video" controls playsinline preload="metadata" poster="media/intro-poster.jpg"
+          aria-describedby="intro-video-about">
+          <source src="media/intro.mp4" type="video/mp4">
+        </video>
+        <figcaption id="intro-video-about">The lessons, <b>Help Me Solve It</b>, <b>My Real Cube</b> and the
+          Timer, in 20 seconds, with music. It plays from inside the app; nothing is downloaded.</figcaption>
+        <details class="intro-video-words">
+          <summary>What the video shows</summary>
+          <ul>
+            <li>“Learn to solve the Cube, one step at a time.”</li>
+            <li>“Ten short lessons, from your very first turn to your first full solve”: the lesson
+              list, then a lesson’s cube turning.</li>
+            <li>“Stuck? Help Me Solve It. Every turn, shown one step at a time”: a cube mixes
+              itself up, then solves itself.</li>
+            <li>“Paint in your cube, and get the steps for the one in your hand”: the flat cube fills
+              with colours and is checked.</li>
+            <li>“Time it. Beat your best. A real speedcubing timer, with your records”: mix turns
+              ticked off, then the clock running.</li>
+            <li>Free, no ads, no account, works offline. For iPhone and iPad, all ages. Cube not
+              included.</li>
+          </ul>
+        </details>
+      </figure>
       <div id="lesson-list" class="lesson-grid" aria-label="Lessons"></div>
 
       <div id="lesson-view" hidden>
@@ -189,37 +214,13 @@
           <a href="#parents">About</a>
           <a href="#privacy">Privacy</a>
           <a href="#licence">Licence</a>
+          <a href="#coppa">COPPA</a>
         </nav>
 
         <article id="parents" class="info-card">
           <h2>About Cube Clubhouse</h2>
 
           <h3>What this is</h3>
-          <figure class="intro-video">
-            <video id="intro-video" controls playsinline preload="metadata" poster="media/intro-poster.jpg"
-              aria-describedby="intro-video-about">
-              <source src="media/intro.mp4" type="video/mp4">
-            </video>
-            <figcaption id="intro-video-about">A 20-second tour: the lessons, <b>Help Me Solve It</b>,
-              <b>My Real Cube</b> and the Timer. It plays from inside the app, with music; nothing is
-              downloaded.</figcaption>
-            <details class="intro-video-words">
-              <summary>What the video shows</summary>
-              <ul>
-                <li>“Learn to solve the Cube, one step at a time.”</li>
-                <li>“Ten short lessons, from your very first turn to your first full solve”: the lesson
-                  list, then a lesson’s cube turning.</li>
-                <li>“Stuck? Help Me Solve It. Every turn, shown one step at a time”: a cube mixes
-                  itself up, then solves itself.</li>
-                <li>“Paint in your cube, and get the steps for the one in your hand”: the flat cube fills
-                  with colours and is checked.</li>
-                <li>“Time it. Beat your best. A real speedcubing timer, with your records”: mix turns
-                  ticked off, then the clock running.</li>
-                <li>Free, no ads, no account, works offline. For iPhone and iPad, all ages. Cube not
-                  included.</li>
-              </ul>
-            </details>
-          </figure>
           <p>Cube Clubhouse is designed to help anyone, of any age, learn to solve a Cube on their own,
             using the beginner "layer by layer" method that most people learn first. It is for
             general audiences: adults learning for the first time, families, classrooms and clubs
@@ -297,6 +298,12 @@
           <p><button type="button" id="clear-progress" class="btn ghost">Clear Saved Progress</button>
             <span id="clear-progress-msg" class="msg" aria-live="polite"></span></p>
 
+          <h3>Children's privacy</h3>
+          <p>Cube Clubhouse collects nothing from anyone, so it meets COPPA, the US law that protects the
+            privacy of children under 13, without asking a parent for anything. The review shows how, rule
+            by rule.</p>
+          <p><button type="button" class="btn ghost" data-info="coppa">COPPA Review</button></p>
+
           <h3>Getting on with it</h3>
           <ul>
             <li><b>Read</b> speaks the current step; tapping it again stops it.</li>
@@ -327,7 +334,8 @@
             <h3>Updates</h3>
             <p>This is version <b id="app-version">1.0</b>. Once a day at most, the app asks
               Apple's App Store whether a newer version is out, and if there is one, it asks
-              whether you would like to update. Stars and times stay on this
+              whether you would like to update. The App Store is a shop, so a grown-up answers a
+              quick times-table question before it opens. Stars and times stay on this
               <span class="device-name">device</span> when you do. The <a href="#privacy">Privacy</a>
               section says exactly what the check sends.</p>
             <div class="btn-row">
@@ -411,12 +419,36 @@
             your parent or guardian to send the email for you, from their own email address, rather
             than sending it yourself.</p>
 
+          <h3>If you write to us</h3>
+          <p>An email is the one thing that ever reaches us, and only if you choose to send one. Only Ira
+            Learning LLC reads the mailbox, which is protected with a strong password and two-step
+            verification. We use your message only to answer it. We never add your address, or anyone's,
+            to a mailing list or any other list, and we never share it.</p>
+          <p>If a child writes to us, we reply once, asking a grown-up to write instead, and then delete
+            the message and the address.</p>
+
+          <h3>How long we keep information</h3>
+          <ul>
+            <li><b>On this <span class="device-name">device</span></b>: the stars, choices and times listed above stay until you tap
+              <b>Clear Saved Progress</b> or delete the app<span class="w-ios">; the update check's settings
+              stay until you delete the app</span>. We never receive any of it.</li>
+            <li><b>A grown-up's email</b>: kept while we help, in case you write back, then deleted no later
+              than 12 months after your last message. Ask us and we will delete it sooner.</li>
+            <li><b>A child's email</b>: answered once, then deleted no later than 7 days after it arrives.</li>
+          </ul>
+
           <h3>Children's privacy</h3>
           <p>Cube Clubhouse is made for a general audience of all ages, and some of the people who use
-            it will be children. Because nothing is collected from anyone, there is nothing to consent to, nothing to request and
+            it will be children, so we treat everyone as possibly a child. Because nothing is collected from anyone, there is nothing to consent to, nothing to request and
             nothing for us to delete — it is all on your device, and in your own backup of it if you
-            make one, under your control.</p>
-          <p class="info-note">Last updated: 26 September 2026.</p>
+            make one, under your control. Our <a href="#coppa">COPPA Review</a> checks this against the
+            US children's privacy law, rule by rule.</p>
+          <p class="info-note">Last updated: 5 November 2026.</p>
+        </article>
+
+        <article id="coppa" class="info-card">
+          <h2>COPPA Review</h2>
+          <div id="coppa-body"></div>
         </article>
 
         <article id="licence" class="info-card">
@@ -628,6 +660,7 @@ use. If you do not agree, do not install or use the Software.
       <button type="button" class="linkish" data-info="parents">About</button>
       <button type="button" class="linkish" data-info="privacy">Privacy</button>
       <button type="button" class="linkish" data-info="licence">Licence</button>
+      <button type="button" class="linkish" data-info="coppa">COPPA</button>
     </span>
   </footer>
 
@@ -638,6 +671,7 @@ use. If you do not agree, do not install or use the Software.
   <script src="js/view.js"></script>
   <script src="js/lessons.js"></script>
   <script src="js/timer.js"></script>
+  <script src="js/coppa.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
