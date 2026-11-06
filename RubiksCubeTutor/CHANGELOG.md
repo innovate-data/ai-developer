@@ -19,6 +19,10 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
   pages, the App Store description, the promo end card and the README. There is still no
   upper age limit, and the App Store rating stays 4+.
 
+### Changed
+- **Small-parts warning is now for children under six** (it said under three) in the licence,
+  About › Safety, and the App Store description.
+
 ### Removed
 - **The tour video** is gone from the app: Learn opens on the lesson list again. The page no
   longer allows media at all, and the iOS app no longer bundles `media/` (3.8 MB smaller).

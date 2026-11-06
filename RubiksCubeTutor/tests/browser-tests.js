@@ -1445,7 +1445,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
   { const p = await newPage();
     await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(150);
     const parents = (await p.locator('#parents').innerText()).replace(/\s+/g, ' ');
-    ck('For Parents has a Safety section', /Safety/.test(parents) && /small parts/.test(parents) && /under three/.test(parents) && /Reduce Motion/.test(parents));
+    ck('For Parents has a Safety section', /Safety/.test(parents) && /small parts/.test(parents) && /under six/.test(parents) && /Reduce Motion/.test(parents));
     ck('it gives rough guides, not promises', /rough guides, not promises/.test(parents) && !/most children can solve/.test(parents) && !/that exact cube/.test(parents));
     const licence = (await p.locator('#licence').innerText()).replace(/\s+/g, ' ');
     ck('the summary says a grown-up agrees, and supervises', /a parent or guardian agrees for a child/.test(licence) && /small parts/.test(licence));
@@ -1466,7 +1466,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     const about = (await p.locator('#parents').innerText()).replace(/\s+/g, ' ');
     ck('it says 6 and over and general audiences', /anyone aged 6 or over/.test(about) && /general audiences/.test(about) && /no upper age limit/.test(about));
     ck('it speaks to the learner, not about "the child"', !/\bthe child\b|\byour child\b|\ba child has\b/i.test(about), (about.match(/.{30}\b(the|your) child\b.{30}/i) || [''])[0]);
-    ck('the safety advice for young children stays', /under three/.test(about) && /younger child/.test(about));
+    ck('the safety advice for young children stays', /under six/.test(about) && /younger child/.test(about));
     const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
     ck('privacy is about everyone who uses it', /collects nothing about the people who use it/.test(privacy) && !/your child/.test(privacy) && /general audience aged 6 and over/.test(privacy));
     const licence = (await p.locator('#licence').innerText()).replace(/\s+/g, ' ');

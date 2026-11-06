@@ -850,7 +850,7 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
   assert(terms.includes('general audience of people aged 6\nand over'), 'the licence does not say it is for ages 6 and over');
   assert(!/kid-friendly|teaches kids|your child/i.test(text), 'child-only wording is back');
   assert(/anyone aged 6 or over/.test(parents), 'About does not say 6 and over');
-  assert(/<h3>Safety<\/h3>/.test(parents) && /under three/.test(parents), 'For Parents has no Safety section');
+  assert(/<h3>Safety<\/h3>/.test(parents) && /under six/.test(parents), 'For Parents has no Safety section');
 });
 
 
