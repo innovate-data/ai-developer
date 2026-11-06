@@ -19,6 +19,13 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
   pages, the App Store description, the promo end card and the README. There is still no
   upper age limit, and the App Store rating stays 4+.
 
+### Removed
+- **The tour video** is gone from the app: Learn opens on the lesson list again. The page no
+  longer allows media at all, and the iOS app no longer bundles `media/` (3.8 MB smaller).
+  The 20-second promo stays, for social posts, as `ios/app-store/promo/promo.mp4`.
+- **COPPA Review page:** the "What would change the answer" and "About this review"
+  sections are off the in-app and hosted pages. `COPPA-REVIEW.md` still has both.
+
 ### Fixed
 - **No flicker with Reduce Motion.** With Reduce Motion on, a turn is a cut instead of an
   animation, and a fast solve or Mix It Up cut up to 16 times a second (over the

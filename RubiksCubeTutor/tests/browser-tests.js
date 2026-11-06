@@ -1611,36 +1611,11 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
       && !(await off.locator('#update-check-now').isDisabled()));
     await off.context().close(); }
 
-  console.log('R53 the tour sits at the top of Learn, waits to be played, and stops when it goes out of sight');
+  console.log('R53 there is no video in the app: Learn opens on the lessons');
   { const p = await newPage();
-    const v = p.locator('#screen-learn video');
-    ck('the tour is the first thing on Learn, above the lessons', await v.count() === 1
-      && await p.evaluate(() => document.querySelector('#screen-learn').firstElementChild.id === 'learn-tour'
-        && !!(document.getElementById('learn-tour').compareDocumentPosition(document.getElementById('lesson-list')) & window.Node.DOCUMENT_POSITION_FOLLOWING)));
-    ck('it is no longer on the About page', await p.locator('#parents video').count() === 0);
-    ck('it has controls, plays in place, and does not start on its own', await v.evaluate((e) => e.controls && e.playsInline && !e.autoplay && !e.muted && !e.loop && e.paused));
-    ck('its poster is shown until then', await p.evaluate(() => new Promise((ok) => { const i = document.createElement('img'); i.onload = () => ok(i.naturalWidth === 540); i.onerror = () => ok(false); i.src = document.getElementById('intro-video').poster; })));
-    ck('it comes from inside the app', /^file:.*\/media\/intro\.mp4$/.test(await v.evaluate((e) => e.querySelector('source').src)));
-    ck('it is named, described, and written out in full', (await p.locator('#learn-tour-title').textContent()).includes('Take the 20-Second Tour')
-      && (await v.getAttribute('aria-describedby')) === 'intro-video-about' && await p.locator('.intro-video-words li').count() === 6);
-    const box = await v.boundingBox();
-    ck('portrait and small enough to leave the lessons in view', box && box.width <= 241 && Math.abs(box.height / box.width - 16 / 9) < 0.02, box && Math.round(box.width) + 'x' + Math.round(box.height));
-    // this Chromium cannot decode H.264 (Safari and WKWebView can), so stand in for a playing video
-    const fakePlay = () => v.evaluate((e) => { window.__stopped = 0; Object.defineProperty(e, 'paused', { configurable: true, get: () => false }); e.pause = () => { window.__stopped++; Object.defineProperty(e, 'paused', { configurable: true, get: () => true }); }; });
-    await fakePlay();
-    await p.locator('.lesson-card').nth(0).click(); await p.waitForTimeout(200);
-    ck('opening a lesson stops the tour and puts it away', await p.evaluate(() => window.__stopped === 1) && await p.locator('#learn-tour').isHidden());
-    await p.locator('#lesson-back').click(); await p.waitForTimeout(150);
-    ck('back on the lesson list, it is there again', await p.locator('#learn-tour').isVisible());
-    await fakePlay();
-    await p.locator('nav button[data-screen="play"]').click(); await p.waitForTimeout(150);
-    ck('leaving Learn stops it', await p.evaluate(() => window.__stopped === 1));
-    await p.close();
-    const q = await b.newPage({ viewport: { width: 320, height: 640 } });
-    await q.goto(URL); await q.waitForTimeout(250);
-    const w = await q.locator('#screen-learn video').boundingBox();
-    ck('on the narrowest phone it fits', w && w.x >= 0 && w.x + w.width <= 320 && await q.evaluate(() => document.documentElement.scrollWidth <= 320));
-    await q.close(); }
+    ck('no video anywhere', await p.locator('video').count() === 0 && await p.locator('#learn-tour').count() === 0);
+    ck('the lesson list is the first thing on Learn', await p.evaluate(() => document.querySelector('#screen-learn').firstElementChild.id === 'lesson-list'));
+    await p.close(); }
 
   console.log('R54 the COPPA Review: reachable from About, the footer and its own link, drawn from the review, and readable everywhere');
   { const p = await newPage();
@@ -1652,17 +1627,15 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('it shows every check, each with its rule and a status chip', await p.locator('#coppa .coppa-check').count() === review.checks.length
       && await p.locator('#coppa .coppa-check .coppa-chip').count() === review.checks.length
       && review.checks.every((c) => page.includes(c.heading) && page.includes(c.rule)));
-    ck('it says whether COPPA applies, the duties, and what would change the answer', /Does COPPA apply\?/.test(page) && /What we do, as the publisher/.test(page)
-      && /What would change the answer/.test(page) && /About this review/.test(page) && /not legal advice/.test(page));
+    ck('it says whether COPPA applies and the duties, without the two removed sections', /Does COPPA apply\?/.test(page) && /What we do, as the publisher/.test(page)
+      && !/What would change the answer/.test(page) && !/About this review/.test(page));
     ck('the chips are coloured by status', await p.evaluate(() => {
       const bg = (s) => getComputedStyle(document.querySelector('#coppa .coppa-' + s)).backgroundColor;
       return new Set([bg('meets'), bg('not-needed'), bg('optional')]).size === 3;
     }));
-    ck('About this review names the version', (await p.locator('#coppa .coppa-version').textContent()) === review.appVersion);
-    await p.locator('#coppa a[href="#privacy"]').click(); await p.waitForTimeout(250);
-    ck('its Privacy link stays in the app', await p.evaluate(() => Math.abs(document.getElementById('privacy').getBoundingClientRect().top) < 140));
+    await p.locator('#privacy').scrollIntoViewIfNeeded(); await p.waitForTimeout(150);
     await p.locator('#privacy a[href="#coppa"]').click(); await p.waitForTimeout(250);
-    ck('and Children\'s privacy links back to it', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
+    ck('Children\'s privacy links to it', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
     await p.locator('.info-nav a[href="#coppa"]').click(); await p.waitForTimeout(150);
     ck('the section links include it', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
     await p.locator('#screen-grownups .back-to-app').first().click(); await p.waitForTimeout(200);
@@ -1700,7 +1673,6 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
           }));
         });
         ck(w + 'px ' + scheme + ': it fits, and every chip reads at 4.5:1 or better', fit && worst >= 4.5, worst.toFixed(2));
-        if (w === 320 && scheme === 'light') ck('on the iOS app it shows the app\'s version', (await r.locator('#coppa .coppa-version').textContent()) === '1.0');
         await ctx.close();
       }
     } }
@@ -1769,13 +1741,11 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     small.release(); await small.ctx.close(); }
 
   console.log('R56 on an iPad: the lessons are on the first screen, the header is one row, nothing is hidden behind it');
-  { // the tour once stood 427 px tall above the lessons: on a landscape iPad they began below the fold
+  {
     for (const [w, h, label] of [[1133, 744, 'iPad mini landscape'], [1194, 834, 'iPad Pro 11 landscape'], [744, 1133, 'iPad mini upright'], [834, 1194, 'iPad Pro 11 upright'], [1376, 1032, 'iPad Pro 13 landscape']]) {
       const p = await iosPage('iPad', { width: w, height: h });
-      const g = await p.evaluate(() => { const c = document.querySelector('.lesson-card').getBoundingClientRect(); const v = document.querySelector('#screen-learn video').getBoundingClientRect(); const t = document.querySelector('#learn-tour .tour-title').getBoundingClientRect();
-        return { cardTop: c.top, vh: window.innerHeight, videoRight: v.right, titleLeft: t.left, videoW: v.width }; });
+      const g = await p.evaluate(() => ({ cardTop: document.querySelector('.lesson-card').getBoundingClientRect().top, vh: window.innerHeight }));
       ck(label + ': the first row of lessons shows on the first screen (at least 120 px of it)', g.vh - g.cardTop >= 120, 'card starts ' + Math.round(g.cardTop) + ' of ' + g.vh);
-      if (w >= 780) ck(label + ': the tour is a card, its words beside the video', g.titleLeft >= g.videoRight && g.videoW <= 201, Math.round(g.videoW) + ' wide');
       await p.close();
     }
     // the header: one row at every width, the tabs along the bottom up to 779 px, and the same with a larger Text Size

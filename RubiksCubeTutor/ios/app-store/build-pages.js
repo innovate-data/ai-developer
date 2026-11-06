@@ -55,7 +55,7 @@ function build() {
   const COPPA = require('../../js/coppa.js');
   const coppa = page('Cube Clubhouse COPPA Review', `
     <h1>Cube Clubhouse<sup>®</sup> COPPA Review</h1>
-    ${COPPA.toHTML({ version, privacyHref: 'privacy-policy.html' })}
+    ${COPPA.toHTML()}
     <p class="note"><a href="privacy-policy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>`);
 
   const support = page('Cube Clubhouse Support', `

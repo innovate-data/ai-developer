@@ -686,12 +686,7 @@
     const viewWrap = $('#lesson-view', section);
     const station = Station($('#lesson-cube', section));
     let current = null;
-    // The tour sits above the lesson list. It goes when a lesson opens and stops whenever
-    // it is out of sight, as a video on any iOS screen does when you leave it.
-    const tourBox = $('#learn-tour', section);
-    const tour = $('#intro-video', section);
-    const stopTour = () => { if (tour && !tour.paused) tour.pause(); };
-    const showList = () => { viewWrap.hidden = true; list.hidden = false; if (tourBox) tourBox.hidden = false; renderList(); };
+    const showList = () => { viewWrap.hidden = true; list.hidden = false; renderList(); };
 
     // Never let a solver failure strand the learner on a half-built lesson.
     function practiceCube(stage) {
@@ -715,8 +710,6 @@
       current = n;
       const L = LESSONS[n];
       list.hidden = true;
-      stopTour();
-      if (tourBox) tourBox.hidden = true;
       viewWrap.hidden = false;
       hush();
       $('#lesson-title').textContent = L.emoji + ' ' + L.title;
@@ -1010,7 +1003,7 @@
     $('#lesson-reset-view').addEventListener('click', () => station.view.resetView());
     $('#lesson-reset-cube').addEventListener('click', resetCube);
     renderList();
-    screens.learn = { section, station, openLesson, onHide: stopTour };
+    screens.learn = { section, station, openLesson };
   }
 
   // ================================================================= PLAY
@@ -1842,7 +1835,7 @@
   function buildCoppa() {
     const box = $('#coppa-body');
     if (!box || !COPPA) return;
-    box.innerHTML = COPPA.toHTML({ version: (HOST && HOST.version) || COPPA.review.appVersion, privacyHref: '#privacy' });
+    box.innerHTML = COPPA.toHTML();
   }
 
   function buildGrownUps() {

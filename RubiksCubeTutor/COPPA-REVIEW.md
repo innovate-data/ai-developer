@@ -9,8 +9,8 @@ compliance required from 22 April 2026. **It is not legal advice.** Have a lawye
 knows COPPA review it, together with the Privacy page and `LICENSE`, before release.
 
 It is also Ira Learning LLC's **written information security program** (§ 312.8) and
-**written data retention policy** (§ 312.10). The app shows the same review on its COPPA
-Review page; both that page and the hosted `ios/app-store/coppa.html` are drawn from
+**written data retention policy** (§ 312.10). The app shows the checks and duties of this review on its
+COPPA Review page; both that page and the hosted `ios/app-store/coppa.html` are drawn from
 `js/coppa.js`, and a unit test checks that the table below agrees with it.
 
 ## Does COPPA apply?
@@ -68,7 +68,7 @@ references. Every component is listed here.
   fails if a new key appears.
 - Speech: the Read buttons use the system voice (`speechSynthesis`), which on iPhone and
   iPad runs on the device.
-- Video: the tour (`media/intro.mp4`) ships inside the app and plays from it.
+- Video: none. The app has no video or sound files.
 
 **The iOS shell** (`ios/CubeClubhouse/`, Swift; frameworks: SwiftUI, WebKit, StoreKit,
 UIKit, Foundation, all Apple's):

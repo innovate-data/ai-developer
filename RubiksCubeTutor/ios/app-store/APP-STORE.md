@@ -129,7 +129,7 @@ order. `npm run build:screenshots` draws them again after the app changes.
 
 ## Promo video
 
-`media/intro.mp4` (in the app's own folder) is a 20-second advert: 1080 × 1920 portrait, 30 fps, H.264 with AAC
+`promo/promo.mp4` is a 20-second advert: 1080 × 1920 portrait, 30 fps, H.264 with AAC
 stereo, about 4 MB, sound at −15 LUFS. That is the shape Instagram Reels, TikTok and
 YouTube Shorts want, and it plays on a website as it is. `promo/promo-poster.png` is its
 last frame, for a thumbnail.
@@ -154,7 +154,7 @@ no device frame, at Apple's preview sizes. Use it for social posts and your webs
 To make it again after the app changes: `npm i --no-save playwright-core`, then
 `FFMPEG=/path/to/ffmpeg npm run build:promo`. It needs Chrome or Chromium and ffmpeg
 with libx264. The stage is `promo/promo.html`; the timeline is in `promo/record.js`.
-The same file plays at the top of the app's Learn screen, so remaking it updates both.
+It is not part of the app: the app has no video in it.
 
 ## Children's privacy (COPPA)
 

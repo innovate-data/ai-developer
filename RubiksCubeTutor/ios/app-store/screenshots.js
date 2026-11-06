@@ -87,8 +87,6 @@ const SHOTS = [
       p.on('pageerror', (e) => errors.push(e.message));
       await p.goto(URL);
       await p.evaluate(() => document.fonts.ready);
-      // the store shots show the lessons themselves; the tour is the promo video
-      await p.evaluate(() => { const t = document.getElementById('learn-tour'); if (t) t.hidden = true; });
       await p.waitForTimeout(400);
       await act(p);
       await p.evaluate((sel) => {

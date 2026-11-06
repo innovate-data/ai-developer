@@ -187,7 +187,7 @@ function runCopyPhase() {
   console.log('\nthe Xcode copy phase');
   const root = runCopyPhase();
   for (const f of ['index.html', 'css/style.css', 'js/cube.js', 'js/ncube.js', 'js/solver.js', 'js/bigsolver.js', 'js/view.js', 'js/lessons.js', 'js/timer.js', 'js/coppa.js', 'js/app.js',
-                   'fonts/fredoka-latin-var.woff2', 'fonts/OFL.txt', 'media/intro.mp4', 'media/intro-poster.jpg']) {
+                   'fonts/fredoka-latin-var.woff2', 'fonts/OFL.txt']) {
     ck('bundles ' + f, fs.existsSync(path.join(root, f)));
   }
 
@@ -215,21 +215,14 @@ function runCopyPhase() {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = 'http://127.0.0.1:' + server.address().port;
 
-  console.log('\nthe tour video, served the way WebKit asks for it');
+  console.log('\nno video in the bundle');
+  ck('no media folder is copied', !fs.existsSync(path.join(root, 'media')));
   {
-    const size = fs.statSync(path.join(root, 'media/intro.mp4')).size;
-    const piece = async (range) => { const r = await fetch(base + '/media/intro.mp4', { headers: { Range: range } });
-      return { status: r.status, cr: r.headers.get('content-range'), len: (await r.arrayBuffer()).byteLength, type: r.headers.get('content-type') }; };
-    const first = await piece('bytes=0-1');
-    ck('the first two bytes, as WebKit asks first', first.status === 206 && first.cr === 'bytes 0-1/' + size && first.len === 2 && first.type === 'video/mp4', JSON.stringify(first));
-    const tail = await piece('bytes=-100');
-    ck('the last hundred', tail.status === 206 && tail.cr === 'bytes ' + (size - 100) + '-' + (size - 1) + '/' + size && tail.len === 100);
-    const rest = await piece('bytes=1000-');
-    ck('from a point to the end', rest.status === 206 && rest.len === size - 1000);
-    const odd = await piece('bytes=0-1,5-6');
-    ck('several ranges at once get the whole file', odd.status === 200 && odd.len === size);
-    const whole = await fetch(base + '/media/intro.mp4');
-    ck('without a range, the whole file, saying ranges work', whole.status === 200 && whole.headers.get('accept-ranges') === 'bytes' && (await whole.arrayBuffer()).byteLength === size);
+    // the handler still answers a byte range the way WebKit asks, for any file
+    const f = '/fonts/OFL.txt';
+    const size = fs.statSync(path.join(root, f)).size;
+    const r = await fetch(base + f, { headers: { Range: 'bytes=0-1' } });
+    ck('a byte range gets 206 and just those bytes', r.status === 206 && r.headers.get('content-range') === 'bytes 0-1/' + size && (await r.arrayBuffer()).byteLength === 2);
   }
 
   const b = await chromium.launch({ executablePath: EXE, args: ['--no-sandbox'] });

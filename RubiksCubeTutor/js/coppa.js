@@ -156,26 +156,12 @@
       'Never add anyone’s address, least of all a child’s, to a mailing list or any other list.',
       'Keep COPPA-REVIEW.md as the written security and retention program, and repeat the review every year.',
     ],
-
-    changes: [
-      'Accounts, sign-in, or any way of saving progress anywhere but the device',
-      'Analytics, crash reporting or any measuring of how the app is used',
-      'Advertising of any kind',
-      'Links out of the app, or any way to share',
-      'The camera, the microphone, location or contacts',
-      'Chat, messages or any box for typing words',
-      'Any new software kit, library or plug-in',
-    ],
   };
 
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  // The page's body: the same markup in the app and on the web. opts.version is the app
-  // version to show; opts.privacyHref is where "the Privacy page" points.
-  function toHTML(opts) {
-    const o = opts || {};
-    const version = esc(o.version || review.appVersion);
-    const privacy = esc(o.privacyHref || '#privacy');
+  // The page's body: the same markup in the app and on the web.
+  function toHTML() {
     const checks = review.checks.map((c) => '<li class="coppa-check">'
       + '<div class="coppa-head"><h3>' + esc(c.heading) + '</h3>'
       + '<span class="coppa-chip coppa-' + c.status + '">' + STATUS[c.status] + '</span></div>'
@@ -186,14 +172,7 @@
       + '<p>The rule is ' + esc(review.rule) + '.</p>'
       + '<h3>Does COPPA apply?</h3><p><b>' + esc(review.applies.answer) + '</b> ' + esc(review.applies.text) + '</p>'
       + '<h3>Requirement by requirement</h3><ul class="coppa-checks">' + checks + '</ul>'
-      + '<h3>What we do, as the publisher</h3><ul>' + review.duties.map((d) => '<li>' + esc(d) + '</li>').join('') + '</ul>'
-      + '<h3>What would change the answer</h3><p>Any of these would need this review done again, and most '
-      + 'would need a parent’s consent first. None is in the app:</p><ul>'
-      + review.changes.map((d) => '<li>' + esc(d) + '</li>').join('') + '</ul>'
-      + '<h3>About this review</h3><p class="coppa-about">An engineering review of Cube Clubhouse version '
-      + '<b class="coppa-version">' + version + '</b>, done on ' + esc(review.reviewed) + ' and repeated '
-      + 'every year. It is not legal advice. The <a href="' + privacy + '">Privacy</a> page says exactly '
-      + 'what the app keeps. Questions: Ira Learning LLC, support@iralearningllc.com.</p>';
+      + '<h3>What we do, as the publisher</h3><ul>' + review.duties.map((d) => '<li>' + esc(d) + '</li>').join('') + '</ul>';
   }
 
   return { STATUS, review, toHTML };

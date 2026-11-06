@@ -18,7 +18,7 @@
     ways this app is opened are all allowed - a server ('self'), the iOS bundle's custom
     scheme, and a file:// double-click.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' cubeclubhouse: file:; style-src 'self' cubeclubhouse: file:; font-src 'self' cubeclubhouse: file:; img-src 'self' cubeclubhouse: file: data:; media-src 'self' cubeclubhouse: file:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' cubeclubhouse: file:; style-src 'self' cubeclubhouse: file:; font-src 'self' cubeclubhouse: file:; img-src 'self' cubeclubhouse: file: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -50,31 +50,6 @@
   <main aria-busy="true">
     <!-- ============================================================ LEARN -->
     <section id="screen-learn" class="screen">
-      <figure id="learn-tour" class="intro-video" aria-labelledby="learn-tour-title">
-        <h2 id="learn-tour-title" class="tour-title">🎬 Take the 20-Second Tour</h2>
-        <video id="intro-video" controls playsinline preload="metadata" poster="media/intro-poster.jpg"
-          aria-describedby="intro-video-about">
-          <source src="media/intro.mp4" type="video/mp4">
-        </video>
-        <figcaption id="intro-video-about">The lessons, <b>Help Me Solve It</b>, <b>My Real Cube</b> and the
-          Timer, in 20 seconds, with music. It plays from inside the app; nothing is downloaded.</figcaption>
-        <details class="intro-video-words">
-          <summary>What the video shows</summary>
-          <ul>
-            <li>“Learn to solve the Cube, one step at a time.”</li>
-            <li>“Ten short lessons, from your very first turn to your first full solve”: the lesson
-              list, then a lesson’s cube turning.</li>
-            <li>“Stuck? Help Me Solve It. Every turn, shown one step at a time”: a cube mixes
-              itself up, then solves itself.</li>
-            <li>“Paint in your cube, and get the steps for the one in your hand”: the flat cube fills
-              with colours and is checked.</li>
-            <li>“Time it. Beat your best. A real speedcubing timer, with your records”: mix turns
-              ticked off, then the clock running.</li>
-            <li>Free, no ads, no account, works offline. For iPhone and iPad, ages 6+. Cube not
-              included.</li>
-          </ul>
-        </details>
-      </figure>
       <div id="lesson-list" class="lesson-grid" aria-label="Lessons"></div>
 
       <div id="lesson-view" hidden>
