@@ -64,7 +64,7 @@ setting (up to 125%). See "Speaking and feeling like iOS" in the main README.
 
 ## The launch screen
 
-While the app starts, iOS shows the Cube Clubhouse® logo (the cube face from the icon,
+While the app starts, iOS shows the Cube Clubhouse™ logo (the cube face from the icon,
 with the name) centred on the app's own background colour, in light or dark to match the
 device. It comes from `UILaunchScreen` in `Info.plist`: the `LaunchBackground` colour and
 the `LaunchLogo` image set in the asset catalog. The colour is exactly the page's
@@ -92,11 +92,11 @@ place.
 The name under the icon comes from `INFOPLIST_KEY_CFBundleDisplayName` in the target's
 build settings. Change it there; you do not need to rename files or the scheme.
 
-The name under the icon is "Cube Clubhouse" without the ® sign on purpose: the home
-screen has room for about twelve characters, and the sign would get it cut short. The ®
+The name under the icon is "Cube Clubhouse" without the ™ sign on purpose: the home
+screen has room for about twelve characters, and the sign would get it cut short. The ™
 appears in the app itself: in the header on every screen, on the launch screen, in the
-footer, and in the licence and trademark notice. Use ® only while the mark is actually
-registered; a mark that is claimed but not registered takes ™ instead.
+footer, and in the licence and trademark notice. It is ™, not ®, because the mark is not
+registered; switch to ® only once the US registration is granted.
 
 ## Uploading to the App Store
 

@@ -130,14 +130,31 @@
       if ('speechSynthesis' in window) speechSynthesis.cancel();
       release();
     }
+    // Only a voice made on the device. Some browsers also offer voices produced online,
+    // which would send the words away; the app never picks one of those, and if a browser
+    // has nothing else, the Read buttons stay silent. An empty list means the voices are
+    // not loaded yet, or the system offers only its own default (as on iPhone and iPad),
+    // and then the system's default voice is used.
+    function deviceVoice() {
+      const all = typeof speechSynthesis.getVoices === 'function' ? speechSynthesis.getVoices() || [] : [];
+      if (!all.length) return { ok: true, voice: null };
+      const local = all.filter((v) => v.localService);
+      if (!local.length) return { ok: false, voice: null };
+      const lang = (document.documentElement.lang || 'en').slice(0, 2).toLowerCase();
+      const fits = (v) => String(v.lang || '').toLowerCase().startsWith(lang);
+      return { ok: true, voice: local.find((v) => v.default && fits(v)) || local.find(fits) || local[0] };
+    }
+    if ('speechSynthesis' in window && typeof speechSynthesis.getVoices === 'function') speechSynthesis.getVoices();   // start loading the list
     function speak(text, who, whenStopped) {
       const holder = who || ANON;
       stop();                         // never two voices at once
-      if (!('speechSynthesis' in window)) {
+      const pick = 'speechSynthesis' in window ? deviceVoice() : { ok: false };
+      if (!pick.ok) {
         if (whenStopped) whenStopped();
         return;
       }
       const u = new SpeechSynthesisUtterance(speakable(text));
+      if (pick.voice) { u.voice = pick.voice; u.lang = pick.voice.lang; }
       u.rate = 0.9;                   // a touch slower for young listeners
       // A cancelled utterance can still fire its end event late, by which time someone
       // else may be speaking, so only the current owner is allowed to release.

@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// Cube Clubhouse® for iPhone and iPad.
+/// Cube Clubhouse™ for iPhone and iPad.
 ///
 /// The teaching app itself is the web app in the parent folder; this target hosts it in a
 /// WKWebView and does the few things a web page cannot do for itself on iOS. The page is

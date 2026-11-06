@@ -1101,16 +1101,16 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('bad saved data is skipped, good data kept', (await times(p)).length === 1 && (await p.locator('#timer-size .size-btn.active').textContent()) === '3×3');
     await p.close(); }
 
-  console.log('R37 Cube Clubhouse® carries its registered-trademark sign');
+  console.log('R37 Cube Clubhouse™ carries its trademark sign (™, not ®: the mark is not registered)');
   { const p = await newPage();
     const brand = await p.locator('.topbar .brand').textContent();
-    ck('the header brand, on every screen', /Cube Clubhouse®/.test(brand) && (await p.locator('.topbar .brand sup.reg').count()) === 1);
-    ck('the footer, with the notice', /Cube Clubhouse® ·/.test(await p.locator('footer').textContent())
-      && /Cube Clubhouse® is a registered trademark of Ira Learning LLC/.test(await p.locator('.foot-copy').textContent()));
+    ck('the header brand, on every screen', /Cube Clubhouse™/.test(brand) && !/®/.test(brand) && (await p.locator('.topbar .brand sup.reg').count()) === 1);
+    ck('the footer, with the notice', /Cube Clubhouse™ ·/.test(await p.locator('footer').textContent())
+      && /Cube Clubhouse™ is a trademark of Ira Learning LLC/.test(await p.locator('.foot-copy').textContent()));
     await p.locator('.foot-links [data-info="licence"]').click(); await p.waitForTimeout(200);
-    ck('the first mention on the grown-ups pages', /know about Cube Clubhouse®/.test(await p.locator('.info-lede').textContent()));
-    ck('the licence opens with it', /^\s*CUBE CLUBHOUSE END USER LICENCE AGREEMENT[\s\S]*?Cube Clubhouse\(R\) is provided/.test(await p.locator('.licence-text').textContent()));
-    ck('the trademark note says who owns it', /Cube Clubhouse® is a registered trademark of Ira Learning LLC/.test(await p.locator('#licence').textContent()));
+    ck('the first mention on the grown-ups pages', /know about Cube Clubhouse™/.test(await p.locator('.info-lede').textContent()));
+    ck('the licence opens with it', /^\s*CUBE CLUBHOUSE END USER LICENCE AGREEMENT[\s\S]*?Cube Clubhouse\(TM\) is provided/.test(await p.locator('.licence-text').textContent()));
+    ck('the trademark note says who owns it', /Cube Clubhouse™ and the Cube Clubhouse\s+logo are trademarks of Ira Learning LLC/.test(await p.locator('#licence').textContent()));
     ck('the sign does not push the header taller', await p.evaluate(() => {
       const b = document.querySelector('.topbar .brand');
       return b.getBoundingClientRect().height <= 44;
@@ -1449,7 +1449,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('it gives rough guides, not promises', /rough guides, not promises/.test(parents) && !/most children can solve/.test(parents) && !/that exact cube/.test(parents));
     const licence = (await p.locator('#licence').innerText()).replace(/\s+/g, ' ');
     ck('the summary says a grown-up agrees, and supervises', /a parent or guardian agrees for a child/.test(licence) && /small parts/.test(licence));
-    ck('the terms have the new clauses', ['EDUCATIONAL CONTENT', 'SAFETY AND SUPERVISION', 'APPLE APP STORE TERMS', 'GOVERNING LAW', 'US$0.01', 'Last updated'].every((x) => licence.includes(x)));
+    ck('the terms have the new clauses', ['EDUCATIONAL CONTENT', 'SAFETY AND SUPERVISION', 'APPLE APP STORE TERMS', 'GOVERNING LAW', 'US$10', 'Last updated'].every((x) => licence.includes(x)));
     ck('no "for as long as you like" or "nothing held back"', !/for as long as you like|held back/.test(licence + parents));
     await p.locator('.foot-links [data-info="privacy"]').click(); await p.waitForTimeout(150);
     const privacy = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
@@ -1852,7 +1852,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     // the registered mark never gets too small to read
     const m = await b.newPage({ viewport: { width: 1280, height: 900 } });
     await m.goto(URL); await m.waitForTimeout(200);
-    ck('every ® is at least 10 px', await m.evaluate(() => [...document.querySelectorAll('.reg')].every((e) => parseFloat(getComputedStyle(e).fontSize) >= 10)));
+    ck('every ™ is at least 10 px', await m.evaluate(() => [...document.querySelectorAll('.reg')].every((e) => parseFloat(getComputedStyle(e).fontSize) >= 10)));
     await m.close(); }
 
   console.log('R59 Reduce Motion: moves do not cut faster than three a second; My Real Cube carries the care note');
@@ -1873,6 +1873,27 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await p.locator('nav button[data-screen="solve"]').click(); await p.waitForTimeout(250);
     ck('My Real Cube asks to turn gently and keep loose pieces from young children', /gently/.test(await p.locator('#solve-care').textContent()) && /young children/.test(await p.locator('#solve-care').textContent()));
     await p.close(); }
+
+  console.log('R60 Read Aloud only ever uses a voice made on the device');
+  for (const [label, voices, want] of [
+    ['only online voices: it stays silent', [{ name: 'Online US', lang: 'en-US', localService: false, default: true }], null],
+    ['a mix: it picks the one on the device', [{ name: 'Online US', lang: 'en-US', localService: false, default: true }, { name: 'Device', lang: 'en-GB', localService: true, default: false }], 'Device'],
+  ]) {
+    const p = await b.newPage({ viewport: { width: 1280, height: 950 } });
+    await p.addInitScript((list) => {
+      window.__spoken = [];
+      const fake = { speaking: false, getVoices: () => list, speak: (u) => { window.__spoken.push(u.voice ? u.voice.name : 'default'); }, cancel: () => {}, pause() {}, resume() {}, addEventListener() {} };
+      Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: fake });
+      window.SpeechSynthesisUtterance = function (t) { this.text = t; this.voice = null; };
+    }, voices);
+    await p.goto(URL); await p.waitForTimeout(300);
+    await p.locator('.lesson-card').nth(0).click(); await p.waitForTimeout(250);
+    const read = p.locator('#screen-learn button', { hasText: /Read/ }).first();
+    await read.click(); await p.waitForTimeout(150);
+    const spoken = await p.evaluate(() => window.__spoken);
+    ck(label, want === null ? spoken.length === 0 : spoken.length === 1 && spoken[0] === want, JSON.stringify(spoken));
+    await p.close();
+  }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');

@@ -45,7 +45,7 @@ function build() {
   }
 
   const privacy = page('Cube Clubhouse Privacy Policy', `
-    <h1>Cube Clubhouse<sup>®</sup> Privacy Policy</h1>
+    <h1>Cube Clubhouse<sup>™</sup> Privacy Policy</h1>
     <p class="note">For Cube Clubhouse on iPhone and iPad, version ${version}. This is the same text the app
       shows on its Privacy page.</p>
     ${body.trim()}
@@ -54,12 +54,12 @@ function build() {
   // The COPPA Review, drawn by the same function as the app's own COPPA Review page.
   const COPPA = require('../../js/coppa.js');
   const coppa = page('Cube Clubhouse COPPA Review', `
-    <h1>Cube Clubhouse<sup>®</sup> COPPA Review</h1>
+    <h1>Cube Clubhouse<sup>™</sup> COPPA Review</h1>
     ${COPPA.toHTML()}
     <p class="note"><a href="privacy-policy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>`);
 
   const support = page('Cube Clubhouse Support', `
-    <h1>Cube Clubhouse<sup>®</sup> Support</h1>
+    <h1>Cube Clubhouse<sup>™</sup> Support</h1>
     <p class="strong">Cube Clubhouse helps anyone aged 6 and over learn to solve a Cube step by step. It is
       free, needs no account and works without an internet connection.</p>
 
@@ -87,7 +87,7 @@ function build() {
     <p>No. It makes no network requests at all, and every part works in Aeroplane Mode.</p>
 
     <p class="note"><a href="privacy-policy.html">Privacy Policy</a> · © 2026 Ira Learning LLC. All rights
-      reserved. Cube Clubhouse® is a registered trademark of Ira Learning LLC.</p>`);
+      reserved. Cube Clubhouse™ is a trademark of Ira Learning LLC.</p>`);
 
   return { 'privacy-policy.html': privacy, 'support.html': support, 'coppa.html': coppa };
 }

@@ -48,15 +48,13 @@
 
   /* ---- the phone ---- */
   #phone { position: absolute; left: 50%; top: 262px; width: 318px; height: 670px; margin-left: -159px;
-    border-radius: 50px; background: #111; padding: 12px;
+    border-radius: 32px; background: #111; padding: 12px;
     box-shadow: 0 30px 60px rgba(30,30,50,.28), inset 0 0 0 2px #333;
     transform: translateY(820px); transition: transform .8s cubic-bezier(.2,.9,.25,1); }
   #phone.on { transform: none; }
   #phone.off { transform: translateY(820px); transition-duration: .6s; transition-timing-function: ease-in; }
-  .screen { width: 294px; height: 646px; border-radius: 38px; overflow: hidden; position: relative; background: var(--bg); }
+  .screen { width: 294px; height: 646px; border-radius: 22px; overflow: hidden; position: relative; background: var(--bg); }
   .screen iframe { border: 0; width: 390px; height: 857px; transform: scale(.7538); transform-origin: 0 0; }
-  .island { position: absolute; top: 20px; left: 50%; width: 88px; height: 25px; margin-left: -44px;
-    background: #111; border-radius: 20px; z-index: 2; }
 
   /* ---- captions ---- */
   .cap { position: absolute; left: 30px; right: 30px; top: 58px; text-align: center; opacity: 0;
@@ -105,7 +103,7 @@
 
   <div id="title">
     <img class="icon" src="../../CubeClubhouse/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="">
-    <div class="name">Cube Clubhouse<sup>®</sup></div>
+    <div class="name">Cube Clubhouse<sup>™</sup></div>
     <div class="tag">Learn to solve the Cube,<br>one step at a time.</div>
   </div>
 
@@ -114,16 +112,16 @@
   <div class="cap" id="cap-real"><h2>Paint in <span class="hi">your</span> cube</h2><p>and get the steps for the one in your hand</p></div>
   <div class="cap" id="cap-timer"><h2>Time it. <span class="hi">Beat your best.</span></h2><p>A real speedcubing timer, with your records</p></div>
 
-  <div id="phone"><div class="screen"><div class="island"></div><iframe id="app" title="Cube Clubhouse"></iframe></div></div>
+  <div id="phone"><div class="screen"><iframe id="app" title="Cube Clubhouse"></iframe></div></div>
   <div id="tap"></div>
 
   <div id="end">
     <img class="icon" src="../../CubeClubhouse/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="">
-    <div class="name">Cube Clubhouse<sup>®</sup></div>
+    <div class="name">Cube Clubhouse<sup>™</sup></div>
     <div class="tag">Learn to solve the Cube, step by step</div>
     <div class="chips"><span class="chip">Free</span><span class="chip">No ads</span><span class="chip">No account</span><span class="chip">Works offline</span></div>
     <div class="where">For iPhone and iPad · Ages 6+</div>
-    <div class="fine">© 2026 Ira Learning LLC. Cube Clubhouse® is a registered trademark of Ira Learning LLC.<br>Cube not included.</div>
+    <div class="fine">© 2026 Ira Learning LLC. Cube Clubhouse™ is a trademark of Ira Learning LLC.<br>Cube not included.</div>
   </div>
 
 </div>

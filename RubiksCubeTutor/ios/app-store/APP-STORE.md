@@ -1,4 +1,4 @@
-# Releasing Cube Clubhouse® on the App Store
+# Releasing Cube Clubhouse™ on the App Store
 
 Everything App Store Connect asks for, ready to paste, and the steps in order. The app
 itself is ready: `ios/release.sh` archives it, checks it, and exports or uploads it.
@@ -241,5 +241,7 @@ then rebuild the hosted pages.
 
 The licence and privacy wording were written to reduce risk, not reviewed by a lawyer.
 Have one confirm: the state named for governing law, whether to add arbitration, whether
-to publish a postal address, the US$0.01 (one cent) liability cap, and the Apple terms in clause 12.
-Use ® only while the mark is actually registered; otherwise ™.
+to publish a postal address, the US$10 liability cap, and the Apple terms in clause 12.
+The app uses ™, because no registration for "Cube Clubhouse" was found. Switch to ® only
+once the US registration is granted, and have a clearance search done first (a "CLUBHOUSE"
+mark is registered for children's educational publications).

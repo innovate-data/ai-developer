@@ -1,4 +1,4 @@
-# COPPA Review: Cube Clubhouse®
+# COPPA Review: Cube Clubhouse™
 
 Version 1.0 · reviewed 5 November 2026 · repeat every year, and whenever anything under
 "What would change the answer" happens.

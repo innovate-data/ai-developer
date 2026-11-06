@@ -827,7 +827,7 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
   const lic = read('LICENSE');
   const html = read('index.html');
   const shown = /<pre class="licence-text">([\s\S]*?)<\/pre>/.exec(html)[1];
-  const terms = lic.slice(0, lic.indexOf('Cube Clubhouse(R) is a registered trademark')).trimEnd();
+  const terms = lic.slice(0, lic.indexOf('Cube Clubhouse(TM) and the Cube Clubhouse logo')).trimEnd();
   assert.strictEqual(shown, terms, 'the Licence page and LICENSE differ');
   assert(/^[\x00-\x7f]*$/.test(lic), 'LICENSE is not plain ASCII');
   assert(lic.split('\n').every((l) => l.length <= 78), 'LICENSE has a line over 78 characters');
@@ -835,7 +835,7 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
   const nums = [...terms.matchAll(/^(\d+)\. [A-Z]/gm)].map((m) => +m[1]);
   assert.deepStrictEqual(nums, Array.from({ length: 15 }, (_, i) => i + 1), 'clause numbers: ' + nums.join(','));
   for (const clause of ['By installing, opening or using the Software you', 'parent or guardian', 'EDUCATIONAL CONTENT',
-    'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$0.01', 'APPLE APP STORE TERMS',
+    'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$10', 'APPLE APP STORE TERMS',
     'third-party\n   beneficiaries', 'GOVERNING LAW', 'CHANGES', 'GENERAL', 'Last updated: 6 November 2026', 'strong magnets', 'Anyone under 13 should use the Software only with the permission']) {
     assert(terms.includes(clause), 'the licence does not say: ' + clause);
   }
@@ -952,6 +952,15 @@ test('updates: the App Store check is the one request, made by the app, small an
   }
 });
 
+
+test('trademark: ™ for Cube Clubhouse everywhere, never ® (the mark is not registered)', () => {
+  for (const f of ['index.html', 'LICENSE', 'ios/app-store/privacy-policy.html', 'ios/app-store/support.html', 'ios/app-store/coppa.html',
+    'ios/app-store/promo/promo.html', 'ios/launch-art/logo.html', 'ios/app-store/APP-STORE.md', 'README.md']) {
+    const t = read(f);
+    assert(!/Cube Clubhouse(®|\(R\)|<sup[^>]*>®)/.test(t), f + ' marks Cube Clubhouse with ®');
+    assert(!/Cube Clubhouse\S* is a registered trademark/.test(t), f + ' calls Cube Clubhouse a registered trademark');
+  }
+});
 
 test('no video in the app: none on the page, none allowed by the policy, none bundled', () => {
   const html = read('index.html');

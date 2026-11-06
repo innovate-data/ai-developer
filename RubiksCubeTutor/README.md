@@ -1,4 +1,4 @@
-# Cube Clubhouse® – a Cube tutor for ages 6+
+# Cube Clubhouse™ – a Cube tutor for ages 6+
 
 Cube Clubhouse helps anyone aged 6 and over learn to solve a 3×3 Cube using the
 classic beginner "layer by layer" method. It is a single-page web app with **no build
@@ -10,7 +10,7 @@ including on a phone or tablet.
 > it, and the licence grants permission to use it and nothing more. See `LICENSE`, which
 > is also shown to the reader on the app's own Licence page. The repository's root
 > `LICENSE` covers the other projects beside this folder, not this one.
-> Cube Clubhouse® is a registered trademark of Ira Learning LLC.
+> Cube Clubhouse™ is a trademark of Ira Learning LLC.
 
 ```
 RubiksCubeTutor/
@@ -127,7 +127,7 @@ Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" bu
 ## 3. Screens
 
 **Launch** – on iPhone and iPad the app opens on its logo, the cube face from the icon
-with "Cube Clubhouse®", on the app's own background colour in light or dark. The same
+with "Cube Clubhouse™", on the app's own background colour in light or dark. The same
 picture stays up until the page has loaded and then fades, so there is no white flash.
 
 **Loading page** – the first thing painted: the launch screen's logo, at its size and in
@@ -547,7 +547,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R34 | +2 and DNF toggle on the last solve (a DNF is never the best), delete asks first with an alert that names the time, and the 15 seconds to look count down, then give +2, then DNF. The clock is fast-forwarded rather than waited for. |
 | R35 | Leaving the screen mid-solve throws the solve away; Escape cancels the looking time. |
 | R36 | The Privacy and For parents pages describe the times; Clear saved progress erases them at once; opening the Timer stores nothing; damaged saved data is skipped, not fatal. |
-| R37 | Cube Clubhouse® carries its ® in the header on every screen, the footer (with the ownership notice), the first mention on the grown-ups pages, the licence and the trademark note, without making the header taller; the page title stays plain. |
+| R37 | Cube Clubhouse™ carries its ™ in the header on every screen, the footer (with the ownership notice), the first mention on the grown-ups pages, the licence and the trademark note, without making the header taller; the page title stays plain. |
 | R38 | Help me solve this mix opens guided steps for that exact mix (every turn ticked, the picture mixed), a whole watched solve ends solved, the steps close on a tick, a new mix or a started clock, a 5×5 holds the controls while it thinks and plans centres and edges, and a 3×3 note links to My real cube. |
 | R39 | Ticking the mix: one tap turns the picture by one move, a later tap ticks everything up to it, a done turn steps back, the last turn says it is time to solve, and turns cannot be ticked while the clock runs. |
 | R40 | Inspection says "Eight seconds" and "Twelve seconds", once each, and nothing during the solve. |
@@ -569,6 +569,8 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R56 | On an iPad: the first row of lessons is on the first screen in every orientation; the header is one row at every width from 320 to 1376 pt and at the largest Text Size, with the tabs along the bottom up to 779 px (an iPad mini upright, Split View and Stage Manager windows used to get a sticky two-row 123 px bar that ate a quarter of a short window); the guide lands below the pinned bar; and tabbing with a keyboard never leaves a control behind it. |
 | R57 | Slide Over at the largest Text Size (256 px) and at 300: no screen (Learn, a lesson, Play with its guide and a 6×6, Timer, My Real Cube, About, Privacy, COPPA, Licence) scrolls sideways or is cut off at the right, and all four tabs fit the bar. The cube column used to grow to 280 px and the tab bar to 288, clipping the guide's text and buttons; a long address now breaks instead of widening the page. |
 | R58 | A pinned cube column fits the window or scrolls with the page: a lesson's cube, move pad and Reset Cube message fit an iPad mini in landscape; a column taller than the window (My Real Cube, a 6×6) is never pinned, because its lower controls could not be reached until the page ended; turned upright and back, the pinning follows the layout; and every ® is at least 10 px. |
+| R59 | Reduce Motion: Mix It Up cuts no faster than one move every 350 ms; My Real Cube carries its care note. |
+| R60 | Read Aloud only ever uses a voice made on the device: with only online voices it stays silent; with a mix it picks the one on the device. |
 
 `npm run test:ios` (`tests/ios-bundle-tests.js`) reads the Xcode project (no duplicate
 object ids, nothing pointed at that is not there, the shop and the privacy manifest in

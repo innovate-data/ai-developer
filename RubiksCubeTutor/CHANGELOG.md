@@ -4,6 +4,17 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 
 ## 6 November 2026
 
+### Changed (a legal review)
+- **™, not ®.** No registration for "Cube Clubhouse" was found, so the app, licence, hosted pages,
+  launch logo, App Store screenshots and promo now use ™ and say "a trademark of Ira Learning
+  LLC". Switch to ® only once the US registration is granted. A unit test keeps ® off the mark.
+- **Liability cap** (licence clause 10) is now ten US dollars (US$10).
+- **Read Aloud uses only a voice made on the device.** A browser's online voices are never
+  picked; with no voice on the device, the Read buttons stay silent (browser test R60).
+- **Photosensitive epilepsy** is named in About › Safety and the licence (clause 8): turn on
+  Reduce Motion and use the Slow speed.
+- **Promo phone frame** is a plain rounded frame, with no iPhone-style notch.
+
 ### Added
 - **Magnet warning.** The licence (clause 8), About › Safety and the App Store description now
   say that many speed cubes contain small, strong magnets, to keep a broken cube away from
