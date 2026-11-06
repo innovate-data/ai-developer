@@ -2,6 +2,13 @@
 
 All notable changes to Cube Clubhouse®. Dates are when the change was made.
 
+## 6 November 2026
+
+### Added
+- **Magnet warning.** The licence (clause 8), About › Safety and the App Store description now
+  say that many speed cubes contain small, strong magnets, to keep a broken cube away from
+  children, and to get medical help at once if a magnet may have been swallowed.
+
 ## 5 November 2026
 
 ### Changed

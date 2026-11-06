@@ -98,7 +98,8 @@ Do **not** choose the Kids Category: the app is for a general audience of all ag
 > • Follows Dark Mode, Text Size and Reduce Motion
 > • Every colour is also named in words
 >
-> A cube is not included. Real puzzle cubes contain small parts and are not suitable
+> A cube is not included. Real puzzle cubes contain small parts, and many speed cubes
+> contain small magnets; keep broken cubes away from young children. Cubes are not suitable
 > for children under three.
 >
 > Cube Clubhouse is an independent app. It is not made by, affiliated with or endorsed by
