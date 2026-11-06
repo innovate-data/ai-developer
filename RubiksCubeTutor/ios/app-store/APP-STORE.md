@@ -61,7 +61,7 @@ Install it on a real iPhone and iPad through TestFlight before you submit.
 **Subtitle** (30 max): `Learn to solve the Cube`
 
 **Category**: Primary **Education**; secondary **Games › Puzzle** (optional).
-Do **not** choose the Kids Category: the app is for a general audience of all ages.
+Do **not** choose the Kids Category: the app is for a general audience aged 6 and over.
 
 **Promotional text** (170 max):
 
@@ -70,7 +70,7 @@ Do **not** choose the Kids Category: the app is for a general audience of all ag
 
 **Description** (4,000 max):
 
-> Cube Clubhouse helps anyone, of any age, learn to solve a Cube step by step, using the
+> Cube Clubhouse helps anyone aged 6 and over learn to solve a Cube step by step, using the
 > beginner layer-by-layer method most people learn first.
 >
 > LEARN
@@ -141,7 +141,7 @@ last frame, for a thumbnail.
 | 5.6–9.8 s | "Stuck? Help Me Solve It": a cube mixes itself, then solves itself |
 | 9.8–12.6 s | "Paint in your cube": the flat cube fills with colours and is checked |
 | 12.6–16.5 s | "Time it. Beat your best.": mix turns ticked off, then the clock running |
-| 16.8–20 s | End card: Free · No ads · No account · Works offline · For iPhone and iPad · All ages |
+| 16.8–20 s | End card: Free · No ads · No account · Works offline · For iPhone and iPad · Ages 6+ |
 
 Everything in the phone is the real app, filmed running. The music is made from sine
 waves and noise in `promo/music.js`, so there is nothing to license. The advert makes

@@ -1,6 +1,6 @@
-# Cube Clubhouse® – a Cube tutor for all ages
+# Cube Clubhouse® – a Cube tutor for ages 6+
 
-Cube Clubhouse helps people of any age learn to solve a 3×3 Cube using the
+Cube Clubhouse helps anyone aged 6 and over learn to solve a 3×3 Cube using the
 classic beginner "layer by layer" method. It is a single-page web app with **no build
 step and no dependencies**: open `index.html` in any modern browser and it works,
 including on a phone or tablet.
@@ -54,7 +54,7 @@ npm run test:all       # all three
 
 | | |
 |---|---|
-| **Learner** | Anyone, of any age, who has a real cube and wants to solve it. The words are written so a confident reader of about seven can follow them, which keeps them plain for everyone; a younger child can learn with an adult alongside. The app is worded for a general audience, not for children only. |
+| **Learner** | Anyone aged 6 or over who has a real cube and wants to solve it. The words are written so a confident reader of about seven can follow them, which keeps them plain for everyone; a six-year-old child can learn with an adult alongside. The app is worded for a general audience, not for children only. |
 | **Goal** | Ten short lessons that lead a learner, step by step, to a first solve. |
 | **Method** | The beginner layer-by-layer method used by most official guides: daisy → white cross → white corners → middle layer → yellow cross → yellow edges → yellow corners → twist corners. |
 | **Not a goal** | Speed-cubing methods (CFOP, Roux) or optimal solutions. Move counts do not matter; understanding does. |
@@ -562,7 +562,7 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R46 | The iOS alert: Cancel has the focus, it is announced as a modal alert, Tab stays inside it, keys do not reach the cube behind, tapping outside does nothing, and Escape cancels. |
 | R47 | The Privacy page says exactly what is kept: driving the app writes only the four documented keys, the Timer's record holds only its size, the look-first switch and times without dates, and the page names every one of them; it says a copy leaves the device only in the family's own backup; and it names Ira Learning LLC with an email address shown as copyable text, not a link out of the app, alongside a notice asking a child to have a parent or guardian send it. |
 | R48 | The info pages make no promises: About has a Safety section (small parts, under-three warning, Reduce Motion) and speaks of "rough guides, not promises" rather than a guaranteed outcome or timing; the Licence page's plain-English summary says a parent or guardian agrees on a child's behalf and names the new terms (educational content, safety and supervision, App Store terms, governing law, the US$0.01 (one cent) liability cap); and "for as long as you like" / "held back" do not appear. |
-| R49 | The app speaks to learners of every age: the footer says "a Cube tutor for all ages" and its link reads About; the info page is About the App and says anyone, of any age, with no upper age limit, and speaks to the learner rather than about "the child"; Privacy covers everyone who uses the app; the licence says it is made for a general audience; the safety advice for young children stays. |
+| R49 | The app speaks to learners aged 6 and over: the footer says "a Cube tutor for ages 6+" and its link reads About; the info page is About the App and says anyone aged 6 or over, with no upper age limit, and speaks to the learner rather than about "the child"; Privacy covers everyone who uses the app; the licence says it is made for a general audience; the safety advice for young children stays. |
 | R50 | In the guide's two-column list of move words, a list with a single move split that one item across both columns ("…the side ··· left." / "facing you, so its top goes to the"). Found in the iPad App Store screenshot. Each item now stays whole. |
 | R51 | Reset Cube in a lesson: it brings back the same practice puzzle (not a new one), clears Undo so a reset cannot be undone, puts an open hint and its highlight away, and after a win starts the puzzle again while keeping the stars (hints already seen for that puzzle still mean no 🧠); after Another Puzzle it returns to the new puzzle; pressed halfway through a trick's Watch it still lands on the start; in a lesson without a puzzle it makes the cube solved. |
 | R52 | The Updates section: none in a browser (whose Privacy page still says the page asks for nothing); in the iOS app it shows the version, a switch that starts as the app says and tells the app when flipped, and Check Now, which asks the app, waits, reports up to date / newer / unreachable, ignores answers nobody asked for, shows a version only as its leading number, and gives up after twelve seconds with no answer. The app's Privacy page and footer say what the check sends. |

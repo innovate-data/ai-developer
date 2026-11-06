@@ -148,12 +148,12 @@ Two things to settle before you submit:
 The app is free with no purchases, no subscriptions and no advertising, so there is
 nothing to declare under in-app purchases and nothing to price.
 
-**Audience.** The app is worded for a general audience of all ages, not for children
+**Audience.** The app is worded for a general audience aged 6 and over, not for children
 only. To keep the store listing consistent with that, publish it in the **Education**
 category (with Games › Puzzle as a secondary if you like) and **do not** tick the Kids
 Category; answer the age-rating questions truthfully, which for this app gives 4+. A 4+
 rating means "suitable for everyone", not "made for children". Write the description and
-screenshots for learners of any age too. Be aware that the FTC decides whether an app is
+screenshots for learners aged 6 and over too. Be aware that the FTC decides whether an app is
 "directed to children" from the whole picture (its look, language, subject and actual
 audience), not from what the app says about itself, so the wording change lowers risk but
 is not a guarantee; because the app collects nothing from anyone, it stays on the safe

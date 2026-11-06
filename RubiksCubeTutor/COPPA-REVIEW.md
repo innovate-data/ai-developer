@@ -18,7 +18,7 @@ Review page; both that page and the hosted `ios/app-store/coppa.html` are drawn 
 **Yes, and we act as if it does for everyone.** COPPA applies to a website or online
 service directed to children under 13, or one that knows it collects from them.
 
-- *Directed to children:* Cube Clubhouse is worded for a general audience of all ages,
+- *Directed to children:* Cube Clubhouse is worded for a general audience aged 6 and over,
   but the FTC looks at the whole service (subject, pictures, language, actual audience).
   A puzzle cube, stars, a 🧠 badge and words written so a seven-year-old can read them
   appeal to children, and children use it. We treat it as directed to children.

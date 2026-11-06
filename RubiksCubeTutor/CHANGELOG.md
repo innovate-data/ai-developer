@@ -13,6 +13,12 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 - **My Real Cube care note:** "Turn your cube gently. If a piece pops out, keep it away from
   young children."
 
+### Changed
+- **Ages 6 and over.** "For any age" / "all ages" is now "aged 6 and over" (or "ages 6+")
+  everywhere: the licence, About, Privacy, the COPPA Review, the footer, the tour, the hosted
+  pages, the App Store description, the promo end card and the README. There is still no
+  upper age limit, and the App Store rating stays 4+.
+
 ### Fixed
 - **No flicker with Reduce Motion.** With Reduce Motion on, a turn is a cut instead of an
   animation, and a fast solve or Mix It Up cut up to 16 times a second (over the

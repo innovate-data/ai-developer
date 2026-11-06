@@ -29,7 +29,7 @@
 
     applies: {
       answer: 'Yes, and we act as if it does for everyone.',
-      text: 'Cube Clubhouse is made for all ages, but its subject, its pictures and its plain words appeal '
+      text: 'Cube Clubhouse is made for anyone aged 6 and over, and its subject, its pictures and its plain words appeal '
         + 'to children, and children use it. So we treat it as directed to children and apply COPPA to '
         + 'every person who opens it. The iPhone and iPad app can reach the internet, for its update '
         + 'check, which makes it an online service in COPPA’s sense. We meet the rule the simplest way '

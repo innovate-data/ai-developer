@@ -836,7 +836,7 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
   assert.deepStrictEqual(nums, Array.from({ length: 15 }, (_, i) => i + 1), 'clause numbers: ' + nums.join(','));
   for (const clause of ['By installing, opening or using the Software you', 'parent or guardian', 'EDUCATIONAL CONTENT',
     'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$0.01', 'APPLE APP STORE TERMS',
-    'third-party\n   beneficiaries', 'GOVERNING LAW', 'CHANGES', 'GENERAL', 'Last updated: 6 November 2026', 'strong magnets', 'Anyone under 13 should use the Software only with the permission of a']) {
+    'third-party\n   beneficiaries', 'GOVERNING LAW', 'CHANGES', 'GENERAL', 'Last updated: 6 November 2026', 'strong magnets', 'Anyone under 13 should use the Software only with the permission']) {
     assert(terms.includes(clause), 'the licence does not say: ' + clause);
   }
   const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
@@ -846,10 +846,10 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
     assert(!text.includes(promise), 'a promise is back: ' + promise);
   }
   const parents = /<article id="parents"[\s\S]*?<\/article>/.exec(html)[0];
-  // worded for a general audience of all ages, in the app and in the licence
-  assert(terms.includes('general audience of people of all\nages'), 'the licence does not say it is for all ages');
+  // worded for a general audience aged 6 and over, in the app and in the licence
+  assert(terms.includes('general audience of people aged 6\nand over'), 'the licence does not say it is for ages 6 and over');
   assert(!/kid-friendly|teaches kids|your child/i.test(text), 'child-only wording is back');
-  assert(/anyone, of any age/.test(parents), 'About does not say any age');
+  assert(/anyone aged 6 or over/.test(parents), 'About does not say 6 and over');
   assert(/<h3>Safety<\/h3>/.test(parents) && /under three/.test(parents), 'For Parents has no Safety section');
 });
 
