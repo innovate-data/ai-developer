@@ -4,6 +4,9 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 
 ## 5 November 2026
 
+### Changed
+- **Liability cap** in the licence (clause 10) is now one US cent (US$0.01), because the app is free.
+
 ### Fixed (an iPad review)
 - **The tour no longer pushes the lessons off a landscape iPad's first screen.** On a wide
   window it is a card, the video on the left and its words beside it.

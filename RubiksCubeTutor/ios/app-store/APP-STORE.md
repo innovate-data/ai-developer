@@ -232,5 +232,5 @@ then rebuild the hosted pages.
 
 The licence and privacy wording were written to reduce risk, not reviewed by a lawyer.
 Have one confirm: the state named for governing law, whether to add arbitration, whether
-to publish a postal address, the US$10 liability cap, and the Apple terms in clause 12.
+to publish a postal address, the US$0.01 (one cent) liability cap, and the Apple terms in clause 12.
 Use ® only while the mark is actually registered; otherwise ™.
