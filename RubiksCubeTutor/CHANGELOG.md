@@ -5,6 +5,22 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 ## 6 November 2026
 
 ### Changed (a legal review)
+- **New icon: a house of tiles.** The old icon (nine coloured squares in a black frame) was
+  close to the registered Rubik's Cube look. The mark is now a little house built from
+  rounded tiles (`ios/launch-art/house.js`): in the app icon, the launch screen, the loading
+  page, the header, the favicon, the screenshots and the promo. `npm run build:launch` now
+  draws the app icon too, without an alpha channel.
+- **No update check.** The app no longer asks the App Store about new versions, so it makes
+  no internet request at all. Gone with it: the Updates switch, Check Now, the update
+  alert, the grown-up gate (`UpdateChecker.swift`, `GrownUpGate.swift`) and the
+  UserDefaults declaration. About › Updates now just shows the version. The build guard
+  now fails on any web address, network call or StoreKit in Swift.
+- **COPPA Facts.** The COPPA Review page is now COPPA Facts: plain facts about what the app
+  does, with no "Meets" chips, verdicts or rule numbers. `COPPA-REVIEW.md` stays internal.
+- **Governing law** (licence clause 14) names the State of Texas.
+- **"A puzzle cube", not "the Cube".** The store subtitle, description, footer, About and the
+  promo say "puzzle cube". The App Store description no longer gives an age (Apple
+  guideline 2.3.8); "ages 6+" stays inside the app.
 - **™, not ®.** No registration for "Cube Clubhouse" was found, so the app, licence, hosted pages,
   launch logo, App Store screenshots and promo now use ™ and say "a trademark of Ira Learning
   LLC". Switch to ® only once the US registration is granted. A unit test keeps ® off the mark.

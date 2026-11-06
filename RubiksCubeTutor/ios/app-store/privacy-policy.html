@@ -28,13 +28,7 @@
   .coppa-checks { list-style: none; padding: 0; display: grid; gap: 10px; }
   .coppa-check { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--bg); }
   .coppa-check p { margin: 4px 0; }
-  .coppa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-  .coppa-head h3 { margin: 2px 0; font-size: 1rem; color: var(--ink); }
-  .coppa-rule { color: var(--muted); font-size: 0.88rem; }
-  .coppa-chip { border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
-  .coppa-meets { background: var(--good-bg); color: var(--good); }
-  .coppa-not-needed { background: var(--accent-soft); color: var(--accent); }
-  .coppa-optional { background: var(--warm-bg); color: var(--star); }
+  .coppa-check h3 { margin: 2px 0; font-size: 1rem; }
 </style>
 </head>
 <body><main><article>
@@ -56,9 +50,6 @@
             <li>the times from the Timer screen, so it can show your best: each time with its
               cube size and any +2 or DNF, plus the cube size last chosen there and whether
               <b>15 Seconds to Look First</b> is switched on. No dates, no names.</li>
-            <li>for the update check: whether it is switched on, the date it last
-              asked the App Store, and a version you tapped <b>Not Now</b> for, so it does not ask
-              again that week.</li>
           </ul>
           <p>That is all of it. No names, no ages, no messages, no photos, no location, no identifiers.
             The app sends none of it anywhere and shares none of it between devices. The one way a copy
@@ -69,20 +60,13 @@
             whatever it held when it was made, until you delete that backup.</p>
 
           <h3>What the app asks the internet for</h3>
-          <p><strong>One
-            question, to Apple, and you can switch it off.</strong> About once a day the app asks Apple's
-            App Store whether a newer version of Cube Clubhouse is out, so it can offer the update. The
-            question carries only the app's App Store name (its bundle identifier) and your device’s country or region, so it asks the right store. It carries nothing about the
-            person using the app: no name, no progress, no times, and no identifier of anyone or of
-            your device. Like any request on the internet it reaches Apple from your network's
-            address; it never reaches us. Switch it off under <b>About › Updates</b>. Nothing else is
-            ever requested, not even the typeface, which is stored inside the app like the lessons
-            are. You can turn on Aeroplane Mode before anyone opens it and every part of the app
-            still works; only the update check waits for a connection.</p>
+          <p><strong>Nothing.</strong> Not one request, not even for the typeface it is drawn in — that is
+            stored inside the app like the lessons are. It does not even look for new
+            versions: those come through the App Store. You can turn on Aeroplane Mode before anyone
+            opens it and every part of the app still works.</p>
           <p>We did not simply leave the requests out; the app is built to block them. The page carries a
             rule that forbids it from loading anything from the web, and on iPhone and iPad the app
-            tells the system to refuse any web address on its behalf as well. The update
-            check is made by the app itself, not by the page, and goes only to Apple. If a later version ever
+            tells the system to refuse any web address on its behalf as well. If a later version ever
             changes what the app does with information, we will update this page first.</p>
 
           <h3>Nothing to buy</h3>
@@ -97,8 +81,8 @@
           <h3>What the app never touches</h3>
           <p>No camera, microphone, location, contacts, photos or notifications. No cookies. No
             third-party code and no third-party servers: the one outside ingredient is the
-            typeface, which is an open-source file stored inside the app and talks to nobody.
-            The only server the app ever talks to is Apple's App Store, for the update check. The app does not show anything you do in it
+            typeface, which is an open-source file stored inside the app and talks to nobody. The app
+            talks to no server at all, ours or anyone else's, and does not show anything you do in it
             to anyone else.</p>
 
           <h3>Who we are, and how to reach us</h3>
@@ -119,8 +103,7 @@
           <h3>How long we keep information</h3>
           <ul>
             <li><b>On your device</b>: the stars, choices and times listed above stay until you tap
-              <b>Clear Saved Progress</b> or delete the app; the update check's settings
-              stay until you delete the app. We never receive any of it.</li>
+              <b>Clear Saved Progress</b> or delete the app. We never receive any of it.</li>
             <li><b>A grown-up's email</b>: kept while we help, in case you write back, then deleted no later
               than 12 months after your last message. Ask us and we will delete it sooner.</li>
             <li><b>A child's email</b>: answered once, then deleted no later than 7 days after it arrives.</li>
@@ -130,9 +113,9 @@
           <p>Cube Clubhouse is made for a general audience aged 6 and over, and some of the people who use
             it will be children, so we treat everyone as possibly a child. Because nothing is collected from anyone, there is nothing to consent to, nothing to request and
             nothing for us to delete — it is all on your device, and in your own backup of it if you
-            make one, under your control. Our <a href="coppa.html">COPPA Review</a> checks this against the
-            US children's privacy law, rule by rule.</p>
+            make one, under your control. Our <a href="coppa.html">COPPA Facts</a> page sets out what the app
+            does and does not do with children's information.</p>
           <p class="info-note">Last updated: 5 November 2026.</p>
-    <p class="note"><a href="support.html">Support</a> · <a href="coppa.html">COPPA Review</a></p>
+    <p class="note"><a href="support.html">Support</a> · <a href="coppa.html">COPPA Facts</a></p>
 </article></main></body>
 </html>

@@ -1459,7 +1459,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
   console.log('R49 the app speaks to learners aged 6 and over, not to children only');
   { const p = await newPage();
     const foot = await p.locator('footer').innerText();
-    ck('the footer says ages 6+, not kid-friendly', /a Cube tutor for ages 6\+/.test(foot) && !/kid/i.test(foot));
+    ck('the footer says ages 6+, not kid-friendly', /a puzzle cube tutor for ages 6\+/.test(foot) && !/kid/i.test(foot));
     ck('the footer link reads About', (await p.locator('.foot-links [data-info="parents"]').innerText()).trim() === 'About');
     await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(150);
     ck('the page is About the App', (await p.locator('#screen-grownups h1').innerText()).trim() === 'About the App');
@@ -1547,69 +1547,26 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('in a lesson without a puzzle the cube is solved again', (await stickersOf(p, '#lesson-cube')) === solved && /solved again/.test(await msg()));
     await p.close(); }
 
-  console.log('R52 the Updates section: a switch and Check Now in the iOS app, nothing in a browser');
+  console.log('R52 the Updates section: the version and the App Store in the iOS app, nothing in a browser; no request either way');
   { const p = await newPage();
     await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(150);
     ck('a browser has no Updates section', !(await p.locator('#updates-section').isVisible()));
     const priv = (await p.locator('#privacy').innerText()).replace(/\s+/g, ' ');
-    ck('and its Privacy page still says the page asks for nothing', /Nothing\. Not one request/.test(priv) && !/App Store/.test(priv) && /Four small things/.test(priv));
+    ck('and its Privacy page says the page asks for nothing', /Nothing\. Not one request/.test(priv) && /Four small things/.test(priv));
     await p.close();
-    const app = async (updateCheck) => {
-      const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-      await ctx.addInitScript((on) => {
-        window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: 'iPhone', version: '1.0', updateCheck: on });
-        window.__sent = [];
-        window.webkit = { messageHandlers: { haptic: { postMessage() {} }, updates: { postMessage(m) { window.__sent.push(m); } } } };
-      }, updateCheck);
-      const q = await ctx.newPage();
-      q.on('pageerror', (e) => errs.push(e.message));
-      await q.goto(URL); await q.waitForTimeout(250);
-      await q.locator('.foot-links [data-info="parents"]').click(); await q.waitForTimeout(150);
-      return q;
-    };
-    const q = await app(true);
-    const sent = () => q.evaluate(() => window.__sent.slice());
-    const sw = q.locator('#update-check-switch'), now = q.locator('#update-check-now'), msg = q.locator('#update-check-msg');
-    ck('the app shows Updates with its version', await q.locator('#updates-section').isVisible() && (await q.locator('#app-version').textContent()) === '1.0');
-    ck('the switch starts on, as the app says', (await sw.getAttribute('aria-checked')) === 'true');
-    await sw.click();
-    ck('turning it off tells the app', (await sw.getAttribute('aria-checked')) === 'false' && JSON.stringify(await sent()) === '[{"action":"set","enabled":false}]');
-    ck('and says Check Now still works', /will not check\. Check Now still works/.test(await msg.textContent()));
-    await sw.click();
-    ck('and on again', (await sw.getAttribute('aria-checked')) === 'true' && JSON.stringify((await sent())[1]) === '{"action":"set","enabled":true}');
-    await now.click();
-    ck('Check Now asks the app, and waits', JSON.stringify((await sent())[2]) === '{"action":"check"}' && await now.isDisabled() && /Checking/.test(await msg.textContent()));
-    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'up-to-date', version: '' }));
-    ck('up to date', /You have the newest version/.test(await msg.textContent()) && !(await now.isDisabled()));
-    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'newer', version: '9.9' }));
-    ck('an answer nobody asked for is ignored', /newest version/.test(await msg.textContent()));
-    await now.click();
-    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'newer', version: '1.1<img src=x onerror=alert(1)>' }));
-    ck('a newer version is named, and only as digits', (await msg.textContent()) === 'Version 1.1 is in the App Store. Tap Update in the message to get it.'
-      && await q.locator('#update-check-msg img').count() === 0);
-    await now.click();
-    await q.evaluate(() => window.CubeClubhouseUpdates.result({ outcome: 'unavailable' }));
-    ck('no connection is explained', /could not be reached/.test(await msg.textContent()));
-    const priv2 = (await q.locator('#privacy').innerText()).replace(/\s+/g, ' ');
-    ck('the app\'s Privacy page says what the check sends', /One question, to Apple, and you can switch it off/.test(priv2)
-      && /bundle identifier/.test(priv2) && /this iPhone’s country or region/.test(priv2) && /Five small things/.test(priv2)
-      && /for the update check: whether it is switched on/.test(priv2));
-    ck('the footer says nothing about you is sent', /the app keeps everything on this iPhone and sends nothing about you anywhere/.test(await q.locator('footer').innerText()));
-    await q.locator('#updates-section a[href="#privacy"]').click(); await q.waitForTimeout(200);
-    ck('the Privacy link stays in the app, on the Privacy section', !(await q.locator('#screen-grownups').isHidden())
-      && (await q.evaluate(() => Math.abs(document.getElementById('privacy').getBoundingClientRect().top) < 200)));
-    await q.context().close();
-    const off = await app(false);
-    ck('switched off in the app, the switch starts off', (await off.locator('#update-check-switch').getAttribute('aria-checked')) === 'false');
-    // no answer at all: after twelve seconds the page stops waiting
-    await off.clock.install();
-    await off.reload(); await off.waitForTimeout(250);
-    await off.locator('.foot-links [data-info="parents"]').click();
-    await off.locator('#update-check-now').click();
-    await off.clock.runFor(12500);
-    ck('if the app never answers, Check Now gives up and can be tried again', /could not be reached/.test(await off.locator('#update-check-msg').textContent())
-      && !(await off.locator('#update-check-now').isDisabled()));
-    await off.context().close(); }
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    await ctx.addInitScript(() => { window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: 'iPhone', version: '1.2.3' }); });
+    const q = await ctx.newPage();
+    q.on('pageerror', (e) => errs.push(e.message));
+    await q.goto(URL); await q.waitForTimeout(300);
+    await q.locator('.foot-links [data-info="parents"]').click(); await q.waitForTimeout(150);
+    const upd = (await q.locator('#updates-section').innerText()).replace(/\s+/g, ' ');
+    ck('the iOS app shows Updates with its version', await q.locator('#updates-section').isVisible() && /version 1\.2\.3/.test(upd));
+    ck('it says new versions come through the App Store, with no switch and no Check Now', /come through the App Store/.test(upd)
+      && await q.locator('#updates-section button, #updates-section [role="switch"]').count() === 0);
+    const ipriv = (await q.locator('#privacy').innerText()).replace(/\s+/g, ' ');
+    ck('the iOS Privacy page says Nothing too, and never mentions an update check', /Nothing\. Not one request/.test(ipriv) && !/update check|bundle identifier|Not Now/.test(ipriv));
+    await ctx.close(); }
 
   console.log('R53 there is no video in the app: Learn opens on the lessons');
   { const p = await newPage();
@@ -1617,22 +1574,19 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('the lesson list is the first thing on Learn', await p.evaluate(() => document.querySelector('#screen-learn').firstElementChild.id === 'lesson-list'));
     await p.close(); }
 
-  console.log('R54 the COPPA Review: reachable from About, the footer and its own link, drawn from the review, and readable everywhere');
+  console.log('R54 the COPPA Facts page: reachable from About, the footer and its own link, plain facts with no verdicts, and readable everywhere');
   { const p = await newPage();
     await p.locator('.foot-links [data-info="coppa"]').click(); await p.waitForTimeout(250);
     ck('the footer opens it', !(await p.locator('#screen-grownups').isHidden())
       && await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
     const page = (await p.locator('#coppa').innerText()).replace(/\s+/g, ' ');
     const review = await p.evaluate(() => window.RC.COPPA.review);
-    ck('it shows every check, each with its rule and a status chip', await p.locator('#coppa .coppa-check').count() === review.checks.length
-      && await p.locator('#coppa .coppa-check .coppa-chip').count() === review.checks.length
-      && review.checks.every((c) => page.includes(c.heading) && page.includes(c.rule)));
-    ck('it says whether COPPA applies and the duties, without the two removed sections', /Does COPPA apply\?/.test(page) && /What we do, as the publisher/.test(page)
-      && !/What would change the answer/.test(page) && !/About this review/.test(page));
-    ck('the chips are coloured by status', await p.evaluate(() => {
-      const bg = (s) => getComputedStyle(document.querySelector('#coppa .coppa-' + s)).backgroundColor;
-      return new Set([bg('meets'), bg('not-needed'), bg('optional')]).size === 3;
-    }));
+    ck('it shows every fact, in plain words', await p.locator('#coppa .coppa-check').count() === review.checks.length
+      && review.checks.every((c) => page.includes(c.fact) && page.includes(c.text)));
+    ck('no verdicts: no status chips, no Meets, no rule numbers', await p.locator('#coppa .coppa-chip').count() === 0
+      && !/\bMeets\b|Not needed|§/.test(page), (page.match(/.{20}(Meets|Not needed|§).{20}/) || [''])[0]);
+    ck('who it is for, and the publisher\'s duties', /Who the app is for/.test(page) && /What we do, as the publisher/.test(page)
+      && !/Does COPPA apply|What would change the answer|About this review/.test(page));
     await p.locator('#privacy').scrollIntoViewIfNeeded(); await p.waitForTimeout(150);
     await p.locator('#privacy a[href="#coppa"]').click(); await p.waitForTimeout(250);
     ck('Children\'s privacy links to it', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
@@ -1642,7 +1596,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('Back to the App works from it', !(await p.locator('#screen-learn').isHidden()));
     await p.locator('.foot-links [data-info="parents"]').click(); await p.waitForTimeout(200);
     await p.locator('#parents [data-info="coppa"]').click(); await p.waitForTimeout(250);
-    ck('the About page has a COPPA Review button', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
+    ck('the About page has a COPPA Facts button', await p.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 140));
     await p.goBack(); await p.waitForTimeout(250);
     ck('the browser\'s back button returns to where you were', !(await p.locator('#screen-learn').isHidden()) && (await p.evaluate(() => location.hash)) === '#learn');
     await p.close();
@@ -1650,7 +1604,7 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     await q.goto(URL + '#coppa'); await q.waitForTimeout(300);
     ck('a link straight to #coppa opens it', !(await q.locator('#screen-grownups').isHidden()) && await q.evaluate(() => Math.abs(document.getElementById('coppa').getBoundingClientRect().top) < 160));
     await q.close();
-    // a small and a large phone, light and dark: nothing spills sideways, chips stay readable
+    // a small and a large phone, light and dark: nothing spills sideways
     for (const [w, h] of [[320, 640], [430, 932]]) {
       for (const scheme of ['light', 'dark']) {
         const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, hasTouch: true, isMobile: true });
@@ -1660,19 +1614,8 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
         await r.goto(URL); await r.waitForTimeout(250);
         await r.locator('.foot-links [data-info="coppa"]').click(); await r.waitForTimeout(250);
         const fit = await r.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth
-          && [...document.querySelectorAll('#coppa .coppa-chip')].every((c) => c.getBoundingClientRect().right <= window.innerWidth));
-        // contrast of each chip's text on its background, WCAG AA for normal text
-        const worst = await r.evaluate(() => {
-          const rgb = (s) => s.match(/[\d.]+/g).slice(0, 3).map(Number);
-          const lum = ([R, G, B]) => [R, G, B].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
-            .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
-          return Math.min(...['meets', 'not-needed', 'optional'].map((s) => {
-            const st = getComputedStyle(document.querySelector('#coppa .coppa-' + s));
-            const [x, y] = [lum(rgb(st.color)), lum(rgb(st.backgroundColor))];
-            return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
-          }));
-        });
-        ck(w + 'px ' + scheme + ': it fits, and every chip reads at 4.5:1 or better', fit && worst >= 4.5, worst.toFixed(2));
+          && [...document.querySelectorAll('#coppa .coppa-check')].every((c) => c.getBoundingClientRect().right <= window.innerWidth));
+        ck(w + 'px ' + scheme + ': it fits', fit);
         await ctx.close();
       }
     } }

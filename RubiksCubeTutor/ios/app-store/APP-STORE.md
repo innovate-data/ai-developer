@@ -58,7 +58,7 @@ Install it on a real iPhone and iPad through TestFlight before you submit.
 
 **Name** (30 max): `Cube Clubhouse`
 
-**Subtitle** (30 max): `Learn to solve the Cube`
+**Subtitle** (30 max): `Learn to solve a puzzle cube`
 
 **Category**: Primary **Education**; secondary **Games › Puzzle** (optional).
 Do **not** choose the Kids Category: the app is for a general audience aged 6 and over.
@@ -70,7 +70,7 @@ Do **not** choose the Kids Category: the app is for a general audience aged 6 an
 
 **Description** (4,000 max):
 
-> Cube Clubhouse helps anyone aged 6 and over learn to solve a Cube step by step, using the
+> Cube Clubhouse helps anyone learn to solve a puzzle cube step by step, using the
 > beginner layer-by-layer method most people learn first.
 >
 > LEARN
@@ -109,7 +109,12 @@ Do **not** choose the Kids Category: the app is for a general audience aged 6 an
 `puzzle,solve,solver,speedcubing,timer,beginner,learn,tutor,lessons,3x3,2x2,4x4,5x5,6x6,layer`
 
 Do not put other companies' trademarks (for example Rubik's) in the name, subtitle or
-keywords: Apple rejects that.
+keywords: Apple rejects that. Say "puzzle cube", not "the Cube" with a capital C, which
+reads as a brand name.
+
+The listing does not give an age. Apple's guideline 2.3.8 keeps words that suggest the
+main audience is children (such as "for kids" or an age like "6+") for apps in the Kids
+Category, so "ages 6+" stays inside the app and on the promo, not in the store text.
 
 **Support URL**: your hosted `support.html`.
 **Marketing URL**: optional; leave empty.
@@ -136,7 +141,7 @@ last frame, for a thumbnail.
 
 | Time | On screen |
 |---|---|
-| 0–2 s | The icon and name: "Learn to solve the Cube, one step at a time." |
+| 0–2 s | The icon and name: "Learn to solve a puzzle cube, one step at a time." |
 | 2–5.6 s | "Ten short lessons": the lesson list, then a lesson's cube turning |
 | 5.6–9.8 s | "Stuck? Help Me Solve It": a cube mixes itself, then solves itself |
 | 9.8–12.6 s | "Paint in your cube": the flat cube fills with colours and is checked |
@@ -165,8 +170,8 @@ The answers below stay true only while that review does. Have a lawyer read the 
 the Privacy page and `LICENSE` before the first release.
 
 **iOS:** no `AdSupport`, no `AppTrackingTransparency`, no `NS…UsageDescription`
-permissions; answer **No** to tracking in App Privacy. The App Store sheet opens only
-after the grown-up gate.
+permissions; answer **No** to tracking in App Privacy. The app makes no internet request
+and has no way to reach the App Store from inside it.
 
 **Android (if a version is ever made):** remove the advertising-ID permission in
 `AndroidManifest.xml` with
@@ -185,11 +190,9 @@ Run the review again first.
   collect data from this app.** The result is **Data Not Collected**.
 
 This is accurate. Data that stays on the device (stars, times) does not count as
-collection. The one request the app makes, the optional update check, asks Apple's App
-Store whether a newer version exists and carries only the app's bundle ID and the
-country; nothing about the person is sent, and nothing reaches you or any partner. The
-bundled `PrivacyInfo.xcprivacy` says the same, and declares UserDefaults (reason CA92.1)
-for the check's own settings.
+collection. The app makes no internet request at all, not even to look for updates, so
+nothing reaches you or any partner. The bundled `PrivacyInfo.xcprivacy` says the same,
+and declares no reasoned API.
 
 ## 6. Age rating
 
@@ -220,8 +223,7 @@ sets a minimum age, the age rating must be raised to match.
 - **Notes for App Review**:
 
 > Cube Clubhouse teaches how to solve a puzzle cube. No account or sign-in is needed. The
-> only network request is an optional App Store version check (About › Updates, which
-> can switch it off). To try the main features: Learn › any lesson ›
+> app makes no network request at all. To try the main features: Learn › any lesson ›
 > Hint; Play › Mix It Up › Help Me Solve It › Watch; My Real Cube › Try a Pretend Cube ›
 > Check My Cube; Timer › touch and hold the clock, let go to start, tap to stop. The
 > About, Privacy and Licence pages are linked at the bottom of every screen.

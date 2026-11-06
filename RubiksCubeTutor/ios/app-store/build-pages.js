@@ -49,18 +49,18 @@ function build() {
     <p class="note">For Cube Clubhouse on iPhone and iPad, version ${version}. This is the same text the app
       shows on its Privacy page.</p>
     ${body.trim()}
-    <p class="note"><a href="support.html">Support</a> · <a href="coppa.html">COPPA Review</a></p>`);
+    <p class="note"><a href="support.html">Support</a> · <a href="coppa.html">COPPA Facts</a></p>`);
 
-  // The COPPA Review, drawn by the same function as the app's own COPPA Review page.
+  // The COPPA Facts, drawn by the same function as the app's own COPPA Facts page.
   const COPPA = require('../../js/coppa.js');
-  const coppa = page('Cube Clubhouse COPPA Review', `
-    <h1>Cube Clubhouse<sup>™</sup> COPPA Review</h1>
+  const coppa = page('Cube Clubhouse COPPA Facts', `
+    <h1>Cube Clubhouse<sup>™</sup> COPPA Facts</h1>
     ${COPPA.toHTML()}
     <p class="note"><a href="privacy-policy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>`);
 
   const support = page('Cube Clubhouse Support', `
     <h1>Cube Clubhouse<sup>™</sup> Support</h1>
-    <p class="strong">Cube Clubhouse helps anyone aged 6 and over learn to solve a Cube step by step. It is
+    <p class="strong">Cube Clubhouse helps anyone aged 6 and over learn to solve a puzzle cube step by step. It is
       free, needs no account and works without an internet connection.</p>
 
     <h2>Contact us</h2>
@@ -123,13 +123,7 @@ function page(title, content) {
   .coppa-checks { list-style: none; padding: 0; display: grid; gap: 10px; }
   .coppa-check { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--bg); }
   .coppa-check p { margin: 4px 0; }
-  .coppa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-  .coppa-head h3 { margin: 2px 0; font-size: 1rem; color: var(--ink); }
-  .coppa-rule { color: var(--muted); font-size: 0.88rem; }
-  .coppa-chip { border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
-  .coppa-meets { background: var(--good-bg); color: var(--good); }
-  .coppa-not-needed { background: var(--accent-soft); color: var(--accent); }
-  .coppa-optional { background: var(--warm-bg); color: var(--star); }
+  .coppa-check h3 { margin: 2px 0; font-size: 1rem; }
 </style>
 </head>
 <body><main><article>

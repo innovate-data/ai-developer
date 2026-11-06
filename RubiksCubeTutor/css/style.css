@@ -173,10 +173,9 @@ html.ios-app .w-web { display: none; }
 /* the registered-trademark sign: small and raised, and never pushing the line apart */
 .reg { font-size: max(0.5em, 10px);   /* never smaller than 10 px: in the 14 px footer half size is 7 */
    font-weight: 600; vertical-align: super; line-height: 0; margin-left: 0.06em; }
-.brand-cube {
-  width: 30px; height: 30px; border-radius: 7px; display: inline-block;
-  background: conic-gradient(var(--R) 0 25%, var(--Y) 0 50%, var(--G) 0 75%, var(--B) 0);
-  box-shadow: inset 0 0 0 3px var(--plastic);
+.brand-cube {   /* the Cube Clubhouse mark: a house of tiles (ios/launch-art/house.js) */
+  width: 30px; height: 30px; display: inline-block;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Crect x='12.48' y='0.00' width='5.04' height='5.04' rx='1.11' fill='%23d3202b'/%3E%3Crect x='6.24' y='6.24' width='5.04' height='5.04' rx='1.11' fill='%23d3202b'/%3E%3Crect x='12.48' y='6.24' width='5.04' height='5.04' rx='1.11' fill='%23ff7a00'/%3E%3Crect x='18.72' y='6.24' width='5.04' height='5.04' rx='1.11' fill='%23d3202b'/%3E%3Crect x='0.00' y='12.48' width='5.04' height='5.04' rx='1.11' fill='%23d3202b'/%3E%3Crect x='6.24' y='12.48' width='5.04' height='5.04' rx='1.11' fill='%23ff7a00'/%3E%3Crect x='12.48' y='12.48' width='5.04' height='5.04' rx='1.11' fill='%23ffd500'/%3E%3Crect x='18.72' y='12.48' width='5.04' height='5.04' rx='1.11' fill='%23ff7a00'/%3E%3Crect x='24.96' y='12.48' width='5.04' height='5.04' rx='1.11' fill='%23d3202b'/%3E%3Crect x='0.00' y='18.72' width='5.04' height='5.04' rx='1.11' fill='%230055d4'/%3E%3Crect x='6.24' y='18.72' width='5.04' height='5.04' rx='1.11' fill='%2300a651'/%3E%3Crect x='12.48' y='18.72' width='5.04' height='5.04' rx='1.11' fill='%23ffffff' stroke='%2300000022' stroke-width='0.15'/%3E%3Crect x='18.72' y='18.72' width='5.04' height='5.04' rx='1.11' fill='%2300a651'/%3E%3Crect x='24.96' y='18.72' width='5.04' height='5.04' rx='1.11' fill='%230055d4'/%3E%3Crect x='0.00' y='24.96' width='5.04' height='5.04' rx='1.11' fill='%230055d4'/%3E%3Crect x='6.24' y='24.96' width='5.04' height='5.04' rx='1.11' fill='%2300a651'/%3E%3Crect x='18.72' y='24.96' width='5.04' height='5.04' rx='1.11' fill='%2300a651'/%3E%3Crect x='24.96' y='24.96' width='5.04' height='5.04' rx='1.11' fill='%230055d4'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 /* The tabs, as iPadOS draws them: one capsule, the chosen tab raised out of it. */
 .topbar nav { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 999px; }
@@ -260,18 +259,23 @@ main {
 .loading.done { opacity: 0; visibility: hidden; pointer-events: none; }
 .loading-logo { position: absolute; left: 50%; top: 50%; width: 300px; height: 196px; margin: -98px 0 0 -150px;
   display: flex; flex-direction: column; align-items: center; padding-top: 8px; }
-.loading-face { width: 124px; height: 124px; border-radius: 28px; background: #1a1b23; padding: 7px;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; box-shadow: 0 6px 16px rgba(20, 20, 40, 0.18); }
-.loading-face i { border-radius: 9px; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.13);
+.loading-face { width: 124px; height: 124px; display: grid; grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr); gap: 4px; filter: drop-shadow(0 6px 10px rgba(20, 20, 40, 0.18)); }
+.loading-face i { border-radius: 5px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.13);
   animation: loading-ripple 1.6s ease-in-out infinite; }
-/* a ripple across the face, corner to corner */
-.loading-face i:nth-child(2), .loading-face i:nth-child(4) { animation-delay: 0.12s; }
-.loading-face i:nth-child(3), .loading-face i:nth-child(5), .loading-face i:nth-child(7) { animation-delay: 0.24s; }
-.loading-face i:nth-child(6), .loading-face i:nth-child(8) { animation-delay: 0.36s; }
-.loading-face i:nth-child(9) { animation-delay: 0.48s; }
+.loading-face .lf-e { visibility: hidden; }
+/* a ripple across the house, corner to corner */
+.loading-face i:nth-child(2), .loading-face i:nth-child(6) { animation-delay: 0.06s; }
+.loading-face i:nth-child(3), .loading-face i:nth-child(7), .loading-face i:nth-child(11) { animation-delay: 0.12s; }
+.loading-face i:nth-child(4), .loading-face i:nth-child(8), .loading-face i:nth-child(12), .loading-face i:nth-child(16) { animation-delay: 0.18s; }
+.loading-face i:nth-child(5), .loading-face i:nth-child(9), .loading-face i:nth-child(13), .loading-face i:nth-child(17), .loading-face i:nth-child(21) { animation-delay: 0.24s; }
+.loading-face i:nth-child(10), .loading-face i:nth-child(14), .loading-face i:nth-child(18), .loading-face i:nth-child(22) { animation-delay: 0.30s; }
+.loading-face i:nth-child(15), .loading-face i:nth-child(19), .loading-face i:nth-child(23) { animation-delay: 0.36s; }
+.loading-face i:nth-child(20), .loading-face i:nth-child(24) { animation-delay: 0.42s; }
+.loading-face i:nth-child(25) { animation-delay: 0.48s; }
 @keyframes loading-ripple { 0%, 60%, 100% { transform: scale(1); filter: brightness(1); } 30% { transform: scale(0.84); filter: brightness(1.18); } }
 .lf-Y { background: #ffd500; } .lf-G { background: #00a651; } .lf-R { background: #d3202b; }
-.lf-B { background: #0055d4; } .lf-W { background: #ffffff; } .lf-O { background: #ff7a00; }
+.lf-B { background: #0055d4; } .lf-W { background: #ffffff; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), inset 0 -3px 0 rgba(0, 0, 0, 0.13); } .lf-O { background: #ff7a00; }
 .loading-word { margin-top: 18px; font: 700 33px/1 'Fredoka', system-ui, sans-serif; letter-spacing: 0.2px; white-space: nowrap; }
 .loading-word sup { font-size: 0.45em; font-weight: 600; vertical-align: top; position: relative; top: 1px; margin-left: 1px; }
 .loading p { position: absolute; left: 16px; right: 16px; top: calc(50% + 116px); margin: 0; text-align: center;
@@ -290,9 +294,6 @@ main {
   .loading-face i { animation: none; }
   .loading { transition: none; }
 }
-/* in the dark, a faint rim so the black frame does not vanish, as on the dark launch screen */
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .loading-face { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22), 0 6px 16px rgba(20, 20, 40, 0.45); } }
-:root[data-theme="dark"] .loading-face { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22), 0 6px 16px rgba(20, 20, 40, 0.45); }
 
 /* the COPPA Review: one card per requirement, with a status chip */
 /* a link inside a sentence: padding makes a 44pt target without moving a word (it does not
@@ -302,13 +303,7 @@ main {
 .info-card .coppa-check { margin: 0; }
 .coppa-check { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--bg); }
 .coppa-check p { margin: 4px 0; }
-.coppa-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.coppa-head h3 { margin: 2px 0; font-size: 1rem; color: var(--ink); }
-.coppa-rule { color: var(--muted); font-size: 0.88rem; }
-.coppa-chip { flex: 0 0 auto; border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
-.coppa-meets { background: var(--good-bg); color: var(--good); }
-.coppa-not-needed { background: var(--accent-soft); color: var(--accent); }
-.coppa-optional { background: var(--warm-bg); color: var(--chip-amber); }
+.coppa-check h3 { margin: 2px 0; font-size: 1rem; }
 .info-card a { color: var(--accent); font-weight: 600; }
 .licence-text {
   white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

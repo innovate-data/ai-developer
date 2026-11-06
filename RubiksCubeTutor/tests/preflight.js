@@ -7,12 +7,12 @@
  *
  * With comments stripped from the code, it fails on:
  *   - a network request from the page (fetch, XMLHttpRequest, WebSocket, EventSource,
- *     sendBeacon), or from Swift anywhere but UpdateChecker.swift's App Store lookup;
+ *     sendBeacon), or from Swift at all: the app makes no request of any kind;
  *   - a box for typing words (only range, number, checkbox, radio and button inputs, and
- *     inputmode="numeric", are allowed; the grown-up gate is a keypad of buttons);
+ *     inputmode="numeric", are allowed);
  *   - a link or a way out of the app (http(s), mailto, tel or sms links, window.open,
  *     a jump to another address, UIApplication.open, Safari views), or the App Store
- *     sheet reachable other than through the grown-up gate;
+ *     opened from inside the app;
  *   - the camera, the microphone, location, contacts or photos;
  *   - cookies or fingerprinting (device and advertising identifiers, canvas read-back,
  *     the battery, hardware details);
@@ -51,9 +51,9 @@ const RULES = [
   { id: 'network', files: (f) => isPage(f) && !/\.css$/.test(f), re: /(?:src|href|action)\s*=\s*["']https?:|["']https?:\/\/(?!www\.w3\.org\/2000\/svg["'])/,
     why: 'a web address in the page' },
   { id: 'network', files: (f) => /\.css$/.test(f), re: /url\(\s*["']?(?:https?:)?\/\//, why: 'a stylesheet loading from the web' },
-  { id: 'network', files: (f) => isSwift(f) && !/UpdateChecker\.swift$/.test(f), re: /\bURLSession\b|\bNWConnection\b|\bdataTask\b|\bURLRequest\(url:\s*URL\(string:\s*"https?:/,
-    why: 'a network request from Swift outside the update check' },
-  { id: 'network', files: isSwift, re: /"https?:\/\/(?!itunes\.apple\.com\/lookup")/, why: 'a web address in Swift other than the App Store lookup' },
+  { id: 'network', files: isSwift, re: /\bURLSession\b|\bNWConnection\b|\bdataTask\b|\bURLRequest\(url:\s*URL\(string:\s*"https?:/,
+    why: 'a network request from Swift' },
+  { id: 'network', files: isSwift, re: /"https?:\/\//, why: 'a web address in Swift' },
   // ---- typing
   { id: 'free-text', files: (f) => /\.html$/.test(f) || /\.js$/.test(f), re: /<textarea\b|contenteditable\s*=\s*["']?(?:true|["'])|contentEditable\s*=\s*(?:true|['"]true)|createElement\(\s*['"]textarea|\bprompt\s*\(/i,
     why: 'a box for typing words' },
@@ -75,18 +75,8 @@ const RULES = [
     why: 'a link or a way out of the app' },
   { id: 'links-out', files: isSwift, re: /\bUIApplication\.shared\.open\b|\bopenURL\b|\bSFSafariViewController\b|\bLink\s*\(|\bASWebAuthenticationSession\b/,
     why: 'a way out of the app from Swift' },
-  { id: 'links-out', files: isSwift,
-    test: (code, f) => {
-      const bad = [];
-      if (/SKStoreProductViewController|SKOverlay|requestReview/.test(code) && !/UpdateChecker\.swift$/.test(f)) bad.push('the App Store opened outside UpdateChecker');
-      if (/UpdateChecker\.swift$/.test(f)) {
-        const calls = [...code.matchAll(/\bopenStore\s*\(\s*release\s*\)/g)].length;
-        if (calls !== 1 || !/func passGate\(\)[\s\S]*?openStore\(release\)/.test(code) || /\bfunc openStore\b(?![^(]*\(_ release)/.test(code)) bad.push('the App Store sheet is not reached only through passGate');
-      }
-      if (/CubeClubhouseApp\.swift$/.test(f) && !/GrownUpGate\(onPass:/.test(code)) bad.push('the grown-up gate is missing');
-      return bad;
-    },
-    why: 'the App Store must open only after the grown-up gate' },
+  { id: 'links-out', files: isSwift, re: /\bSKStoreProductViewController\b|\bSKOverlay\b|\brequestReview\b|\bimport\s+StoreKit\b/,
+    why: 'the App Store opened from inside the app' },
   // ---- the senses
   { id: 'sensors', files: isPage, re: /\bgetUserMedia\b|\bmediaDevices\b|\bgeolocation\b|navigator\.contacts\b|\bcapture\s*=\s*["']|\bMediaRecorder\b|webkitSpeechRecognition|\bSpeechRecognition\b/,
     why: 'the camera, microphone, location or contacts' },

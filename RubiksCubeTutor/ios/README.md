@@ -68,7 +68,10 @@ did to the build log.
   navigation delegate refuses anything that is not the bundle's own scheme. Run the app in
   aeroplane mode: it behaves identically.
 - **App icon.** `Assets.xcassets/AppIcon.appiconset/AppIcon.png` is a 1024×1024 image with
-  no alpha channel, which is what the App Store requires.
+  no alpha channel, which is what the App Store requires. It is the Cube Clubhouse mark, a
+  little house built from rounded tiles (`launch-art/house.js`), on a purple ground, drawn
+  by `npm run build:launch` with the launch logo. It is deliberately not a cube face: a
+  black body with nine coloured squares a side is the registered Rubik's Cube look.
 - **Launch screen.** `Info.plist` holds only `UILaunchScreen`: the `LaunchBackground`
   colour (the page's own background, light and dark) with the `LaunchLogo` image centred
   on it, drawn at 1x, 2x and 3x in both appearances from `launch-art/logo.html`. No

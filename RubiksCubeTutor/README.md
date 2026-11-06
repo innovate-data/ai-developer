@@ -1,4 +1,4 @@
-# Cube Clubhouse™ – a Cube tutor for ages 6+
+# Cube Clubhouse™ – a puzzle cube tutor for ages 6+
 
 Cube Clubhouse helps anyone aged 6 and over learn to solve a 3×3 Cube using the
 classic beginner "layer by layer" method. It is a single-page web app with **no build
@@ -126,7 +126,7 @@ Lessons 3–10 have a practice mode with a goal check, hints and a "new cube" bu
 
 ## 3. Screens
 
-**Launch** – on iPhone and iPad the app opens on its logo, the cube face from the icon
+**Launch** – on iPhone and iPad the app opens on its logo, the house of tiles from the icon
 with "Cube Clubhouse™", on the app's own background colour in light or dark. The same
 picture stays up until the page has loaded and then fades, so there is no white flash.
 
@@ -144,9 +144,8 @@ tips on the right.
 
 **About the App** – reached from the three footer links (About, Privacy, Licence), not
 from the main tabs: what the app teaches, who it suits, tips and safety; a privacy page naming the
-four things kept on the device (five on iOS, with the update check's settings) and what
-the app asks the internet for: nothing in a browser, and on iOS one optional App Store
-version check, with a button that erases the lot after an iOS alert asks first; and the licence conditions in full - the app is
+four things kept on the device and what the app asks the internet for (nothing, on the
+web or on iOS), with a button that erases the lot after an iOS alert asks first; and the licence conditions in full - the app is
 proprietary, owned by Ira Learning LLC - with the typeface's own licence and the
 trademark notes. `#parents`, `#privacy` and `#licence` open it at the right
 section, and anything unrecognised in the hash lands on the lessons.
@@ -421,24 +420,22 @@ A test in each of the three suites holds this down — see R24 and the offline g
 §5. The published single-page artifact inlines the typeface as a `data:` URL for the
 same reason.
 
-The one exception is on iOS, outside the page: `UpdateChecker.swift` asks Apple's App
-Store, at most once a day, whether a newer version is out, and offers it with an iOS
-alert. It sends only the bundle ID and country, with no cookies; the About page has a
-switch to turn it off and a Check Now button, and the Privacy page says all of this (see
-`ios/GETTING-STARTED.md`, "Offering updates").
+There is no exception on iOS either: the app makes no request of any kind, not even to
+look for a new version (the App Store update check was removed on 6 November 2026). New
+versions arrive through the App Store's own automatic updates.
 
 ---
 
 ### Children's privacy (COPPA)
 
 The app meets COPPA by collecting nothing from anyone. `COPPA-REVIEW.md` is the review,
-requirement by requirement, with the technical evidence and the publisher's duties; the
-app shows it at About › COPPA Review (and COPPA in the footer), and
-`ios/app-store/coppa.html` publishes it, both drawn from `js/coppa.js`. `npm run
+requirement by requirement, with the technical evidence and the publisher's duties. The
+app's COPPA Facts page (About › COPPA Facts, and COPPA in the footer) and
+`ios/app-store/coppa.html` state the plain facts behind it, with no verdicts, both drawn
+from `js/coppa.js`. `npm run
 preflight` fails the build on anything that would collect, send, link out or track, and
-`ios/release.sh` runs it before every archive. The App Store sheet opens only after a
-grown-up answers a times-table question (`GrownUpGate.swift`), and the iOS app refuses
-every navigation off its own bundle. An engineering review, not legal advice.
+`ios/release.sh` runs it before every archive. There is no way to the App Store from inside
+the app, and the iOS app refuses every navigation off its own bundle.
 
 ## 5. Testing
 
@@ -489,18 +486,16 @@ every navigation off its own bundle. An engineering review, not legal advice.
   text within App Store Connect's limits and free of other companies' trademarks, and ten
   screenshots at exactly the two sizes Apple asks for.
 
-* that the App Store update check is the one request and stays small: only Apple's
-  lookup address appears in any Swift file, it asks with nothing but the bundle ID and
-  country over an ephemeral, cookie-less session, at most daily, a week's quiet after Not
-  Now, never when switched off, offered in the store sheet inside the app, and nothing in
-  the page itself makes a request; and the Privacy page says all of that.
+* that the app makes no request at all: no update check or grown-up gate in the project,
+  no web address, `URLSession` or StoreKit in any Swift file, nothing in the page that
+  asks for updates, and a Privacy page that says "Nothing".
 
 * that there is no video or sound in the app: none on the page, none allowed by the page's
   policy, no `media/` folder and nothing of the kind in the Xcode copy phase.
 
 * COPPA: the build guard (`tests/preflight.js`) passes on the app as it stands, and a
   negative control plants a problem of every kind it guards against (network requests,
-  boxes for typing words, links out, the store without the grown-up gate, sensors,
+  boxes for typing words, links out, the App Store opened from the app, sensors,
   cookies and fingerprinting, analytics and ad kits, unreviewed packages, a missing
   review) and checks each is caught, while ordinary words and commented-out code pass;
   and the COPPA Review in `js/coppa.js` agrees with `COPPA-REVIEW.md`, the hosted
@@ -559,12 +554,12 @@ Every case is a bug that was found and fixed, kept so it cannot come back:
 | R46 | The iOS alert: Cancel has the focus, it is announced as a modal alert, Tab stays inside it, keys do not reach the cube behind, tapping outside does nothing, and Escape cancels. |
 | R47 | The Privacy page says exactly what is kept: driving the app writes only the four documented keys, the Timer's record holds only its size, the look-first switch and times without dates, and the page names every one of them; it says a copy leaves the device only in the family's own backup; and it names Ira Learning LLC with an email address shown as copyable text, not a link out of the app, alongside a notice asking a child to have a parent or guardian send it. |
 | R48 | The info pages make no promises: About has a Safety section (small parts, under-six warning, Reduce Motion) and speaks of "rough guides, not promises" rather than a guaranteed outcome or timing; the Licence page's plain-English summary says a parent or guardian agrees on a child's behalf and names the new terms (educational content, safety and supervision, App Store terms, governing law, the US$0.01 (one cent) liability cap); and "for as long as you like" / "held back" do not appear. |
-| R49 | The app speaks to learners aged 6 and over: the footer says "a Cube tutor for ages 6+" and its link reads About; the info page is About the App and says anyone aged 6 or over, with no upper age limit, and speaks to the learner rather than about "the child"; Privacy covers everyone who uses the app; the licence says it is made for a general audience; the safety advice for young children stays. |
+| R49 | The app speaks to learners aged 6 and over: the footer says "a puzzle cube tutor for ages 6+" and its link reads About; the info page is About the App and says anyone aged 6 or over, with no upper age limit, and speaks to the learner rather than about "the child"; Privacy covers everyone who uses the app; the licence says it is made for a general audience; the safety advice for young children stays. |
 | R50 | In the guide's two-column list of move words, a list with a single move split that one item across both columns ("…the side ··· left." / "facing you, so its top goes to the"). Found in the iPad App Store screenshot. Each item now stays whole. |
 | R51 | Reset Cube in a lesson: it brings back the same practice puzzle (not a new one), clears Undo so a reset cannot be undone, puts an open hint and its highlight away, and after a win starts the puzzle again while keeping the stars (hints already seen for that puzzle still mean no 🧠); after Another Puzzle it returns to the new puzzle; pressed halfway through a trick's Watch it still lands on the start; in a lesson without a puzzle it makes the cube solved. |
-| R52 | The Updates section: none in a browser (whose Privacy page still says the page asks for nothing); in the iOS app it shows the version, a switch that starts as the app says and tells the app when flipped, and Check Now, which asks the app, waits, reports up to date / newer / unreachable, ignores answers nobody asked for, shows a version only as its leading number, and gives up after twelve seconds with no answer. The app's Privacy page and footer say what the check sends. |
+| R52 | The Updates section: none in a browser; in the iOS app it shows the version and says new versions come through the App Store, with no switch and no Check Now. |
 | R53 | There is no video in the app, and Learn opens on the lesson list. (Until 6 November 2026 a 20-second tour sat above the lessons; it was taken out.) |
-| R54 | The COPPA Review page: opened from the footer, the section links, the About page's button and a link to `#coppa`; every check with its rule and a status chip coloured by status; whether COPPA applies and the duties (the "What would change the answer" and "About this review" sections were taken off the page; they stay in `COPPA-REVIEW.md`); Children's privacy linking to it; Back to the App and the browser's back button; and on a small and a large phone, light and dark, nothing spills sideways and every chip reads at 4.5:1 or better. R24 now also walks the Timer and the COPPA page and checks that only the app's own files are requested. |
+| R54 | The COPPA Facts page: opened from the footer, the section links, the About page's button and a link to `#coppa`; every fact in plain words, with no status chips, no \"Meets\" and no rule numbers; who the app is for and the publisher's duties; Children's privacy linking to it; Back to the App and the browser's back button; and on a small and a large phone, light and dark, nothing spills sideways. |
 | R55 | The loading page: painted first, over the whole screen, with the launch screen's logo at its size (300 × 196, face 124) and place and the launch screen's background, light and dark; saying what is happening (a status for screen readers, the page behind marked busy); stickers that ripple, and stay still with Reduce Motion; gone once the app is built; saying so if starting fails; after 8 s, if the app's script never arrives, telling you to close and reopen the app; and fitting the smallest iPhone. |
 | R56 | On an iPad: the first row of lessons is on the first screen in every orientation; the header is one row at every width from 320 to 1376 pt and at the largest Text Size, with the tabs along the bottom up to 779 px (an iPad mini upright, Split View and Stage Manager windows used to get a sticky two-row 123 px bar that ate a quarter of a short window); the guide lands below the pinned bar; and tabbing with a keyboard never leaves a control behind it. |
 | R57 | Slide Over at the largest Text Size (256 px) and at 300: no screen (Learn, a lesson, Play with its guide and a 6×6, Timer, My Real Cube, About, Privacy, COPPA, Licence) scrolls sideways or is cut off at the right, and all four tabs fit the bar. The cube column used to grow to 280 px and the tab bar to 288, clipping the guide's text and buttons; a long address now breaks instead of widening the page. |

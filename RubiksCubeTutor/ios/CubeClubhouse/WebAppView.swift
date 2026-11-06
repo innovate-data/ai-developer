@@ -33,8 +33,7 @@ struct WebAppView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(context.coordinator.schemeHandler,
                                    forURLScheme: BundleSchemeHandler.scheme)
-        config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback = []
+        config.mediaTypesRequiringUserActionForPlayback = .all     // the app has no media; nothing plays by itself
 
         // Spinning the cube is a drag gesture, and a stray second finger would otherwise
         // zoom the page mid-spin. Pin the viewport so pinch and double-tap do nothing.
@@ -49,20 +48,18 @@ struct WebAppView: UIViewRepresentable {
 
         // Tell the page it is the iOS app, and on which device, so it can say "this iPad"
         // rather than "this browser" and speak the platform's own words; and which version
-        // this is and whether the update check is on, for the About page's Updates section.
+        // this is, for the About page. The app makes no request, not even for updates.
         let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
-        let updates = UpdateChecker.shared
-        let version = updates.installedVersion.filter { $0.isNumber || $0 == "." }
+        let installed = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let version = installed.filter { $0.isNumber || $0 == "." }
         let host = "window.CubeClubhouseHost = Object.freeze({ platform: 'ios', device: '\(device)', "
-            + "version: '\(version)', updateCheck: \(updates.enabled) });"
+            + "version: '\(version)' });"
         config.userContentController.addUserScript(
             WKUserScript(source: host, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         // Haptics: the page asks, the device answers. iPad has no haptic engine, so there
         // the generators simply do nothing.
         config.userContentController.add(context.coordinator, name: "haptic")
-        // The About page's Updates switch and Check Now button (UpdateChecker).
-        config.userContentController.add(context.coordinator, name: "updates")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -137,35 +134,14 @@ struct WebAppView: UIViewRepresentable {
         }
 
         /// window.webkit.messageHandlers.haptic.postMessage("light" | "medium" | "success" | "warning")
-        /// window.webkit.messageHandlers.updates.postMessage({ action: "set", enabled: true | false })
-        /// window.webkit.messageHandlers.updates.postMessage({ action: "check" })
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
-            if message.name == "updates" { updates(message.body); return }
             guard message.name == "haptic", let kind = message.body as? String else { return }
             switch kind {
             case "light": UIImpactFeedbackGenerator(style: .light).impactOccurred()
             case "medium": UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             case "success": UINotificationFeedbackGenerator().notificationOccurred(.success)
             case "warning": UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            default: break
-            }
-        }
-
-        private func updates(_ body: Any) {
-            guard let body = body as? [String: Any], let action = body["action"] as? String else { return }
-            switch action {
-            case "set":
-                if let on = body["enabled"] as? Bool { UpdateChecker.shared.enabled = on }
-            case "check":
-                UpdateChecker.shared.checkNow { [weak self] outcome, version in
-                    // Only the outcome and a version number go back to the page: both are
-                    // plain, so this string cannot carry anything else into it.
-                    let v = (version ?? "").filter { $0.isNumber || $0 == "." }
-                    let js = "window.CubeClubhouseUpdates && window.CubeClubhouseUpdates.result("
-                        + "{ outcome: '\(outcome.rawValue)', version: '\(v)' })"
-                    self?.webView?.evaluateJavaScript(js, completionHandler: nil)
-                }
             default: break
             }
         }

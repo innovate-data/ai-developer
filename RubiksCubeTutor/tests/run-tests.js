@@ -835,7 +835,7 @@ test('licence: the app shows the LICENSE file word for word, and the pages make 
   const nums = [...terms.matchAll(/^(\d+)\. [A-Z]/gm)].map((m) => +m[1]);
   assert.deepStrictEqual(nums, Array.from({ length: 15 }, (_, i) => i + 1), 'clause numbers: ' + nums.join(','));
   for (const clause of ['By installing, opening or using the Software you', 'parent or guardian', 'EDUCATIONAL CONTENT',
-    'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$10', 'APPLE APP STORE TERMS',
+    'SAFETY AND SUPERVISION', 'choking hazard', 'CONSEQUENTIAL', 'US$10', 'Texas, United States', 'APPLE APP STORE TERMS',
     'third-party\n   beneficiaries', 'GOVERNING LAW', 'CHANGES', 'GENERAL', 'Last updated: 6 November 2026', 'strong magnets', 'Anyone under 13 should use the Software only with the permission']) {
     assert(terms.includes(clause), 'the licence does not say: ' + clause);
   }
@@ -913,43 +913,21 @@ test('release: the Xcode project, export options, script and store pages are rea
 });
 
 
-test('updates: the App Store check is the one request, made by the app, small and switchable', () => {
+test('no requests at all: no update check, no App Store sheet, no web address in Swift', () => {
   const dir = path.join(ROOT, 'ios', 'CubeClubhouse');
   const swift = Object.fromEntries(fs.readdirSync(dir).filter((f) => f.endsWith('.swift'))
     .map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
+  assert(!swift['UpdateChecker.swift'] && !swift['GrownUpGate.swift'], 'the update check or its gate is back');
   const pbx = read('ios/CubeClubhouse.xcodeproj/project.pbxproj');
-  assert(/UpdateChecker\.swift in Sources/.test(pbx) && /path = UpdateChecker\.swift;/.test(pbx), 'UpdateChecker.swift is not built');
-  const uc = swift['UpdateChecker.swift'];
-  // the only web address in any Swift file is Apple's lookup service
-  const code = Object.values(swift).join('\n').replace(/^\s*\/\/.*$/gm, '');      // not the comments
-  const urls = code.match(/"https?:\/\/[^"]*"/g) || [];
-  assert.deepStrictEqual(urls, ['"https://itunes.apple.com/lookup"'], 'addresses in Swift: ' + urls.join(', '));
-  // and it asks with nothing but the bundle id and the country
-  const params = [...uc.matchAll(/URLQueryItem\(name: "([^"]+)"/g)].map((m) => m[1]).sort();
-  assert.deepStrictEqual(params, ['bundleId', 'country'], 'query: ' + params.join(', '));
-  for (const need of ['URLSessionConfiguration.ephemeral', 'httpCookieAcceptPolicy = .never', 'httpShouldSetCookies = false',
-    'urlCache = nil', 'waitsForConnectivity = false']) {
-    assert(uc.includes(need), 'the lookup session is missing: ' + need);
-  }
-  assert(/checkEvery: TimeInterval = 24 \* 60 \* 60/.test(uc), 'not at most once a day');
-  assert(/quietAfterNotNow: TimeInterval = 7 \* 24 \* 60 \* 60/.test(uc), 'Not Now does not keep quiet for a week');
-  assert(/func checkIfDue\(\) \{\s*guard enabled else \{ return \}/.test(uc), 'the switch does not stop the daily check');
-  assert(/SKStoreProductViewController\(\)/.test(uc) && !/UIApplication\.shared\.open/.test(uc), 'Update should open the store sheet inside the app');
-  assert(/minimumOsVersion/.test(uc), 'a version this device cannot install would be offered');
-  // the page stays offline: the check lives in Swift and the page's blockers are untouched
-  const app = swift['CubeClubhouseApp.swift'], web = swift['WebAppView.swift'];
-  assert(/updates\.checkIfDue\(\)/.test(app) && /ready && updates\.offer != nil/.test(app), 'the alert is not shown after the page is up');
-  assert(/Button\("Not Now", role: \.cancel\)/.test(app) && /Button\("Update"\)/.test(app), 'the alert buttons');
-  assert(/name: "updates"/.test(web) && /updateCheck: \\\(updates\.enabled\)/.test(web) && /version: '\\\(version\)'/.test(web), 'the page is not told the version and the switch');
-  assert(!/URLSession|itunes/.test(web + app + swift['BundleSchemeHandler.swift']), 'a request outside UpdateChecker');
-  assert(!/fetch\(|XMLHttpRequest|itunes/.test(read('js/app.js')), 'the page itself makes a request');
-  // what the grown-ups read
+  assert(!/UpdateChecker|GrownUpGate/.test(pbx), 'the project still builds the update check');
+  const code = Object.values(swift).join('\n').replace(/^\s*\/\/.*$/gm, '');
+  assert(!/"https?:\/\/|URLSession|StoreKit|SKStoreProductViewController/.test(code), 'Swift reaches the network or the App Store');
+  assert(!/fetch\(|XMLHttpRequest|itunes|CubeClubhouseUpdates|messageHandlers\.updates/.test(read('js/app.js')), 'the page asks for updates');
   const html = read('index.html');
-  assert(/<div id="updates-section" hidden>/.test(html), 'the Updates section must start hidden (the browser has none)');
+  assert(/<div id="updates-section" hidden>/.test(html) && !/update-check-/.test(html), 'the Updates section still has its switch');
   const privacy = /<article id="privacy"[\s\S]*?<\/article>/.exec(html)[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
-  for (const said of ['bundle identifier', 'About › Updates', 'never reaches us', 'the date it last asked the App Store', 'Not Now']) {
-    assert(privacy.includes(said), 'the Privacy page does not say: ' + said);
-  }
+  assert(/What the app asks the internet for Nothing\./.test(privacy), 'the Privacy page does not say Nothing');
+  assert(!/update check|bundle identifier|Not Now/.test(privacy), 'the Privacy page still describes the update check');
 });
 
 
@@ -1003,20 +981,22 @@ test('COPPA preflight: a planted problem of every kind is caught, and harmless w
     ['index.html', '<script src="https://example.com/x.js"></script>', 'network'],
     ['css/style.css', 'body { background: url(https://example.com/x.png); }', 'network'],
     ['ios/CubeClubhouse/WebAppView.swift', 'let s = URLSession.shared', 'network'],
-    ['ios/CubeClubhouse/UpdateChecker.swift', 'let other = "https://example.com/collect"', 'network'],
+    ['ios/CubeClubhouse/CubeClubhouseApp.swift', 'let other = "https://example.com/collect"', 'network'],
+    ['ios/CubeClubhouse/CubeClubhouseApp.swift', 'let u = URL(string: "https://itunes.apple.com/lookup")', 'network'],
     ['index.html', '<input type="text" name="childName">', 'free-text'],
     ['index.html', '<input placeholder="Your email">', 'free-text'],
     ['index.html', '<textarea></textarea>', 'free-text'],
     ['js/app.js', "box.contentEditable = 'true';", 'free-text'],
     ['js/app.js', "const i = document.createElement('input');", 'free-text'],
     ['js/app.js', "const name = prompt('What is your name?');", 'free-text'],
-    ['ios/CubeClubhouse/GrownUpGate.swift', 'let f = TextField("Name", text: $name)', 'free-text'],
+    ['ios/CubeClubhouse/CubeClubhouseApp.swift', 'let f = TextField("Name", text: $name)', 'free-text'],
     ['index.html', '<a href="https://example.com">our site</a>', 'links-out'],
     ['index.html', '<a href="mailto:hello@example.com">write</a>', 'links-out'],
     ['js/app.js', "window.open('https://example.com');", 'links-out'],
     ['js/app.js', "location.href = 'https://example.com';", 'links-out'],
     ['ios/CubeClubhouse/WebAppView.swift', 'UIApplication.shared.open(url)', 'links-out'],
     ['ios/CubeClubhouse/WebAppView.swift', 'let s = SKStoreProductViewController()', 'links-out'],
+    ['ios/CubeClubhouse/CubeClubhouseApp.swift', 'import StoreKit', 'links-out'],
     ['js/app.js', 'navigator.mediaDevices.getUserMedia({ video: true });', 'sensors'],
     ['js/app.js', 'navigator.geolocation.getCurrentPosition(f);', 'sensors'],
     ['ios/CubeClubhouse/WebAppView.swift', 'let m = CLLocationManager()', 'sensors'],
@@ -1046,15 +1026,6 @@ test('COPPA preflight: a planted problem of every kind is caught, and harmless w
   const pbxPkg = Object.assign({}, real);
   pbxPkg['ios/CubeClubhouse.xcodeproj/project.pbxproj'] += '\n/* x */ XCRemoteSwiftPackageReference "analytics" */\n';
   assert(Preflight.scan(pbxPkg).some((p) => p.rule === 'packages'), 'a Swift package got through');
-  // the store opened without the grown-up gate
-  const bypass = Object.assign({}, real);
-  bypass['ios/CubeClubhouse/UpdateChecker.swift'] = bypass['ios/CubeClubhouse/UpdateChecker.swift']
-    .replace('DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.gate = release }', 'openStore(release)');
-  assert(bypass['ios/CubeClubhouse/UpdateChecker.swift'] !== real['ios/CubeClubhouse/UpdateChecker.swift'], 'the bypass was not planted');
-  assert(Preflight.scan(bypass).some((p) => p.rule === 'links-out'), 'the store opened without the gate, unnoticed');
-  const noGate = Object.assign({}, real);
-  noGate['ios/CubeClubhouse/CubeClubhouseApp.swift'] = noGate['ios/CubeClubhouse/CubeClubhouseApp.swift'].replace('GrownUpGate(onPass:', 'EmptyView(onPass:');
-  assert(Preflight.scan(noGate).some((p) => p.rule === 'links-out'), 'a missing gate went unnoticed');
   // the COPPA Review taken away, a piece at a time
   for (const [file, from, to] of [
     ['js/coppa.js', null, null],
@@ -1086,7 +1057,7 @@ test('COPPA review: one source for the app page and the web page, matching COPPA
   for (const c of review.checks) {
     assert(c.heading && c.rule && c.text && COPPA.STATUS[c.status], 'incomplete check: ' + JSON.stringify(c).slice(0, 80));
   }
-  for (const rule of ['312.3', '312.5(c)(7)', '312.5(a)(2)', '312.4(d)', '312.4(b)', '312.5(c)(3)', '312.6', '312.7', '312.8', '312.10', '312.11']) {
+  for (const rule of ['312.3', '312.5(c)(7)', '312.5(a)(2)', '312.4(d)', '312.4(b)', '312.5(c)(3)', '312.6', '312.7', '312.8', '312.10']) {
     assert(review.checks.some((c) => c.rule.includes(rule)), 'no check for § ' + rule);
   }
   // the version it names is the app's
@@ -1114,7 +1085,7 @@ test('COPPA review: one source for the app page and the web page, matching COPPA
   // the retention promises are on the Privacy page
   const privacy = /<article id="privacy"[\s\S]*?<\/article>/.exec(read('index.html'))[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
   for (const said of ['How long we keep information', 'no later than 12 months after your last message', 'no later than 7 days after it arrives',
-    'strong password and two-step verification', 'COPPA Review']) {
+    'strong password and two-step verification', 'COPPA Facts']) {
     assert(privacy.includes(said), 'the Privacy page does not say: ' + said);
   }
 });

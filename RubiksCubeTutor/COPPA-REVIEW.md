@@ -9,8 +9,8 @@ compliance required from 22 April 2026. **It is not legal advice.** Have a lawye
 knows COPPA review it, together with the Privacy page and `LICENSE`, before release.
 
 It is also Ira Learning LLC's **written information security program** (§ 312.8) and
-**written data retention policy** (§ 312.10). The app shows the checks and duties of this review on its
-COPPA Review page; both that page and the hosted `ios/app-store/coppa.html` are drawn from
+**written data retention policy** (§ 312.10). The app's COPPA Facts page shows the facts behind these checks
+(without the statuses); both that page and the hosted `ios/app-store/coppa.html` are drawn from
 `js/coppa.js`, and a unit test checks that the table below agrees with it.
 
 ## Does COPPA apply?
@@ -22,22 +22,22 @@ service directed to children under 13, or one that knows it collects from them.
   but the FTC looks at the whole service (subject, pictures, language, actual audience).
   A puzzle cube, stars, a 🧠 badge and words written so a seven-year-old can read them
   appeal to children, and children use it. We treat it as directed to children.
-- *Online service:* the web page itself makes no request at all, but the iPhone and iPad
-  app reaches the internet for its App Store update check, and it is distributed online.
+- *Online service:* the app makes no internet request at all (the App Store update check
+  was removed on 6 November 2026), but it is distributed online, so we treat it as one.
 
 The approach is **comply by collecting nothing**: no accounts, no analytics, no ads, no
 boxes to type words into, no links a child can follow, and progress kept only on the
 device. Then there is no personal information, so no notice to parents and no consent is
-needed. The only network traffic is the App Store update check, and the App Store sheet
-that a grown-up opens after answering a question.
+needed. There is no network traffic of any kind, and no way to reach the App Store from
+inside the app.
 
 ## Requirement by requirement
 
 | Requirement | Rule | Status | How Cube Clubhouse meets it |
 |---|---|---|---|
-| No personal information is collected | § 312.2, § 312.3 | Meets | No accounts, sign-in, forms, chat or text boxes. Stars, times and settings stay in `localStorage` and `UserDefaults` on the device; nothing is sent. The grown-up gate's keypad keeps nothing. |
-| Persistent identifiers only for internal operations | § 312.2 (support for the internal operations), § 312.5(c)(7) | Meets | The app creates and reads no identifier (no IDFA, no `identifierForVendor`, no cookies). The update check sends only `bundleId` and `country`; Apple sees the network's IP address, as with any request. It exists only to keep the app working and updated, and can be switched off. We never receive it. |
-| No third party collects through the app | § 312.2 (operator, third party) | Meets | No third-party code, SDK, ad network, analytics or crash reporter. Apple, the platform, is the only other party reached. |
+| No personal information is collected | § 312.2, § 312.3 | Meets | No accounts, sign-in, forms, chat or text boxes. Stars, times and settings stay in the page's `localStorage` on the device; nothing is sent. |
+| Persistent identifiers only for internal operations | § 312.2 (support for the internal operations), § 312.5(c)(7) | Meets | The app creates and reads no identifier (no IDFA, no `identifierForVendor`, no cookies). The app makes no network request at all, so no identifier, IP address included, leaves the device through it. |
+| No third party collects through the app | § 312.2 (operator, third party) | Meets | No third-party code, SDK, ad network, analytics or crash reporter. The app reaches no other party, Apple included. |
 | Separate consent before sharing with third parties | § 312.5(a)(2) | Not needed | Nothing is collected, so nothing is disclosed. |
 | Online notice, linked prominently | § 312.4(d) | Meets | Privacy page one tap from every screen (footer), and hosted as `privacy-policy.html` for the App Store listing. Names the operator and contact, lists everything kept, retention, and parents' rights. |
 | Direct notice to parents and their consent | § 312.4(b)–(c), § 312.5 | Not needed | Required only when a child's information is collected. None is. |
@@ -47,7 +47,7 @@ that a grown-up opens after answering a question.
 | A security program | § 312.8 | Meets | No children's data held. Mailbox protected with a strong password and two-step verification; only Ira Learning LLC reads it. This file is the written program. `npm run preflight` blocks any change that would collect, send, link out or track. |
 | A written retention policy, published | § 312.10 | Meets | "How long we keep information" on the Privacy page: device data until cleared or the app is deleted; a grown-up's email no later than 12 months after the last message; a child's email no later than 7 days after it arrives. |
 | A mixed audience | § 312.2 (directed to children) | Meets | No age question. Everyone is treated as possibly a child, which is stricter than the rule and needs no age screen. |
-| No links out, and the shop behind a grown-up | Good practice; Apple App Review Guidelines 1.3 and 5.1.4 | Meets | No links leave the app; `WebAppView` refuses any navigation off the bundle instead of opening Safari. The App Store sheet opens only through `GrownUpGate` (a times-table answer on a keypad). |
+| No links out, and no shop | Good practice; Apple App Review Guidelines 1.3 and 5.1.4 | Meets | No links leave the app; `WebAppView` refuses any navigation off the bundle instead of opening Safari. There is no App Store sheet, no StoreKit and no purchase. |
 | A safe harbor program | § 312.11 | Optional | Voluntary. Not needed for an app that collects nothing; an option if outside certification is wanted. |
 
 ## Technical evidence
@@ -75,20 +75,16 @@ UIKit, Foundation, all Apple's):
 
 | File | Network | Identifiers | Notes |
 |---|---|---|---|
-| `CubeClubhouseApp.swift` | none | none | Launch cover; the update alert and the grown-up gate sheet. |
-| `WebAppView.swift` | none; a `WKContentRuleList` blocks every `^https?://` load | none | Refuses any navigation off the bundle (no Safari hand-off). Haptics and the Updates switch via message handlers. |
-| `BundleSchemeHandler.swift` | none; serves files from the bundle over `cubeclubhouse://` | none | Byte ranges for the video. |
-| `UpdateChecker.swift` | one `GET https://itunes.apple.com/lookup?bundleId=…&country=…`, ephemeral session, no cookies, no cache, at most daily, switchable | none | Keeps three settings in `UserDefaults`. Opens `SKStoreProductViewController` only from `passGate()`. |
-| `GrownUpGate.swift` | none | none | Keypad only; nothing kept. |
+| `CubeClubhouseApp.swift` | none | none | Launch cover only. |
+| `WebAppView.swift` | none; a `WKContentRuleList` blocks every `^https?://` load | none | Refuses any navigation off the bundle (no Safari hand-off). Haptics via a message handler; tells the page its version. |
+| `BundleSchemeHandler.swift` | none; serves files from the bundle over `cubeclubhouse://` | none | Answers byte ranges, as WebKit expects. |
 
-`PrivacyInfo.xcprivacy`: no tracking, no tracking domains, no collected data types;
-UserDefaults declared with reason CA92.1 (read by this app only). No `NS…UsageDescription`
+`PrivacyInfo.xcprivacy`: no tracking, no tracking domains, no collected data types, and
+no API that needs a reason (no `UserDefaults`). No `NS…UsageDescription`
 permission is requested; no `AdSupport` or `AppTrackingTransparency`.
 
-**Apple as a first party.** The update check and the App Store sheet are Apple's own
-services. Apple receives the device's network address and, inside the store sheet, whatever
-the App Store itself handles; that is governed by Apple's privacy policy, and we never
-receive any of it.
+**Apple as a first party.** The app sends Apple nothing. Downloading and updating it
+happen in the App Store, under Apple's own privacy policy.
 
 **Android.** There is no Android version, so no Google Play Billing and no Play services.
 If one is ever made, see "Android" in `ios/app-store/APP-STORE.md` before release: Google
@@ -129,8 +125,7 @@ them.
 
 1. `npm run preflight`: must pass.
 2. Read every Swift file and every new file in `js/`; update the evidence table above.
-3. Run the app with a network monitor and confirm the only request is the App Store lookup
-   (and nothing at all with the update check switched off).
+3. Run the app with a network monitor and confirm it makes no request at all.
 4. Re-check the rule for amendments since the last review.
 5. Update the date here and in `js/coppa.js`, run `npm run build:store-pages`, and re-host
    `coppa.html` and `privacy-policy.html`.

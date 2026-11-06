@@ -64,7 +64,7 @@ setting (up to 125%). See "Speaking and feeling like iOS" in the main README.
 
 ## The launch screen
 
-While the app starts, iOS shows the Cube Clubhouse™ logo (the cube face from the icon,
+While the app starts, iOS shows the Cube Clubhouse™ logo (the house of tiles from the icon,
 with the name) centred on the app's own background colour, in light or dark to match the
 device. It comes from `UILaunchScreen` in `Info.plist`: the `LaunchBackground` colour and
 the `LaunchLogo` image set in the asset catalog. The colour is exactly the page's
@@ -122,10 +122,8 @@ requests no permissions and collects nothing, so App Privacy is "Data Not Collec
 The web page makes no network requests at all: the typeface ships inside the bundle, the
 page carries a `Content-Security-Policy` that forbids loading anything over http(s), and
 `WebAppView` installs a `WKContentRuleList` that blocks such loads at the WebKit level.
-The one request the app makes is `UpdateChecker`'s, from Swift, not the page: at most
-once a day it asks Apple's App Store lookup service whether a newer version is out,
-sending only the bundle ID and country, with no cookies (see "Offering updates" below).
-Everything except that check works in aeroplane mode.
+The app makes no request at all, from the page or from Swift: not even an update check
+(see "Updates" below). Everything works in aeroplane mode.
 
 The **Copyright** field App Store Connect asks for is already set in the target's build
 settings as "Copyright © 2026 Ira Learning LLC. All rights reserved."; the app is
@@ -210,16 +208,8 @@ Things the audit changed:
 * **The last outbound request is gone.** The typeface used to come from Google Fonts.
   It is now in `fonts/`, the page carries a `Content-Security-Policy` that allows no
   http(s) source, and `WebAppView` compiles a `WKContentRuleList` that blocks any such
-  load inside the web view. The web page makes no network requests at all; the only
-  request is the optional App Store update check, made by the Swift side.
-
-## The grown-up gate
-
-"Update" in the new-version alert does not open the App Store straight away: the App
-Store is a shop, so `GrownUpGate.swift` asks for the answer to a times-table sum (6 × 6 to
-9 × 9) on its own keypad first. A wrong answer brings a new sum; Cancel opens nothing.
-`npm run preflight` fails the build if the store sheet can be reached any other way, and
-`WebAppView` refuses every navigation off the bundle, so there are no links to Safari.
+  load inside the web view. Since 6 November 2026 the App Store update check is gone too,
+  so the app makes no network request of any kind.
 
 ## No video in the app
 
@@ -228,25 +218,15 @@ for social posts and a website only, and the copy phase does not bundle it.
 `BundleSchemeHandler` still answers byte-range requests (`206 Partial Content`), as WebKit
 expects of any scheme handler.
 
-## Offering updates
+## Updates
 
-`UpdateChecker.swift` asks Apple's App Store whether a newer version is out, and if so
-shows an iOS alert: **Update** opens the App Store's own sheet inside the app
-(`SKStoreProductViewController`), **Not Now** keeps quiet about that version for a week.
-
-- It runs once the lessons are showing, at most once a day (after a check that got an
-  answer), and not at all when **About › Updates › Check for New Versions** is off.
-  **Check Now** on that page asks straight away and says what it found.
-- It asks `https://itunes.apple.com/lookup?bundleId=…&country=…` over an ephemeral
-  session: no cookies, no cache. Nothing about the person is sent.
-- It offers a version only if it is newer (compared number by number, so 1.10 beats
-  1.9) and this device's iOS can install it.
-- It keeps three things in `UserDefaults`: the switch, the date of the last check, and a
-  version someone said Not Now to. That is why `PrivacyInfo.xcprivacy` declares
-  UserDefaults with reason CA92.1.
-- Before the first release there is nothing in the store to find, so it stays quiet.
-  To see the alert, release 1.0, then run a build whose `MARKETING_VERSION` is lower,
-  such as 0.9, on a device.
+The app does not look for new versions itself. It used to ask Apple's App Store once a
+day (`UpdateChecker.swift`, with a grown-up gate before the store sheet); both were
+removed on 6 November 2026 so the app makes no internet request at all. New versions
+reach people through the App Store's automatic updates. The About page's **Updates**
+section on iOS just shows the installed version (`CFBundleShortVersionString`, passed to
+the page by `WebAppView`). `PrivacyInfo.xcprivacy` declares no reasoned API, because
+nothing in the app calls `UserDefaults` any more.
 
 `SWIFT_VERSION` is 5.0, so building with Xcode 16 does not drag the code into Swift 6's
 strict concurrency checking. Note that App Store Connect has required builds made with
