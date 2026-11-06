@@ -8,6 +8,15 @@ All notable changes to Cube Clubhouse®. Dates are when the change was made.
 - **Magnet warning.** The licence (clause 8), About › Safety and the App Store description now
   say that many speed cubes contain small, strong magnets, to keep a broken cube away from
   children, and to get medical help at once if a magnet may have been swallowed.
+- **Under 13s.** The licence asks that anyone under 13 uses the app with a parent's or
+  guardian's permission. The app stays rated 4+ for all ages; the App Store guide says why.
+- **My Real Cube care note:** "Turn your cube gently. If a piece pops out, keep it away from
+  young children."
+
+### Fixed
+- **No flicker with Reduce Motion.** With Reduce Motion on, a turn is a cut instead of an
+  animation, and a fast solve or Mix It Up cut up to 16 times a second (over the
+  three-flashes-a-second limit in WCAG 2.3.1). Each move now holds 400 ms before the next.
 
 ## 5 November 2026
 

@@ -199,6 +199,14 @@ web access, no advertising, no in-app purchases, no medical or wellness content,
 parental controls or age assurance built in. The result is **4+**, which means "suitable
 for everyone", not "made for children". Leave **Made for Kids** off.
 
+Keep **4+** and do not use **Override to Higher Age Rating**. A 13+ or 18+ rating
+checks nobody's age (it only blocks devices with Screen Time limits) and does not
+change who the app appeals to, so it adds little protection. The app collects no data,
+so there is almost nothing for children's privacy rules to apply to, and injury risk is
+covered by the safety warnings and the liability cap. The licence asks that anyone
+under 13 uses the app with a parent's or guardian's permission. If the licence ever
+sets a minimum age, the age rating must be raised to match.
+
 ## 7. Everything else on the version page
 
 - **Content Rights**: "Does your app contain, show, or access third-party content?"

@@ -1885,6 +1885,25 @@ const ck = (name, ok, extra) => { (ok ? pass++ : fail++); console.log((ok ? '  P
     ck('every ® is at least 10 px', await m.evaluate(() => [...document.querySelectorAll('.reg')].every((e) => parseFloat(getComputedStyle(e).fontSize) >= 10)));
     await m.close(); }
 
+  console.log('R59 Reduce Motion: moves do not cut faster than three a second; My Real Cube carries the care note');
+  { const p = await b.newPage({ viewport: { width: 1280, height: 950 }, reducedMotion: 'reduce' });
+    await p.goto(URL); await p.waitForTimeout(300);
+    await p.locator('nav button[data-screen="play"]').click(); await p.waitForTimeout(300);
+    const gaps = await p.evaluate(() => new Promise((done) => {
+      const t = []; const v = document.querySelector('#play-cube');
+      const q = () => [...v.querySelectorAll('.face')].map((e) => e.className).join('|');
+      let last = q(); const t0 = performance.now();
+      const obs = setInterval(() => { const n = q(); if (n !== last) { t.push(performance.now() - t0); last = n; } }, 10);
+      document.querySelector('#play-scramble').click();      // 20 moves, 90 ms each
+      setTimeout(() => { clearInterval(obs); done(t.slice(1).map((x, i) => x - t[i])); }, 4000);
+    }));
+    ck('Mix It Up with Reduce Motion: each cut comes at least 350 ms after the one before', gaps.length >= 3 && gaps.every((g) => g >= 350), JSON.stringify(gaps.map(Math.round)));
+    await p.close(); }
+  { const p = await newPage();
+    await p.locator('nav button[data-screen="solve"]').click(); await p.waitForTimeout(250);
+    ck('My Real Cube asks to turn gently and keep loose pieces from young children', /gently/.test(await p.locator('#solve-care').textContent()) && /young children/.test(await p.locator('#solve-care').textContent()));
+    await p.close(); }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   console.log('page errors:', errs.length ? errs : 'none');
   await b.close();

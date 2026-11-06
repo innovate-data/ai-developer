@@ -29,6 +29,7 @@
   };
   const NORMALS = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
   const AXIS_IDX = { x: 0, y: 1, z: 2 };
+  const STILL_HOLD_MS = 400;   // with Reduce Motion on, how long one move stays before the next
   // CSS rotation that matches one quarter turn of the model's U, R and F direction.
   const CSS_ANGLE = { y: -90, x: 90, z: 90 };
 
@@ -177,6 +178,10 @@
       const angle = CSS_ANGLE[mv.axis] * mv.k;
       const layer = [];
       for (const c of this.cubies) if (mv.layers.includes(c.pos[ai])) layer.push(c);
+      // Reduce Motion drops the turn itself, so each move is a cut. Cuts that follow one
+      // another at frame rate would flicker, so a move holds before the next (WCAG 2.3.1:
+      // fewer than three changes a second).
+      const still = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const spin = 'rotate' + mv.axis.toUpperCase() + '(' + angle + 'deg) ';
       return new Promise((resolve) => {
         for (const c of layer) {
@@ -196,7 +201,7 @@
           this.state = this.model.applyMove(this.state, token);
           this.resetTransforms(layer);
           this.paint();
-          resolve();
+          if (still) setTimeout(resolve, STILL_HOLD_MS); else resolve();
         };
         const onEnd = (e) => { if (e.propertyName === 'transform') finish(); };
         if (layer.length) layer[0].el.addEventListener('transitionend', onEnd);
